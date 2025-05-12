@@ -56,6 +56,11 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotifications()
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            ->favicon(asset('images/geoalpin-shop-favicon.svg'))
+            // ->brandLogo(asset('images/geoalpin-shop-favicon.svg'))
+            ->brandLogo(fn () => view('components.filament-brand-logo'))
+            ->brandLogoHeight('2rem')
+            ->brandName('Filament Demo');
     }
 }
