@@ -18,6 +18,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\ImporterSelector;
+use Illuminate\Support\Facades\Storage;
 
 class ProductResource extends Resource
 {
@@ -193,15 +194,36 @@ class ProductResource extends Resource
                 Tables\Actions\EditAction::make(),
             ])
             ->headerActions([
-                ImportAction::make()
+                Tables\Actions\Action::make('importProducts')
+                    ->label('import products')
                     ->form([
                         Forms\Components\Select::make('manufacturer_id')
                             ->label('Hersteller')
-                            ->relationship('manufacturer', 'name')
+                            ->relationship('manufacturer', 'manufacturer')
                             ->required(),
-                    ])
-                    ->importer(ProductImporter::class)
 
+                        Forms\Components\FileUpload::make('csv')
+                            ->label('CSV-Datei')
+                            ->acceptedFileTypes(['text/csv'])
+                            ->required()
+                            ->storeFiles(false),
+                    ])
+                    ->action(function (array $data): void {
+                        $manufacturerId = $data['manufacturer_id'];
+                        $file = $data['csv'];
+
+                // dd($data['csv'], get_class($data['csv']));
+
+                        $storedPath = Storage::disk('local')->putFile('imports', $file);
+
+                        $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
+                        $importer->handleUploadedFile($storedPath);
+
+                        \Filament\Notifications\Notification::make()
+                            ->title('Import erfolgreich gestartet')
+                            ->success()
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

@@ -1,9 +1,9 @@
 <?php
 
 /**
- * class ImporterForKratos
+ * class ImporterForPetzl
  *
- * Creates the import for the manufacturer "Kratos Safety"
+ * Creates the import for the manufacturer "Petzl"
  *
  * @author Jörg Aderhold <joerg@jaderbass.de> https://jaderbass.de
  *
@@ -18,7 +18,7 @@ use App\Models\Product;
 use League\Csv\Reader;
 use App\Helpers\CsvValueSanitizer as San;
 
-class ImporterForKratos
+class ImporterForPetzl
 {
   public function handleUploadedFile(string $path): void
   {
@@ -28,9 +28,10 @@ class ImporterForKratos
 
     foreach ($csv->getRecords() as $row) {
       Product::create([
-        'manufacturer_id' => 2,
-        'productname' => San::toNullableString($row['Artikelname']),
-        'skucode' => San::toNullableString($row['SKU']),
+        'manufacturer_id' => 4,
+        'productname' => San::toNullableString($row['Product Name']),
+        'price' => San::toNullableInt($row['Unit Price VAT excl.']),
+        'description' => San::toNullableString($row['Description']),
         // weitere Felder ...
       ]);
     }

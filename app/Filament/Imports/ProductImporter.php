@@ -7,6 +7,7 @@ use Filament\Actions\Imports\Models\Import;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Storage;
 use App\Services\ImporterSelector;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class ProductImporter extends Importer
 {
@@ -16,8 +17,9 @@ class ProductImporter extends Importer
         return [];
     }
 
-    public function handleUploadedFile(File $file, array $formData): void
+    public function handleUploadedFile(TemporaryUploadedFile $file, array $formData): void
     {
+        
         $manufacturerId = $formData['manufacturer_id'];
 
         $importer = ImporterSelector::forManufacturer($manufacturerId);
