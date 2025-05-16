@@ -195,7 +195,7 @@ class ProductResource extends Resource
             ])
             ->headerActions([
                 Tables\Actions\Action::make('importProducts')
-                    ->label('import products')
+                    ->label('Import products')
                     ->form([
                         Forms\Components\Select::make('manufacturer_id')
                             ->label('Hersteller')

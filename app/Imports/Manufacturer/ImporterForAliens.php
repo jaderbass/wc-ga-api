@@ -32,7 +32,7 @@ class ImporterForAliens
         'productname' => San::toNullableString($row['Artikelbezeichnung']),
         'productnumber' => San::toNullableString($row['Artikelnummer']),
         'eancode' => San::toNullableString($row['EAN']),
-        'price' => San::toNullableInt($row['eVK']),
+        'price' => San::toNullableInt($row['eVK netto']),
         // weitere Felder ...
       ]);
     }
