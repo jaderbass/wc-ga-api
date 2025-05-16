@@ -12,10 +12,10 @@ class ImporterSelector
   public static function forManufacturer(int $id)
   {
     return match ($id) {
-      1 => new ImporterForKratos(),
-      2 => new ImporterForAliens(),
-      3 => new ImporterForKask(),
-      4 => new ImporterForPetzl(),
+      1 => new ImporterForAliens(),
+      2 => new ImporterForKask(),
+      3 => new ImporterForPetzl(),
+      4 => new ImporterForKratos(),
       default => throw new \Exception("Kein Importer für Hersteller-ID $id gefunden."),
     };
   }

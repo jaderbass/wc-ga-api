@@ -28,7 +28,7 @@ class ImporterForKask
 
     foreach ($csv->getRecords() as $row) {
       Product::create([
-        'manufacturer_id' => 3,
+        'manufacturer_id' => 2,
         'productnumber' => San::toNullableString($row['PART #']),
         'productname' => San::toNullableString($row['DESCRIPTION']),
         'eancode' => San::toNullableString($row['EAN CODE']),

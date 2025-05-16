@@ -28,7 +28,7 @@ class ImporterForKratos
 
     foreach ($csv->getRecords() as $row) {
       Product::create([
-        'manufacturer_id' => 2,
+        'manufacturer_id' => 4,
         'productname' => San::toNullableString($row['Artikelname']),
         'skucode' => San::toNullableString($row['SKU']),
         // weitere Felder ...

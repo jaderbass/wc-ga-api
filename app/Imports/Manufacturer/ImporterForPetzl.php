@@ -28,7 +28,7 @@ class ImporterForPetzl
 
     foreach ($csv->getRecords() as $row) {
       Product::create([
-        'manufacturer_id' => 4,
+        'manufacturer_id' => 3,
         'productname' => San::toNullableString($row['Product Name']),
         'price' => San::toNullableInt($row['Unit Price VAT excl.']),
         'description' => San::toNullableString($row['Description']),
