@@ -1,48 +1,39 @@
 <?php
 
-/**
- * class ImporterForKask
- *
- * Creates the import for the manufacturer "Kratos Safety"
- *
- * @author Jörg Aderhold <joerg@jaderbass.de> https://jaderbass.de
- *
- * @since 1.0.0
- *
- * @package App\Imports\Manufacturer
- */
-
 namespace App\Imports\Manufacturer;
 
+use App\Imports\BaseCsvImporter;
 use App\Models\Product;
-use League\Csv\Reader;
-use App\Helpers\CsvValueSanitizer as San;
 
-class ImporterForKask
+class ImporterForKask extends BaseCsvImporter
 {
-  public function handleUploadedFile(string $path): void
+  protected function model(): string
   {
-    $csv = Reader::createFromPath(storage_path("app/{$path}"), 'r');
-    $csv->setDelimiter(';'); // 👈 ganz wichtig!
-    $csv->setHeaderOffset(0);
+    return Product::class;
+  }
 
-    foreach ($csv->getRecords() as $row) {
-      Product::create([
-        'manufacturer_id' => 2,
-        'productnumber' => San::toNullableString($row['PART #']),
-        'productname' => San::toNullableString($row['DESCRIPTION']),
-        'eancode' => San::toNullableString($row['EAN CODE']),
-        'width' => San::toNullableInt($row['SWIDHT']),
-        'length' => San::toNullableInt($row['SLENGHT']),
-        'height' => San::toNullableInt($row['SHEIGHT']),
-        'manufacturercountry' => San::toNullableString($row['COUNTRY OF ORIGIN']),
-        'pcsperbox' => San::toNullableInt($row['PCS X BOX']),
-        'boxwidth' => San::toNullableInt($row['MWIDHT']),
-        'boxlength' => San::toNullableInt($row['MLENGHT']),
-        'boxheight' => San::toNullableInt($row['MHEIGHT']),
-        'weight' => San::toNullableInt($row['GROSS WEIGHT']),
-        'skucode' => San::toNullableString($row['PART #']),
-      ]);
-    }
+  protected function columnMap(): array
+  {
+    return [
+      'productnumber'       => 'PART #',
+      'productname'         => 'DESCRIPTION',
+      'eancode'             => 'EAN CODE',
+      'width'               => 'SWIDHT',
+      'length'              => 'SLENGHT',
+      'height'              => 'SHEIGHT',
+      'pcsperbox'           => 'PCS X BOX',
+      'boxwidth'            => 'MWIDHT',
+      'boxlength'           => 'MLENGHT',
+      'boxheight'           => 'MHEIGHT',
+      'weight'              => 'GROSS WEIGHT',
+      'manufacturercountry' => 'COUNTRY OF ORIGIN',
+    ];
+  }
+
+  protected function fixedValues(): array
+  {
+    return [
+      'manufacturer_id' => 2, // ID von KASK
+    ];
   }
 }
