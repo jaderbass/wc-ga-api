@@ -2,79 +2,60 @@
 
 namespace App\Imports;
 
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Helpers\CsvValueSanitizer;
+use SimpleXMLElement;
 
 abstract class BaseXmlImporter
 {
     abstract protected function model(): string;
-    abstract protected function productNodePath(): string;
-    abstract protected function mapXmlToData(\SimpleXMLElement $product): array;
     abstract protected function fixedValues(): array;
+    abstract protected function mapXmlItem(SimpleXMLElement $item): array;
 
     public function importFromFile(string $path): void
     {
         $xml = simplexml_load_file(storage_path("app/{$path}"));
-
-        $this->process($xml);
+        $this->importXml($xml);
     }
 
     public function importFromUrl(string $url): void
     {
         $response = Http::get($url);
 
-        if (!$response->successful()) {
-            Log::error("XML-Import fehlgeschlagen: HTTP " . $response->status());
+        if (! $response->ok()) {
+            Log::error("Fehler beim Abruf des XML-Feeds", ['url' => $url, 'status' => $response->status()]);
             return;
         }
 
         $xml = simplexml_load_string($response->body());
-        $this->process($xml);
+        $this->importXml($xml);
     }
 
-    protected function process(\SimpleXMLElement $xml): void
+    protected function importXml(SimpleXMLElement $xml): void
     {
-        $products = $xml->xpath($this->productNodePath());
-
-        foreach ($products as $product) {
+        foreach ($xml->product as $productNode) {
             try {
-                $data = $this->mapXmlToData($product);
-                $data = $this->sanitize($data);
+                $data = $this->mapXmlItem($productNode);
                 $data = array_merge($data, $this->fixedValues());
 
-                $this->upsertRecord($data);
+                $model = $this->model();
+
+                $record = $model::where('productnumber', $data['productnumber'] ?? null)->first();
+                if ($record) {
+                    $record->update($data);
+                    Log::info("Produkt aktualisiert", ['id' => $record->id]);
+                } else {
+                    $model::create($data);
+                    Log::info("Produkt erstellt", ['productnumber' => $data['productnumber']]);
+                }
             } catch (\Throwable $e) {
-                Log::error("Fehler beim XML-Import: " . $e->getMessage(), ['product' => $product]);
+                Log::error("Fehler beim Verarbeiten eines Produkts", [
+                    'exception' => $e->getMessage(),
+                    'trace' => Str::limit($e->getTraceAsString(), 500),
+                    'data' => (string) $productNode->asXML(),
+                ]);
             }
-        }
-
-        Log::info("XML-Import abgeschlossen", ['anzahl' => count($products)]);
-    }
-
-    protected function sanitize(array $data): array
-    {
-        return collect($data)->map(function ($value, $key) {
-            return match ($key) {
-                'width', 'length', 'height', 'weight' => CsvValueSanitizer::toScaledInt($value, 100),
-                default => CsvValueSanitizer::toNullableString($value),
-            };
-        })->all();
-    }
-
-    protected function upsertRecord(array $data): void
-    {
-        $model = $this->model();
-        $record = $model::where('productnumber', $data['productnumber'] ?? null)->first();
-
-        if ($record) {
-            $record->update($data);
-            Log::info("Produkt aktualisiert (XML)", ['id' => $record->id]);
-        } else {
-            $model::create($data);
-            Log::info("Neues Produkt erstellt (XML)", ['productnumber' => $data['productnumber']]);
         }
     }
 }
