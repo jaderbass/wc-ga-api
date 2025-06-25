@@ -57,4 +57,15 @@ class XmlValueSanitizer
     {
         return html_entity_decode($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
     }
+
+    public static function cleanAndDecodeHtml(?string $value): ?string
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        return self::cleanHtml(
+            self::decodeEntities($value)
+        );
+    }
 }
