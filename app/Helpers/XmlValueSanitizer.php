@@ -47,4 +47,14 @@ class XmlValueSanitizer
         $value = str_replace(',', '.', (string) $value);
         return $value === '' ? null : round((float) $value * $scale, 2);
     }
+
+    public static function cleanHtml(string $html): string
+    {
+        return strip_tags(trim($html));
+    }
+
+    public static function decodeEntities(string $value): string
+    {
+        return html_entity_decode($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+    }
 }
