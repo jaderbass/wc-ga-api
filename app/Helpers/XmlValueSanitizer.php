@@ -10,26 +10,41 @@ class XmlValueSanitizer
         return $value === '' ? null : $value;
     }
 
-    public static function toIntCents(mixed $value): ?int
+    public static function toNullableInt(mixed $value): ?int
     {
-        if ($value === '' || $value === null) return null;
-
-        $normalized = str_replace(',', '.', (string) $value);
-        return (int) round((float) $normalized * 100);
-    }
-
-    public static function toScaledInt(mixed $value, int $scale = 1): ?int
-    {
-        if ($value === '' || $value === null) return null;
-
-        $normalized = str_replace(',', '.', (string) $value);
-        $normalized = str_replace([' ', 'cm', 'mm', 'kg', 'g'], '', $normalized);
-
-        return (int) round((float) $normalized * $scale);
+        $value = preg_replace('/[^0-9]/', '', (string) $value);
+        return $value === '' ? null : (int) $value;
     }
 
     public static function toBool(mixed $value): bool
     {
         return in_array(strtolower((string) $value), ['1', 'true', 'yes', 'active']);
+    }
+
+    public static function toScaledInt(mixed $value, int $scale = 1): ?int
+    {
+        if ($value === '' || is_null($value)) return null;
+
+        $value = str_replace(',', '.', (string) $value);
+        $value = str_replace([' ', 'cm', 'mm', 'kg', 'g'], '', $value);
+
+        return (int) round((float) $value * $scale);
+    }
+
+    public static function toIntCents(mixed $value): ?int
+    {
+        return self::toScaledInt($value, 100);
+    }
+
+    public static function toFloat(mixed $value): ?float
+    {
+        $value = str_replace(',', '.', (string) $value);
+        return $value === '' ? null : (float) $value;
+    }
+
+    public static function toScaledFloat(mixed $value, int $scale = 1): ?float
+    {
+        $value = str_replace(',', '.', (string) $value);
+        return $value === '' ? null : round((float) $value * $scale, 2);
     }
 }
