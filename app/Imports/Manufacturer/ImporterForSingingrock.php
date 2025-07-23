@@ -33,25 +33,16 @@ class ImporterForSingingRock extends BaseXmlImporter
 
         foreach ($xml->PRODUCTS->PRODUCTITEM as $entry) {
             $products[] = [
-                'productnumber'      => XmlValueSanitizer::toNullableString($entry->CODE),
-                'productname'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->NAME),
-                'description'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->TEXTLONG),
-                'shortdescription'   => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->TEXTSHORT),
+                'manufacturer_id'    => 5,
+                'productnumber'      => XmlValueSanitizer::toNullableString($entry->ARTICLE),
+                'productname'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->ARTICLE_NAME),
+                'description'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->DESCRIPTION),
+                'shortdescription'   => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->SHORT_DESCRIPTION),
                 'eancode'            => XmlValueSanitizer::toNullableString($entry->EAN),
-                'skucode'            => XmlValueSanitizer::toNullableString($entry->PARTNO),
-                'price'              => XmlValueSanitizer::toIntCents($entry->PRICE),
-                'regularprice'       => XmlValueSanitizer::toIntCents($entry->PRICE),
-                'saleprice'          => XmlValueSanitizer::toIntCents($entry->PRICE_SALE),
-                'width'              => XmlValueSanitizer::toScaledInt($entry->WIDTH, 100),
-                'length'             => XmlValueSanitizer::toScaledInt($entry->LENGTH, 100),
-                'height'             => XmlValueSanitizer::toScaledInt($entry->HEIGHT, 100),
-                'weight'             => XmlValueSanitizer::toScaledInt($entry->WEIGHT, 100),
+                'width'              => XmlValueSanitizer::toNullableString($entry->WIDTH, 100),
+                'length'             => XmlValueSanitizer::toNullableString($entry->LENGTH, 100),
+                'weight'             => XmlValueSanitizer::toNullableString($entry->WEIGHT, 100),
                 'unit'               => XmlValueSanitizer::toNullableString($entry->UNIT),
-                'unitprice'          => XmlValueSanitizer::toIntCents($entry->UNIT_PRICE),
-                'pcsperbox'          => XmlValueSanitizer::toNullableInt($entry->PCS_PER_BOX),
-                'boxwidth'           => XmlValueSanitizer::toScaledInt($entry->BOX_WIDTH, 100),
-                'boxlength'          => XmlValueSanitizer::toScaledInt($entry->BOX_LENGTH, 100),
-                'boxheight'          => XmlValueSanitizer::toScaledInt($entry->BOX_HEIGHT, 100),
             ];
         }
 
