@@ -200,81 +200,58 @@ class ProductResource extends Resource
                 Tables\Actions\EditAction::make(),
             ])
             ->headerActions([
-                ImportAction::make('importProducts')
+                Tables\Actions\Action::make('importProducts')
                     ->label('Import starten')
                     ->form([
-                        Select::make('manufacturer_id')
+                        Forms\Components\Select::make('manufacturer_id')
                             ->label('Hersteller')
-                            ->relationship('manufacturer', 'manufacturer')
-                            ->required(),
+                            ->relationship('manufacturer', 'name')
+                            ->reactive()
+                            ->required()
+                            ->afterStateUpdated(
+                                fn($state, callable $set) =>
+                                $set('import_type', \App\Models\Manufacturer::find($state)?->import_type)
+                            ),
 
-                        Select::make('sourceType')
-                            ->label('Import-Typ')
-                            ->options([
-                                'csv' => 'CSV-Datei',
-                                'xml' => 'XML-Datei',
-                                'xml-url' => 'XML via URL',
-                            ])
-                            ->default('csv')
-                            ->required(),
+                        Forms\Components\Hidden::make('import_type'),
 
-                        FileUpload::make('csv')
+                        // CSV-Upload
+                        Forms\Components\FileUpload::make('csv')
                             ->label('CSV-Datei')
-                            ->key('csv-upload') // ← wichtig!
-                            ->acceptedFileTypes(['text/csv'])
-                            ->visible(fn($get) => $get('sourceType') === 'csv')
                             ->storeFiles(false)
-                            ->reactive(),
+                            ->visible(fn($get) => $get('import_type') === 'csv')
+                            ->required(fn($get) => $get('import_type') === 'csv'),
 
-                        FileUpload::make('uploadXml')
+                        // XML-Upload
+                        Forms\Components\FileUpload::make('xml')
                             ->label('XML-Datei')
-                            ->key('xml-upload') // ← wichtig!
-                            ->acceptedFileTypes(['text/xml', 'application/xml', 'text/html', '.xml']) // ergänzt ✔️
-                            // ->rules(['file', 'mimetypes:text/xml,application/xml,text/html']) // ergänzt ✔️
-                            // ->visible(fn($get) => $get('sourceType') === 'xml')
                             ->storeFiles(false)
-                            ->reactive(),
+                            ->visible(fn($get) => $get('import_type') === 'xml')
+                            ->required(fn($get) => $get('import_type') === 'xml'),
 
-
-                        TextInput::make('xmlUrl')
+                        // API-URL
+                        Forms\Components\TextInput::make('api_url')
                             ->label('API-URL')
-                            ->visible(fn($get) => $get('sourceType') === 'xml-url'),
+                            ->visible(fn($get) => $get('import_type') === 'api')
+                            ->required(fn($get) => $get('import_type') === 'api'),
                     ])
                     ->action(function (array $data) {
                         $manufacturerId = $data['manufacturer_id'];
-                        $sourceType = $data['sourceType'] ?? 'csv';
+                        /** @var \App\Imports\BaseCsvImporter|\App\Imports\BaseXmlImporter $importer */
+                        $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
 
-                        $file = match ($sourceType) {
-                            'csv' => $data['csv'] ?? null,
-                            'xml' => $data['uploadXml'] ?? null,
-                            default => null,
+                        // Automatisch Quelle laden:
+                        match ($data['import_type']) {
+                            'csv' => $importer->handleUploadedFile(
+                                Storage::disk('local')->putFile('imports', $data['csv'])
+                            ),
+                            'xml' => $importer->handleUploadedXmlFile(
+                                Storage::disk('local')->putFile('imports', $data['xml'])
+                            ),
+                            'api' => $importer->handleFromUrl($data['api_url']),
                         };
 
-                        /* $storedPath = $file
-                            ? Storage::disk('local')->putFile('imports', $file)
-                            : null; */
-                        $storedPath = Storage::disk('local')->putFileAs(
-                            'imports',
-                            $file,
-                            uniqid() . '.xml'
-                        );
-
-                        Log::info('Import gestartet', [
-                            'manufacturerId' => $manufacturerId,
-                            'sourceType' => $sourceType,
-                            'storedPath' => $storedPath,
-                        ]);
-
-                        /** @var \App\Imports\BaseCsvImporter $importer */
-                        $importer = ImporterSelector::forManufacturer($manufacturerId);
-
-                        match ($sourceType) {
-                            'csv' => $importer->handleUploadedFile($storedPath),
-                            'xml' => $importer->handleUploadedXmlFile($storedPath),
-                            'xml-url' => $importer->handleFromUrl($data['xmlUrl']),
-                        };
-
-                        Notification::make()
+                        \Filament\Notifications\Notification::make()
                             ->title('Import erfolgreich gestartet')
                             ->success()
                             ->send();

@@ -27,9 +27,28 @@ class ManufacturerResource extends Resource
                     ->required()
                     ->maxLength(100),
                 Forms\Components\TextInput::make('manufacturercountry')
+                    ->label('Ländercode')
                     ->required()
-                    ->maxLength(3), 
-            ]);
+                    ->maxLength(3),
+                Forms\Components\TextInput::make('website')
+                    ->label('Website')
+                    ->url(),
+                Forms\Components\TextInput::make('api_url')
+                    ->label('API-URL'),
+                Forms\Components\TextInput::make('api_token')
+                    ->label('API-Token')
+                    ->password(),
+                Forms\Components\Select::make('import_type')
+                    ->label('Import-Typ')
+                    ->options([
+                        'csv' => 'CSV',
+                        'xml' => 'XML',
+                        'api' => 'API',
+                    ]),
+                Forms\Components\Textarea::make('notes')
+                    ->label('Notizen'),
+
+        ]);
     }
 
     public static function table(Table $table): Table
@@ -39,14 +58,27 @@ class ManufacturerResource extends Resource
                 Tables\Columns\TextColumn::make('id')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('manufacturer')
+                    ->label('Hersteller')
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('manufacturercountry')
+                    ->label('Ländercode')
                     ->searchable()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('website')->label('Website')->limit(30),
+                Tables\Columns\TextColumn::make('api_url')->label('API-URL')->limit(30),
+                Tables\Columns\TextColumn::make('import_type')->label('Import-Typ'),
+                Tables\Columns\TextColumn::make('updated_at')->label('Letzte Änderung')->dateTime(),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('import_type')
+                    ->label('Import-Typ')
+                    ->options([
+                        'csv' => 'CSV',
+                        'xml' => 'XML',
+                        'api' => 'API',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

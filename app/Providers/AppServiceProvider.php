@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Filament\Facades\Filament;
+use Filament\Navigation\NavigationGroup;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -16,10 +18,8 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Bootstrap any application services.
-     * 
-     * Ausführung mit:
-     * php artisan make:product-migration oder
-     * php artisan make:product-migration custom_products_table
+     * This method is called after all other service providers have been registered.
+     * It is a good place to register Filament navigation items and set the default dashboard.
      */
     public function boot(): void
     {
