@@ -13,27 +13,40 @@ return new class extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->string('productnumber', length: 100)->nullable();
-            $table->string('eancode', length: 14)->nullable();
-            $table->string('skucode', length: 32)->nullable();
-            $table->string('productname', length: 100);
-            $table->text('description');
-            $table->string('shortdescription')->nullable();
-            $table->unsignedInteger('price');
-            $table->unsignedInteger('regularprice');
-            $table->unsignedInteger('saleprice');
-            $table->unsignedSmallInteger('width')->nullable();
-            $table->unsignedSmallInteger('length')->nullable();
-            $table->unsignedSmallInteger('height')->nullable();
-            $table->boolean('hasoptions')->default(false);
-            $table->foreignId('manufacturer_id')->constrained('manufacturers')->cascadeOnDelete();
-            $table->boolean('unit')->default(false);
-            $table->unsignedInteger('unitprice')->nullable();
-            $table->unsignedSmallInteger('pcsperbox')->nullable();
-            $table->unsignedSmallInteger('boxwidth')->nullable();
-            $table->unsignedSmallInteger('boxlength')->nullable();
-            $table->unsignedSmallInteger('boxheight')->nullable();
-            $table->unsignedSmallInteger('weight')->nullable();
+
+            // Identifikation
+            $table->string('productnumber')->unique();
+            $table->string('productname')->nullable();
+            $table->text('description')->nullable();
+            $table->text('shortdescription')->nullable();
+            $table->string('eancode')->nullable();
+            $table->string('skucode')->nullable();
+
+            // Preise (in Cent, also z. B. 1999 für 19,99 €)
+            $table->integer('price')->nullable();
+            $table->integer('regularprice')->nullable();
+            $table->integer('saleprice')->nullable();
+            $table->integer('unitprice')->nullable();
+
+            // Maße (in Millimeter × 100, z. B. 1234 für 12,34 cm)
+            $table->integer('width')->nullable();
+            $table->integer('length')->nullable();
+            $table->integer('height')->nullable();
+            $table->integer('boxwidth')->nullable();
+            $table->integer('boxlength')->nullable();
+            $table->integer('boxheight')->nullable();
+
+            // Gewicht in Gramm (ggf. ×100)
+            $table->integer('weight')->nullable();
+
+            // Weitere Infos
+            $table->string('unit')->nullable(); // z. B. "Stück", "kg", etc.
+            $table->integer('pcsperbox')->nullable();
+            $table->string('manufacturercountry')->nullable();
+
+            // Beziehung zum Hersteller
+            $table->foreignId('manufacturer_id')->constrained()->cascadeOnDelete();
+
             $table->timestamps();
         });
     }

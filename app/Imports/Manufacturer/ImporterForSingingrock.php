@@ -2,9 +2,10 @@
 
 namespace App\Imports\Manufacturer;
 
-use App\Imports\BaseXmlImporter;
 use App\Models\Product;
+use App\Imports\BaseXmlImporter;
 use App\Helpers\XmlValueSanitizer;
+use Illuminate\Support\Facades\Log;
 
 class ImporterForSingingRock extends BaseXmlImporter
 {
@@ -16,23 +17,46 @@ class ImporterForSingingRock extends BaseXmlImporter
     protected function fixedValues(): array
     {
         return [
-            'manufacturer_id' => 5,
+            'manufacturer_id' => 5, // ggf. anpassen!
         ];
     }
 
-    protected function mapXmlItem(\SimpleXMLElement $item): array
+    protected function parseXml(\SimpleXMLElement $xml): array
     {
-        return [
-            'productnumber'   => (string) $item->Code,
-            'productname'     => (string) $item->ProductName,
-            'description'     => (string) $item->Description,
-            'eancode'         => (string) $item->EAN,
-            'price'           => XmlValueSanitizer::toIntCents($item->Price),
-            'width'           => XmlValueSanitizer::toScaledInt($item->Width, 10),
-            'height'          => XmlValueSanitizer::toScaledInt($item->Height, 10),
-            'weight'          => XmlValueSanitizer::toScaledInt($item->Weight, 1000),
-            'active'          => ((string) $item->Status) === 'active',
-            'variant_group'   => (string) $item->VariantGroup,
-        ];
+
+        if (!isset($xml->PRODUCTS->PRODUCTITEM)) {
+            Log::warning('Keine Produkte im XML gefunden');
+            return [];
+        }
+
+        $products = [];
+
+        foreach ($xml->PRODUCTS->PRODUCTITEM as $entry) {
+            $products[] = [
+                'productnumber'      => XmlValueSanitizer::toNullableString($entry->CODE),
+                'productname'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->NAME),
+                'description'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->TEXTLONG),
+                'shortdescription'   => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->TEXTSHORT),
+                'eancode'            => XmlValueSanitizer::toNullableString($entry->EAN),
+                'skucode'            => XmlValueSanitizer::toNullableString($entry->PARTNO),
+                'price'              => XmlValueSanitizer::toIntCents($entry->PRICE),
+                'regularprice'       => XmlValueSanitizer::toIntCents($entry->PRICE),
+                'saleprice'          => XmlValueSanitizer::toIntCents($entry->PRICE_SALE),
+                'width'              => XmlValueSanitizer::toScaledInt($entry->WIDTH, 100),
+                'length'             => XmlValueSanitizer::toScaledInt($entry->LENGTH, 100),
+                'height'             => XmlValueSanitizer::toScaledInt($entry->HEIGHT, 100),
+                'weight'             => XmlValueSanitizer::toScaledInt($entry->WEIGHT, 100),
+                'unit'               => XmlValueSanitizer::toNullableString($entry->UNIT),
+                'unitprice'          => XmlValueSanitizer::toIntCents($entry->UNIT_PRICE),
+                'pcsperbox'          => XmlValueSanitizer::toNullableInt($entry->PCS_PER_BOX),
+                'boxwidth'           => XmlValueSanitizer::toScaledInt($entry->BOX_WIDTH, 100),
+                'boxlength'          => XmlValueSanitizer::toScaledInt($entry->BOX_LENGTH, 100),
+                'boxheight'          => XmlValueSanitizer::toScaledInt($entry->BOX_HEIGHT, 100),
+            ];
+        }
+
+        Log::debug('→ Produktdaten nach Mapping:', $products);
+        
+        return $products ?? [];
     }
 }

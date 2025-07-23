@@ -16,6 +16,10 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Bootstrap any application services.
+     * 
+     * Ausführung mit:
+     * php artisan make:product-migration oder
+     * php artisan make:product-migration custom_products_table
      */
     public function boot(): void
     {

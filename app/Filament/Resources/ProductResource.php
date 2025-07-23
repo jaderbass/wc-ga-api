@@ -8,6 +8,9 @@ use App\Filament\Resources\ProductResource\RelationManagers;
 use App\Models\Manufacturer;
 use App\Models\Product;
 use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -15,10 +18,13 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Actions\ImportAction;
 use Filament\Tables\Table;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\ImporterSelector;
+// use App\Filament\Resources\ImporterSelector;
+use App\Services\ImporterSelector;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class ProductResource extends Resource
 {
@@ -94,30 +100,30 @@ class ProductResource extends Resource
                     ->numeric()
                     ->integer()
                     ->columnSpan(2)
-                    ->hidden(fn (Get $get): bool => $get('unit')),
+                    ->hidden(fn(Get $get): bool => $get('unit')),
                 Forms\Components\TextInput::make('pcsperbox')
                     ->numeric()
                     ->integer()
                     ->columnSpan(2)
-                    ->hidden(fn (Get $get): bool => $get('unit')),
+                    ->hidden(fn(Get $get): bool => $get('unit')),
                 Forms\Components\TextInput::make('boxwidth')
                     ->numeric()
                     ->integer()
                     ->helperText('Box width in mm')
                     ->columnSpan(2)
-                    ->hidden(fn (Get $get): bool => $get('unit')),
+                    ->hidden(fn(Get $get): bool => $get('unit')),
                 Forms\Components\TextInput::make('boxlength')
                     ->numeric()
                     ->integer()
                     ->helperText('Box length in mm')
                     ->columnSpan(2)
-                    ->hidden(fn (Get $get): bool => $get('unit')),
+                    ->hidden(fn(Get $get): bool => $get('unit')),
                 Forms\Components\TextInput::make('boxheight')
                     ->numeric()
                     ->integer()
                     ->helperText('Box height in mm')
                     ->columnSpan(2)
-                    ->hidden(fn (Get $get): bool => $get('unit')),
+                    ->hidden(fn(Get $get): bool => $get('unit')),
             ])
             ->columns(12);
     }
@@ -186,7 +192,7 @@ class ProductResource extends Resource
                 Tables\Columns\TextColumn::make('weight')
                     ->searchable()
                     ->sortable(),
-                ])
+            ])
             ->filters([
                 //
             ])
@@ -194,32 +200,81 @@ class ProductResource extends Resource
                 Tables\Actions\EditAction::make(),
             ])
             ->headerActions([
-                Tables\Actions\Action::make('importProducts')
-                    ->label('Import products')
+                ImportAction::make('importProducts')
+                    ->label('Import starten')
                     ->form([
-                        Forms\Components\Select::make('manufacturer_id')
+                        Select::make('manufacturer_id')
                             ->label('Hersteller')
                             ->relationship('manufacturer', 'manufacturer')
                             ->required(),
 
-                        Forms\Components\FileUpload::make('csv')
+                        Select::make('sourceType')
+                            ->label('Import-Typ')
+                            ->options([
+                                'csv' => 'CSV-Datei',
+                                'xml' => 'XML-Datei',
+                                'xml-url' => 'XML via URL',
+                            ])
+                            ->default('csv')
+                            ->required(),
+
+                        FileUpload::make('csv')
                             ->label('CSV-Datei')
+                            ->key('csv-upload') // ← wichtig!
                             ->acceptedFileTypes(['text/csv'])
-                            ->required()
-                            ->storeFiles(false),
+                            ->visible(fn($get) => $get('sourceType') === 'csv')
+                            ->storeFiles(false)
+                            ->reactive(),
+
+                        FileUpload::make('uploadXml')
+                            ->label('XML-Datei')
+                            ->key('xml-upload') // ← wichtig!
+                            ->acceptedFileTypes(['text/xml', 'application/xml', 'text/html', '.xml']) // ergänzt ✔️
+                            // ->rules(['file', 'mimetypes:text/xml,application/xml,text/html']) // ergänzt ✔️
+                            // ->visible(fn($get) => $get('sourceType') === 'xml')
+                            ->storeFiles(false)
+                            ->reactive(),
+
+
+                        TextInput::make('xmlUrl')
+                            ->label('API-URL')
+                            ->visible(fn($get) => $get('sourceType') === 'xml-url'),
                     ])
-                    ->action(function (array $data): void {
+                    ->action(function (array $data) {
                         $manufacturerId = $data['manufacturer_id'];
-                        $file = $data['csv'];
+                        $sourceType = $data['sourceType'] ?? 'csv';
 
-                // dd($data['csv'], get_class($data['csv']));
+                        $file = match ($sourceType) {
+                            'csv' => $data['csv'] ?? null,
+                            'xml' => $data['uploadXml'] ?? null,
+                            default => null,
+                        };
 
-                        $storedPath = Storage::disk('local')->putFile('imports', $file);
+                        /* $storedPath = $file
+                            ? Storage::disk('local')->putFile('imports', $file)
+                            : null; */
+                        $storedPath = Storage::disk('local')->putFileAs(
+                            'imports',
+                            $file,
+                            uniqid() . '.xml'
+                        );
 
-                        $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
-                        $importer->handleUploadedFile($storedPath);
+                        Log::info('Import gestartet', [
+                            'manufacturerId' => $manufacturerId,
+                            'sourceType' => $sourceType,
+                            'storedPath' => $storedPath,
+                        ]);
 
-                        \Filament\Notifications\Notification::make()
+                        /** @var \App\Imports\BaseCsvImporter $importer */
+                        $importer = ImporterSelector::forManufacturer($manufacturerId);
+
+                        match ($sourceType) {
+                            'csv' => $importer->handleUploadedFile($storedPath),
+                            'xml' => $importer->handleUploadedXmlFile($storedPath),
+                            'xml-url' => $importer->handleFromUrl($data['xmlUrl']),
+                        };
+
+                        Notification::make()
                             ->title('Import erfolgreich gestartet')
                             ->success()
                             ->send();
