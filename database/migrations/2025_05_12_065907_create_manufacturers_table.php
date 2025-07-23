@@ -15,6 +15,11 @@ return new class extends Migration
             $table->id();
             $table->string('manufacturer', length: 100);
             $table->string('manufacturercountry', length: 3);
+            $table->string('website')->nullable();
+            $table->string('api_url')->nullable();
+            $table->string('api_token')->nullable();
+            $table->string('import_type')->default('csv'); // csv, xml, api
+            $table->text('notes')->nullable();
             $table->timestamps();
         });
     }
