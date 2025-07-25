@@ -205,7 +205,7 @@ class ProductResource extends Resource
                     ->form([
                         Forms\Components\Select::make('manufacturer_id')
                             ->label('Hersteller')
-                            ->relationship('manufacturer', 'name')
+                            ->relationship('manufacturer', 'manufacturer')
                             ->reactive()
                             ->required()
                             ->afterStateUpdated(
