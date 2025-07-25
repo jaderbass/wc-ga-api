@@ -12,6 +12,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use App\Filament\Components\EncryptedPassword;
 
 class ManufacturerResource extends Resource
 {
@@ -38,19 +39,8 @@ class ManufacturerResource extends Resource
                 Forms\Components\TextInput::make('api_user')
                     ->label('API-Benutzername')
                     ->maxLength(255),
-                Forms\Components\TextInput::make('api_password_input') // anderer Name um Konflikte zu vermeiden
+                EncryptedPassword::make('api_password')
                     ->label('API-Passwort')
-                    ->password()
-                    ->helperText('Lass das Feld leer, um das bestehende Passwort beizubehalten.')
-                    ->dehydrated(false) // Wert wird nicht automatisch gespeichert
-                    ->default(null) // immer leer anzeigen
-                    ->afterStateHydrated(fn() => null) // Sicherheitshalber
-                    ->saveRelationshipsUsing(function ($state, $record) {
-                        if (!empty($state)) {
-                            $record->api_password = safeEncrypt($state);
-                            $record->save();
-                        }
-                    })
                     ->maxLength(255),
                 Forms\Components\TextInput::make('api_token')
                     ->label('API-Token')
