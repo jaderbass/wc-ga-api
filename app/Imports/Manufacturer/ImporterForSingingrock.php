@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Imports\BaseXmlImporter;
 use App\Helpers\XmlValueSanitizer;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class ImporterForSingingRock extends BaseXmlImporter
 {
@@ -49,5 +50,29 @@ class ImporterForSingingRock extends BaseXmlImporter
         Log::debug('→ Produktdaten nach Mapping:', $products);
         
         return $products ?? [];
+    }
+    /**
+     * Handle the XML file from a URL, with basic auth.
+     *
+     * @param string|null $url
+     */
+    // This method is used to fetch the XML from the SingingRock API.
+    // It uses basic authentication with credentials from the config.
+    // The XML is then parsed and imported using the handleUploadedXmlFile method.
+    public function handleFromUrl(string $url, ?string $user = null, ?string $password = null): void
+    {
+        $request = Http::when($user && $password, fn($http) => $http->withBasicAuth($user, $password));
+        $response = $request->get($url);
+
+        if (! $response->ok()) {
+            Log::error("Fehler beim Abrufen der XML-URL: {$url}", ['status' => $response->status()]);
+            return;
+        }
+
+        $tmpPath = storage_path('app/imports/feed-' . uniqid() . '.xml');
+        file_put_contents($tmpPath, $response->body());
+
+        $relativePath = str_replace(storage_path('app/'), '', $tmpPath);
+        $this->handleFromPath($relativePath);
     }
 }

@@ -35,6 +35,15 @@ class ManufacturerResource extends Resource
                     ->url(),
                 Forms\Components\TextInput::make('api_url')
                     ->label('API-URL'),
+                Forms\Components\TextInput::make('api_user')
+                    ->label('API-Benutzername')
+                    ->maxLength(255),
+                Forms\Components\TextInput::make('api_password')
+                    ->label('API-Passwort')
+                    ->password()
+                    ->dehydrateStateUsing(fn($state) => $state ? encrypt($state) : null) // beim Speichern verschlüsseln
+                    ->afterStateHydrated(fn($state) => $state ? decrypt($state) : null) // beim Laden entschlüsseln
+                    ->maxLength(255),
                 Forms\Components\TextInput::make('api_token')
                     ->label('API-Token')
                     ->password(),

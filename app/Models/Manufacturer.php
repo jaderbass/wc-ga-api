@@ -17,6 +17,9 @@ class Manufacturer extends Model
     protected $fillable = [
         'manufacturer',
         'manufacturercountry',
+        'api_url',
+        'api_user',
+        'api_password'
     ];
 
     public function products()

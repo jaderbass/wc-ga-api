@@ -213,11 +213,20 @@ class ProductResource extends Resource
                                 $set('import_type', \App\Models\Manufacturer::find($state)?->import_type)
                             ),
 
-                        Forms\Components\Hidden::make('import_type'),
+                        Forms\Components\Select::make('sourceType')
+                            ->label('Import-Typ')
+                            ->options([
+                                'csv' => 'CSV-Datei',
+                                'xml' => 'XML-Datei',
+                                'xml-url' => 'XML via API',
+                            ])
+                            ->default('csv')
+                            ->required(),
 
                         // CSV-Upload
                         Forms\Components\FileUpload::make('csv')
                             ->label('CSV-Datei')
+                            ->acceptedFileTypes(['text/csv'])
                             ->storeFiles(false)
                             ->visible(fn($get) => $get('import_type') === 'csv')
                             ->required(fn($get) => $get('import_type') === 'csv'),
@@ -226,19 +235,22 @@ class ProductResource extends Resource
                         Forms\Components\FileUpload::make('xml')
                             ->label('XML-Datei')
                             ->storeFiles(false)
+                            ->acceptedFileTypes(['text/xml', 'application/xml'])
                             ->visible(fn($get) => $get('import_type') === 'xml')
                             ->required(fn($get) => $get('import_type') === 'xml'),
 
                         // API-URL
-                        Forms\Components\TextInput::make('api_url')
+                        /* Forms\Components\TextInput::make('api_url')
                             ->label('API-URL')
                             ->visible(fn($get) => $get('import_type') === 'api')
-                            ->required(fn($get) => $get('import_type') === 'api'),
+                            ->required(fn($get) => $get('import_type') === 'api'), */
                     ])
                     ->action(function (array $data) {
                         $manufacturerId = $data['manufacturer_id'];
+
                         /** @var \App\Imports\BaseCsvImporter|\App\Imports\BaseXmlImporter $importer */
                         $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
+                        $manufacturer = \App\Models\Manufacturer::find($manufacturerId);
 
                         // Automatisch Quelle laden:
                         match ($data['import_type']) {
@@ -248,7 +260,12 @@ class ProductResource extends Resource
                             'xml' => $importer->handleUploadedXmlFile(
                                 Storage::disk('local')->putFile('imports', $data['xml'])
                             ),
-                            'api' => $importer->handleFromUrl($data['api_url']),
+                            // 'api' => $importer->handleFromUrl($data['api_url']),
+                            'api' => $importer->handleFromUrl(
+                                $manufacturer->api_url,
+                                $manufacturer->api_user,
+                                $manufacturer->api_password ? decrypt($manufacturer->api_password) : null
+                            ),
                         };
 
                         \Filament\Notifications\Notification::make()

@@ -34,5 +34,10 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'singingrock' => [
+        'url' => env('SINGINGROCK_API_URL'),
+        'user' => env('SINGINGROCK_API_USER'),
+        'password' => env('SINGINGROCK_API_PASSWORD'),
+    ],
 
 ];
