@@ -17,10 +17,15 @@ class Manufacturer extends Model
     protected $fillable = [
         'manufacturer',
         'manufacturercountry',
+        'website',
         'api_url',
         'api_user',
-        'api_password'
+        'api_password',
+        'api_token',
+        'import_type',
+        'notes',
     ];
+
 
     public function products()
     {
