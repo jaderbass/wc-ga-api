@@ -2,77 +2,131 @@
 
 namespace App\Imports\Manufacturer;
 
-use App\Models\Product;
 use App\Imports\BaseXmlImporter;
 use App\Helpers\XmlValueSanitizer;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
 
 class ImporterForSingingRock extends BaseXmlImporter
 {
-    protected function model(): string
-    {
-        return Product::class;
-    }
-
-    protected function fixedValues(): array
+    /**
+     * Mapping der Produktfelder
+     */
+    protected function mapFields(array $row): array
     {
         return [
-            'manufacturer_id' => 5, // ggf. anpassen!
+            'productnumber'       => XmlValueSanitizer::toNullableString($row['ARTICLE'] ?? null),
+            'name'                => XmlValueSanitizer::cleanAndDecodeHtml($row['NAME'] ?? null),
+            'description'         => XmlValueSanitizer::cleanAndDecodeHtml($row['DESCRIPTION'] ?? null),
+            'short_description'   => XmlValueSanitizer::cleanAndDecodeHtml($row['SHORT_DESCRIPTION'] ?? null),
+            'eancode'             => XmlValueSanitizer::toNullableString($row['EAN'] ?? null),
+            'skucode'             => XmlValueSanitizer::toNullableString($row['SKU'] ?? null),
+            'regular_price'       => XmlValueSanitizer::toNullableString($row['PRICE'] ?? null),
+            'sale_price'          => XmlValueSanitizer::toNullableString($row['SALE_PRICE'] ?? null),
+            'stock_quantity'      => XmlValueSanitizer::toNullableInt($row['STOCK'] ?? 0),
+            'unit'                => XmlValueSanitizer::toNullableString($row['UNIT'] ?? null),
+            'product_type'        => 'simple', // Standard, ggf. erweitern
+            'manufacturer_id'     => 4, // ID für SingingRock in DB
         ];
     }
 
-    protected function parseXml(\SimpleXMLElement $xml): array
+    /**
+     * Extrahiert Variationen (falls vorhanden)
+     */
+    protected function parseVariations(array $row): array
     {
-
-        if (!isset($xml->PRODUCTS->PRODUCTITEM)) {
-            Log::warning('Keine Produkte im XML gefunden');
+        if (empty($row['VARIANTS'])) {
             return [];
         }
 
+        return collect($row['VARIANTS'])->map(function ($v) {
+            return [
+                'sku'             => XmlValueSanitizer::toNullableString($v['SKU'] ?? null),
+                'regular_price'   => XmlValueSanitizer::toNullableString($v['PRICE'] ?? null),
+                'sale_price'      => XmlValueSanitizer::toNullableString($v['SALE_PRICE'] ?? null),
+                'stock_quantity'  => XmlValueSanitizer::toNullableInt($v['STOCK'] ?? 0),
+                'attributes'      => json_encode($v['ATTRIBUTES'] ?? []),
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Extrahiert Bilder
+     */
+    protected function parseImages(array $row): array
+    {
+        if (empty($row['IMAGES'])) {
+            return [];
+        }
+
+        return collect($row['IMAGES'])->map(fn($url) => [
+            'url'     => (string) $url,
+            'is_main' => false,
+        ])->toArray();
+    }
+
+    /**
+     * Parsen des XML in Array-Struktur für handle()
+     */
+    protected function parseXml(\SimpleXMLElement $xml): array
+    {
         $products = [];
 
-        foreach ($xml->PRODUCTS->PRODUCTITEM as $entry) {
+        foreach ($xml->PRODUCTS->PRODUCTITEM as $item) {
             $products[] = [
-                'manufacturer_id'    => 5,
-                'productnumber'      => XmlValueSanitizer::toNullableString($entry->ARTICLE),
-                'productname'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->ARTICLE_NAME),
-                'description'        => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->DESCRIPTION),
-                'shortdescription'   => XmlValueSanitizer::cleanAndDecodeHtml((string) $entry->SHORT_DESCRIPTION),
-                'eancode'            => XmlValueSanitizer::toNullableString($entry->EAN),
-                'width'              => XmlValueSanitizer::toNullableString($entry->WIDTH, 100),
-                'length'             => XmlValueSanitizer::toNullableString($entry->LENGTH, 100),
-                'weight'             => XmlValueSanitizer::toNullableString($entry->WEIGHT, 100),
-                'unit'               => XmlValueSanitizer::toNullableString($entry->UNIT),
+                'ARTICLE'           => (string) $item->ARTICLE,
+                'NAME'              => (string) $item->NAME,
+                'DESCRIPTION'       => (string) $item->DESCRIPTION,
+                'SHORT_DESCRIPTION' => (string) $item->SHORT_DESCRIPTION,
+                'EAN'               => (string) $item->EAN,
+                'SKU'               => (string) $item->SKU,
+                'PRICE'             => (string) $item->PRICE,
+                'SALE_PRICE'        => (string) $item->SALE_PRICE,
+                'STOCK'             => (string) $item->STOCK,
+                'UNIT'              => (string) $item->UNIT,
+                'IMAGES'            => collect($item->IMAGES->IMAGE ?? [])->map(fn($img) => (string) $img)->toArray(),
+                'VARIANTS'          => $this->parseVariantsFromXml($item->VARIANTS ?? null),
             ];
         }
 
-        Log::debug('→ Produktdaten nach Mapping:', $products);
-        
-        return $products ?? [];
+        return $products;
     }
-    /**
-     * Handle the XML file from a URL, with basic auth.
-     *
-     * @param string|null $url
-     */
-    // This method is used to fetch the XML from the SingingRock API.
-    // It uses basic authentication with credentials from the config.
-    // The XML is then parsed and imported using the handleUploadedXmlFile method.
-    public function handleFromUrl(string $url, ?string $user = null, ?string $password = null): void
-    {
-        $request = Http::when($user && $password, fn($http) => $http->withBasicAuth($user, $password));
-        $response = $request->get($url);
 
-        if (! $response->ok()) {
-            Log::error("Fehler beim Abrufen der XML-URL: {$url}", ['status' => $response->status()]);
-            return;
+    /**
+     * Hilfsmethode: Variationen aus XML extrahieren
+     */
+    private function parseVariantsFromXml($variantsNode): array
+    {
+        if (!$variantsNode) {
+            return [];
         }
 
-        $tmpPath = storage_path('app/imports/feed-' . uniqid() . '.xml');
-        file_put_contents($tmpPath, $response->body());
+        $variants = [];
+        foreach ($variantsNode->VARIANT as $variant) {
+            $variants[] = [
+                'SKU'         => (string) $variant->SKU,
+                'PRICE'       => (string) $variant->PRICE,
+                'SALE_PRICE'  => (string) $variant->SALE_PRICE,
+                'STOCK'       => (string) $variant->STOCK,
+                'ATTRIBUTES'  => $this->parseAttributesFromXml($variant->ATTRIBUTES ?? null),
+            ];
+        }
 
-        $relativePath = str_replace(storage_path('app/'), '', $tmpPath);
-        $this->handleFromPath($relativePath);
+        return $variants;
+    }
+
+    /**
+     * Hilfsmethode: Attribute aus XML extrahieren
+     */
+    private function parseAttributesFromXml($attributesNode): array
+    {
+        if (!$attributesNode) {
+            return [];
+        }
+
+        $attributes = [];
+        foreach ($attributesNode->ATTRIBUTE as $attr) {
+            $attributes[(string) $attr->NAME] = (string) $attr->VALUE;
+        }
+
+        return $attributes;
     }
 }
