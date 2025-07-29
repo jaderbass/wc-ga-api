@@ -1,38 +1,68 @@
 <?php
 
-/**
- * class ImporterForKratos
- *
- * Creates the import for the manufacturer "Kratos Safety"
- *
- * @author Jörg Aderhold <joerg@jaderbass.de> https://jaderbass.de
- *
- * @since 1.0.0
- *
- * @package App\Imports\Manufacturer
- */
-
 namespace App\Imports\Manufacturer;
 
+use App\Imports\BaseCsvImporter;
 use App\Models\Product;
-use League\Csv\Reader;
-use App\Helpers\CsvValueSanitizer as San;
+use Illuminate\Support\Facades\Log;
 
-class ImporterForKratos
+class ImporterForKratos extends BaseCsvImporter
 {
-  public function handleUploadedFile(string $path): void
+  protected function model(): string
   {
-    $csv = Reader::createFromPath(storage_path("app/{$path}"), 'r');
-    $csv->setDelimiter(';'); // 👈 ganz wichtig!
-    $csv->setHeaderOffset(0);
+    return Product::class;
+  }
 
-    foreach ($csv->getRecords() as $row) {
-      Product::create([
-        'manufacturer_id' => 4,
-        'productname' => San::toNullableString($row['Artikelname']),
-        'skucode' => San::toNullableString($row['SKU']),
-        // weitere Felder ...
-      ]);
+  protected function fixedValues(): array
+  {
+    return [
+      'manufacturer_id' => 4, // Kratos-ID
+    ];
+  }
+
+  protected function columnMap(): array
+  {
+    return [
+      'productnumber'       => 'PRODUCT_NO',
+      'productname'         => 'NAME',
+      'description'         => 'DESCRIPTION',
+      'shortdescription'    => 'SHORT_DESCRIPTION',
+      'eancode'             => 'EAN',
+      'skucode'             => 'SKU',
+      'price'               => 'PRICE',
+      'regularprice'        => 'REGULAR_PRICE',
+      'saleprice'           => 'SALE_PRICE',
+      'width'               => 'WIDTH',
+      'length'              => 'LENGTH',
+      'height'              => 'HEIGHT',
+      'weight'              => 'WEIGHT',
+      'unit'                => 'UNIT',
+      'unitprice'           => 'UNIT_PRICE',
+      'pcsperbox'           => 'PCS_PER_BOX',
+      'boxwidth'            => 'BOX_WIDTH',
+      'boxlength'           => 'BOX_LENGTH',
+      'boxheight'           => 'BOX_HEIGHT',
+      'manufacturercountry' => 'COUNTRY',
+    ];
+  }
+
+  protected function upsertRecord(array $data): void
+  {
+    $model = $this->model();
+
+    if (empty($data['productnumber'])) {
+      Log::warning('❗ Kein productnumber gesetzt – Datensatz wird ignoriert', $data);
+      return;
+    }
+
+    $record = $model::where('productnumber', $data['productnumber'])->first();
+
+    if ($record) {
+      $record->update($data);
+      Log::info("Produkt aktualisiert", ['id' => $record->id]);
+    } else {
+      $model::create($data);
+      Log::info("Neues Produkt erstellt", ['productnumber' => $data['productnumber']]);
     }
   }
 }

@@ -3,130 +3,90 @@
 namespace App\Imports\Manufacturer;
 
 use App\Imports\BaseXmlImporter;
-use App\Helpers\XmlValueSanitizer;
+use App\Models\Product;
+use Illuminate\Support\Facades\Log;
+use SimpleXMLElement;
 
 class ImporterForSingingRock extends BaseXmlImporter
 {
     /**
-     * Mapping der Produktfelder
+     * Model für diesen Import.
      */
-    protected function mapFields(array $row): array
+    protected function model(): string
+    {
+        return Product::class;
+    }
+
+    /**
+     * Feste Werte (z. B. Hersteller-ID).
+     */
+    protected function fixedValues(): array
     {
         return [
-            'productnumber'       => XmlValueSanitizer::toNullableString($row['ARTICLE'] ?? null),
-            'name'                => XmlValueSanitizer::cleanAndDecodeHtml($row['NAME'] ?? null),
-            'description'         => XmlValueSanitizer::cleanAndDecodeHtml($row['DESCRIPTION'] ?? null),
-            'short_description'   => XmlValueSanitizer::cleanAndDecodeHtml($row['SHORT_DESCRIPTION'] ?? null),
-            'eancode'             => XmlValueSanitizer::toNullableString($row['EAN'] ?? null),
-            'skucode'             => XmlValueSanitizer::toNullableString($row['SKU'] ?? null),
-            'regular_price'       => XmlValueSanitizer::toNullableString($row['PRICE'] ?? null),
-            'sale_price'          => XmlValueSanitizer::toNullableString($row['SALE_PRICE'] ?? null),
-            'stock_quantity'      => XmlValueSanitizer::toNullableInt($row['STOCK'] ?? 0),
-            'unit'                => XmlValueSanitizer::toNullableString($row['UNIT'] ?? null),
-            'product_type'        => 'simple', // Standard, ggf. erweitern
-            'manufacturer_id'     => 4, // ID für SingingRock in DB
+            'manufacturer_id' => 2, // ID von Singing Rock in deiner DB
         ];
     }
 
     /**
-     * Extrahiert Variationen (falls vorhanden)
+     * Mapping der XML-Daten → Array für DB.
      */
-    protected function parseVariations(array $row): array
+    protected function parseXmlItem(SimpleXMLElement $entry): array
     {
-        if (empty($row['VARIANTS'])) {
-            return [];
-        }
-
-        return collect($row['VARIANTS'])->map(function ($v) {
-            return [
-                'sku'             => XmlValueSanitizer::toNullableString($v['SKU'] ?? null),
-                'regular_price'   => XmlValueSanitizer::toNullableString($v['PRICE'] ?? null),
-                'sale_price'      => XmlValueSanitizer::toNullableString($v['SALE_PRICE'] ?? null),
-                'stock_quantity'  => XmlValueSanitizer::toNullableInt($v['STOCK'] ?? 0),
-                'attributes'      => json_encode($v['ATTRIBUTES'] ?? []),
-            ];
-        })->toArray();
+        return [
+            'productnumber'      => (string) $entry->ARTICLE ?? null,
+            'productname'        => $this->cleanText((string) $entry->NAME),
+            'description'        => $this->cleanText((string) $entry->DESCRIPTION),
+            'shortdescription'   => $this->cleanText((string) $entry->SHORT_DESCRIPTION),
+            'eancode'            => (string) $entry->EAN ?? null,
+            'skucode'            => (string) $entry->SKU ?? null,
+            'price'              => (string) $entry->PRICE ?? null,
+            'regularprice'       => (string) $entry->PRICE ?? null,
+            'saleprice'          => (string) $entry->PRICE_SALE ?? null,
+            'width'              => (string) $entry->WIDTH ?? null,
+            'length'             => (string) $entry->LENGTH ?? null,
+            'height'             => (string) $entry->HEIGHT ?? null,
+            'weight'             => (string) $entry->WEIGHT ?? null,
+            'unit'               => (string) $entry->UNIT ?? null,
+            'unitprice'          => (string) $entry->UNIT_PRICE ?? null,
+            'pcsperbox'          => (string) $entry->PCS_PER_BOX ?? null,
+            'boxwidth'           => (string) $entry->BOX_WIDTH ?? null,
+            'boxlength'          => (string) $entry->BOX_LENGTH ?? null,
+            'boxheight'          => (string) $entry->BOX_HEIGHT ?? null,
+            'manufacturercountry' => (string) $entry->COUNTRY_OF_ORIGIN ?? null,
+        ];
     }
 
     /**
-     * Extrahiert Bilder
+     * Update oder erstelle einen Datensatz.
      */
-    protected function parseImages(array $row): array
+    protected function upsertRecord(array $data): void
     {
-        if (empty($row['IMAGES'])) {
-            return [];
+        $model = $this->model();
+
+        if (empty($data['productnumber'])) {
+            Log::warning('❗ Kein productnumber gesetzt – Datensatz wird ignoriert', $data);
+            return;
         }
 
-        return collect($row['IMAGES'])->map(fn($url) => [
-            'url'     => (string) $url,
-            'is_main' => false,
-        ])->toArray();
+        $record = $model::where('productnumber', $data['productnumber'])->first();
+
+        if ($record) {
+            $record->update($data);
+            Log::info("Produkt aktualisiert", ['id' => $record->id]);
+        } else {
+            $model::create($data);
+            Log::info("Neues Produkt erstellt", ['productnumber' => $data['productnumber']]);
+        }
     }
 
     /**
-     * Parsen des XML in Array-Struktur für handle()
+     * Entfernt HTML und trimmt Texte.
      */
-    protected function parseXml(\SimpleXMLElement $xml): array
+    private function cleanText(?string $text): ?string
     {
-        $products = [];
-
-        foreach ($xml->PRODUCTS->PRODUCTITEM as $item) {
-            $products[] = [
-                'ARTICLE'           => (string) $item->ARTICLE,
-                'NAME'              => (string) $item->NAME,
-                'DESCRIPTION'       => (string) $item->DESCRIPTION,
-                'SHORT_DESCRIPTION' => (string) $item->SHORT_DESCRIPTION,
-                'EAN'               => (string) $item->EAN,
-                'SKU'               => (string) $item->SKU,
-                'PRICE'             => (string) $item->PRICE,
-                'SALE_PRICE'        => (string) $item->SALE_PRICE,
-                'STOCK'             => (string) $item->STOCK,
-                'UNIT'              => (string) $item->UNIT,
-                'IMAGES'            => collect($item->IMAGES->IMAGE ?? [])->map(fn($img) => (string) $img)->toArray(),
-                'VARIANTS'          => $this->parseVariantsFromXml($item->VARIANTS ?? null),
-            ];
+        if (!$text) {
+            return null;
         }
-
-        return $products;
-    }
-
-    /**
-     * Hilfsmethode: Variationen aus XML extrahieren
-     */
-    private function parseVariantsFromXml($variantsNode): array
-    {
-        if (!$variantsNode) {
-            return [];
-        }
-
-        $variants = [];
-        foreach ($variantsNode->VARIANT as $variant) {
-            $variants[] = [
-                'SKU'         => (string) $variant->SKU,
-                'PRICE'       => (string) $variant->PRICE,
-                'SALE_PRICE'  => (string) $variant->SALE_PRICE,
-                'STOCK'       => (string) $variant->STOCK,
-                'ATTRIBUTES'  => $this->parseAttributesFromXml($variant->ATTRIBUTES ?? null),
-            ];
-        }
-
-        return $variants;
-    }
-
-    /**
-     * Hilfsmethode: Attribute aus XML extrahieren
-     */
-    private function parseAttributesFromXml($attributesNode): array
-    {
-        if (!$attributesNode) {
-            return [];
-        }
-
-        $attributes = [];
-        foreach ($attributesNode->ATTRIBUTE as $attr) {
-            $attributes[(string) $attr->NAME] = (string) $attr->VALUE;
-        }
-
-        return $attributes;
+        return strip_tags(html_entity_decode(trim($text)));
     }
 }

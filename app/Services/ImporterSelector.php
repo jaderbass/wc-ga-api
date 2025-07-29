@@ -15,20 +15,28 @@ class ImporterSelector
   /**
    * Wählt den passenden Importer basierend auf der Hersteller-ID.
    *
-   * @param int $id
+   * @param int $manufacturerId
    * @return \App\Imports\BaseXmlImporter
    * @throws \Exception
    */
-  public static function forManufacturer(int $id)
+  public static function forManufacturer(int $manufacturerId): array
   {
-    $manufacturer = Manufacturer::findOrFail($id);
+    $manufacturer = Manufacturer::findOrFail($manufacturerId);
 
-    return match ($manufacturer->import_type) {
-      'csv' => self::csvImporter($manufacturer),
-      'xml' => self::xmlImporter($manufacturer),
-      'api' => self::apiImporter($manufacturer),
-      default => throw new InvalidArgumentException("Unbekannter Import-Typ: {$manufacturer->import_type}"),
-    };
+    return [
+      'importer' => match ($manufacturer->id) {
+        1 => new ImporterForAliens(),         // Aliens
+        2 => new ImporterForKask(),           // Kask
+        3 => new ImporterForPetzl(),          // Petzl
+        4 => new ImporterForKratos(),         // Kratos
+        5 => new ImporterForSingingRock(),    // Singing Rock
+        default => throw new \Exception('Kein Importer für diesen Hersteller implementiert'),
+      },
+      'type' => $manufacturer->import_type,     // csv, xml oder api
+      'api_url' => $manufacturer->api_url,
+      'api_user' => $manufacturer->api_user,
+      'api_password' => $manufacturer->api_password,
+    ];
   }
 
   protected static function csvImporter(Manufacturer $manufacturer)
