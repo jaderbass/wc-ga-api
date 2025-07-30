@@ -7,6 +7,7 @@ use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 use App\Models\ManufacturerAudit;
 use Illuminate\Support\Facades\Auth;
+use Filament\Notifications\Notification;
 
 class EditManufacturer extends EditRecord
 {
@@ -27,6 +28,7 @@ class EditManufacturer extends EditRecord
         /** @var \App\Models\Manufacturer $manufacturer */
         $manufacturer = $this->record;
         $userId = Auth::id();
+        $userName = Auth::user()?->name ?? 'Unbekannt';
 
         foreach (['api_url', 'api_username', 'api_password', 'api_token'] as $field) {
             $old = $manufacturer?->$field;
@@ -43,6 +45,13 @@ class EditManufacturer extends EditRecord
                     'new_value' => $newLog,
                     'changed_by' => $userId,
                 ]);
+
+                // Admin-Benachrichtigung
+                Notification::make()
+                    ->title('API-Zugangsdaten geändert')
+                    ->body("Das Feld **{$field}** für Hersteller **{$manufacturer->manufacturer}** wurde von **{$userName}** geändert.")
+                    ->warning()
+                    ->sendToDatabase(\App\Models\User::role('Admin')->get()); // nur Admins
             }
         }
 

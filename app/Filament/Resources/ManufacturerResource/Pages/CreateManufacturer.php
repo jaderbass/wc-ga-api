@@ -6,6 +6,7 @@ use App\Filament\Resources\ManufacturerResource;
 use App\Models\ManufacturerAudit;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Auth;
+use Filament\Notifications\Notification;
 
 class CreateManufacturer extends CreateRecord
 {
@@ -45,5 +46,11 @@ class CreateManufacturer extends CreateRecord
         foreach ($audits as $audit) {
             $audit->update(['manufacturer_id' => $this->record->id]);
         }
+
+        Notification::make()
+            ->title('Neuer Hersteller mit API-Zugangsdaten erstellt')
+            ->body("Hersteller **{$this->record->manufacturer}** wurde von **" . (Auth::user()?->name ?? 'Unbekannt') . "** angelegt.")
+            ->success()
+            ->sendToDatabase(\App\Models\User::role('Admin')->get());
     }
 }
