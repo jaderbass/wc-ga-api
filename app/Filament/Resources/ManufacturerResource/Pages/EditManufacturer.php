@@ -5,6 +5,8 @@ namespace App\Filament\Resources\ManufacturerResource\Pages;
 use App\Filament\Resources\ManufacturerResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use App\Models\ManufacturerAudit;
+use Illuminate\Support\Facades\Auth;
 
 class EditManufacturer extends EditRecord
 {
@@ -15,5 +17,35 @@ class EditManufacturer extends EditRecord
         return [
             Actions\DeleteAction::make(),
         ];
+    }
+
+    /**
+     * Loggt Änderungen an sensiblen Feldern (API-URL, Benutzername, Passwort, Token).
+     */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        /** @var \App\Models\Manufacturer $manufacturer */
+        $manufacturer = $this->record;
+        $userId = Auth::id();
+
+        foreach (['api_url', 'api_username', 'api_password', 'api_token'] as $field) {
+            $old = $manufacturer?->$field;
+            $new = $data[$field] ?? null;
+
+            $oldLog = in_array($field, ['api_password', 'api_token']) ? '***' : $old;
+            $newLog = in_array($field, ['api_password', 'api_token']) ? '***' : $new;
+
+            if ($old !== $new) {
+                ManufacturerAudit::create([
+                    'manufacturer_id' => $manufacturer->id,
+                    'field' => $field,
+                    'old_value' => $oldLog,
+                    'new_value' => $newLog,
+                    'changed_by' => $userId,
+                ]);
+            }
+        }
+
+        return $data;
     }
 }
