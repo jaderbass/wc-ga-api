@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Services\ImporterSelector;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Filament\Forms\Components\Placeholder;
 
 class ProductResource extends Resource
 {
@@ -207,82 +208,71 @@ class ProductResource extends Resource
                 ->label('Hersteller')
                 ->relationship('manufacturer', 'manufacturer')
                 ->reactive()
-                ->afterStateUpdated(function (callable $set, $state) {
-                    $importType = \App\Models\Manufacturer::find($state)?->import_type;
-                    $set('import_type', $importType);
+                ->afterStateUpdated(function ($state, callable $set) {
+                  // Automatisch den Import-Typ setzen
+                  $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
+                  $set('sourceType', $importType);
                 })
                 ->required(),
 
-            Forms\Components\Hidden::make('import_type'),
+        /* Forms\Components\Select::make('sourceType')
+              ->label('Import-Typ')
+              ->options([
+                'csv' => 'CSV-Datei',
+                'xml' => 'XML-Datei',
+                'api' => 'API-URL',
+              ])
+              ->reactive()
+              ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv')
+              
+              ->required(), */
+            Forms\Components\Hidden::make('sourceType')
+              ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
 
-            Forms\Components\FileUpload::make('file')
-                ->label('Datei')
-                ->storeFiles(false)
-                ->visible(fn($get) => in_array($get('import_type'), ['csv', 'xml'])),
+            // Info-Box bei API-Import
+            Placeholder::make('api_info')
+              ->label('')
+              ->content(
+                fn($get) =>
+                $get('sourceType') === 'api'
+                  ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
+                  : ''
+              )
+              ->visible(fn($get) => $get('sourceType') === 'api'),
+
+            Forms\Components\FileUpload::make('csv')
+              ->label('CSV-Datei')
+              ->acceptedFileTypes(['text/csv'])
+              ->visible(fn($get) => $get('sourceType') === 'csv')
+              ->storeFiles(false),
+
+            Forms\Components\FileUpload::make('xml')
+              ->label('XML-Datei')
+              ->acceptedFileTypes(['text/xml', 'application/xml'])
+              ->visible(fn($get) => $get('sourceType') === 'xml')
+              ->storeFiles(false),
+
+            /* Forms\Components\TextInput::make('api_url')
+              ->label('API-URL')
+              ->visible(fn($get) => $get('sourceType') === 'api'), */
           ])
           ->action(function (array $data) {
-            $config = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
-            $importer = $config['importer'];
-            $type = $config['type'];
+            $importer = ImporterSelector::forManufacturer($data['manufacturer_id']);
 
-            // Debug-Log
-            Log::info('Import gestartet', [
-                'manufacturer_id' => $data['manufacturer_id'],
-                'import_type' => $type,
-                'api_url' => $config['api_url'] ?? null,
-            ]);
+            $source = match ($data['sourceType']) {
+              'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
+              'api'        => $data['api_url'],
+            };
 
-            // Notification Debug
+            ImporterSelector::handleImport($importer, $data['sourceType'], $source);
+
             \Filament\Notifications\Notification::make()
-                ->title("Import gestartet ({$type})")
-                ->body("Hersteller-ID: {$data['manufacturer_id']}" . 
-                    ($type === 'api' ? "\nAPI: {$config['api_url']}" : ''))
-                ->success()
-                ->send();
+              ->title('Import gestartet')
+              ->success()
+              ->send();
+          }),
 
-        // Logik nach Typ
-        $action = match ($type) {
-          'csv' => function () use ($data, $importer) {
-            $storedPath = Storage::disk('local')->putFile('imports', $data['file']);
-            Log::info("CSV-Datei gespeichert unter {$storedPath}");
-            $importer->handleUploadedFile($storedPath);
-          },
-          'xml' => function () use ($data, $importer) {
-            $storedPath = Storage::disk('local')->putFile('imports', $data['file']);
-            Log::info("XML-Datei gespeichert unter {$storedPath}");
-            $importer->handleUploadedXmlFile($storedPath);
-          },
-          'api' => function () use ($config, $importer) {
-            Log::info("Starte API-Import von {$config['api_url']}");
-            $importer->handleFromUrl(
-              $config['api_url'],
-              $config['api_user'],
-              $config['api_password']
-            );
-          },
-          default => function () use ($type) {
-            throw new \Exception("Unbekannter Import-Typ: {$type}");
-          },
-        };
-
-        $count = $action();
-
-        Log::info("Import beendet: {$count} Datensätze verarbeitet.");
-        \Filament\Notifications\Notification::make()
-          ->title('Import erfolgreich')
-          ->body("Es wurden {$count} Datensätze verarbeitet.")
-          ->success()
-          ->send();
-
-
-
-        \Filament\Notifications\Notification::make()
-                ->title('Import erfolgreich gestartet')
-                ->success()
-                ->send();
-        }),
-    ])
-    ;
+      ]);
   }
 
   public static function getRelations(): array

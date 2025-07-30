@@ -13,6 +13,9 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Components\EncryptedPassword;
+use Illuminate\Support\Facades\Crypt;
+use Filament\Forms\Components\TextInput;
+use Nette\Utils\Html;
 
 class ManufacturerResource extends Resource
 {
@@ -35,13 +38,38 @@ class ManufacturerResource extends Resource
                     ->label('Website')
                     ->url(),
                 Forms\Components\TextInput::make('api_url')
-                    ->label('API-URL'),
+                    ->label('API-URL')
+                    ->url()
+                    ->nullable()
+                    ->columnSpanFull(),
                 Forms\Components\TextInput::make('api_user')
                     ->label('API-Benutzername')
+                    ->nullable()
+                    ->columnSpan(1)
                     ->maxLength(255),
-                EncryptedPassword::make('api_password')
+                Forms\Components\TextInput::make('api_password')
                     ->label('API-Passwort')
-                    ->maxLength(255),
+                    ->password()
+                    ->helperText('Um das Passwort zu ändern, hier ein neues Passwort eingeben. Wenn leer gelassen, bleibt das bestehende Passwort erhalten.')
+                    
+                    ->hint(
+                        fn($record) => ($record?->api_password_changed_at
+                            ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
+                            : 'Noch nie geändert.')
+                            )
+                            
+                    ->dehydrateStateUsing(function ($state, $record) {
+                        if ($state) {
+                            // Setze Änderungsdatum, wenn ein neues Passwort eingegeben wurde
+                            $record->api_password_changed_at = now();
+                            return Crypt::encryptString($state);
+                        }
+                        return $record->api_password; // Falls leer, behalte das alte Passwort
+                    })
+                    ->afterStateHydrated(fn($state, callable $set) => $set('api_password', null)) // Immer leer anzeigen
+                    ->nullable()
+                    ->columnSpan(1),
+                
                 Forms\Components\TextInput::make('api_token')
                     ->label('API-Token')
                     ->password(),
@@ -112,4 +140,6 @@ class ManufacturerResource extends Resource
             'edit' => Pages\EditManufacturer::route('/{record}/edit'),
         ];
     }
+
+    
 }

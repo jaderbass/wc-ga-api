@@ -16,6 +16,7 @@ return new class extends Migration {
             $table->string('api_user')->nullable();
             $table->string('api_password')->nullable();      // verschlüsselt gespeichert
             $table->string('api_token')->nullable();         // z. B. für Token-basierte APIs
+            $table->timestamp('api_password_changed_at')->nullable(); // Wann wurde das Passwort zuletzt geändert?
             $table->enum('import_type', ['csv', 'xml', 'api'])->default('csv'); // Art des Imports
             $table->text('notes')->nullable();               // Freitextnotizen
             $table->timestamps();

@@ -3,64 +3,55 @@
 namespace App\Services;
 
 use App\Models\Manufacturer;
-use App\Imports\Manufacturer\ImporterForKratos;
-use App\Imports\Manufacturer\ImporterForAliens;
-use App\Imports\Manufacturer\ImporterForKask;
-use App\Imports\Manufacturer\ImporterForPetzl;
-use App\Imports\Manufacturer\ImporterForSingingRock;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class ImporterSelector
 {
   /**
-   * Wählt den passenden Importer basierend auf der Hersteller-ID.
+   * Wählt automatisch den richtigen Importer anhand Hersteller & Quelle.
    *
-   * @param int $manufacturerId
-   * @return \App\Imports\BaseXmlImporter
-   * @throws \Exception
+   * @throws InvalidArgumentException
    */
-  public static function forManufacturer(int $manufacturerId): array
+  public static function forManufacturer(int $manufacturerId): object
   {
-    $manufacturer = Manufacturer::findOrFail($manufacturerId);
+    $manufacturer = Manufacturer::find($manufacturerId);
 
-    return [
-      'importer' => match ($manufacturer->id) {
-        1 => new ImporterForAliens(),         // Aliens
-        2 => new ImporterForKask(),           // Kask
-        3 => new ImporterForPetzl(),          // Petzl
-        4 => new ImporterForKratos(),         // Kratos
-        5 => new ImporterForSingingRock(),    // Singing Rock
-        default => throw new \Exception('Kein Importer für diesen Hersteller implementiert'),
-      },
-      'type' => $manufacturer->import_type,     // csv, xml oder api
-      'api_url' => $manufacturer->api_url,
-      'api_user' => $manufacturer->api_user,
-      'api_password' => $manufacturer->api_password,
-    ];
-  }
+    if (! $manufacturer) {
+      throw new InvalidArgumentException("Hersteller mit ID {$manufacturerId} nicht gefunden.");
+    }
 
-  protected static function csvImporter(Manufacturer $manufacturer)
-  {
-    return match ($manufacturer->manufacturer) {
-      'Aliens' => new ImporterForAliens(),
-      'Kask' => new ImporterForKask(),
-      'Kratos' => new ImporterForKratos(),
-      'Petzl' => new ImporterForPetzl(),
-      default => throw new InvalidArgumentException("Kein CSV-Importer für {$manufacturer->manufacturer} definiert"),
+    $importerClass = match ($manufacturer->manufacturer) {
+      'Aliens'        => \App\Imports\Manufacturer\ImporterForAliens::class,
+      'Kask'          => \App\Imports\Manufacturer\ImporterForKask::class,
+      'Petzl'         => \App\Imports\Manufacturer\ImporterForPetzl::class,
+      'Singing Rock'  => \App\Imports\Manufacturer\ImporterForSingingRock::class,
+      'Kratos Safety' => \App\Imports\Manufacturer\ImporterForKratos::class,
+      default => null,
     };
+
+    if (! $importerClass || ! class_exists($importerClass)) {
+      throw new InvalidArgumentException("Kein Importer für Hersteller {$manufacturer->manufacturer} gefunden.");
+    }
+
+    Log::info("Importer ausgewählt", [
+      'manufacturer' => $manufacturer->manufacturer,
+      'class' => $importerClass,
+    ]);
+
+    return new $importerClass();
   }
 
-  protected static function xmlImporter(Manufacturer $manufacturer)
+  /**
+   * Quelle (Datei oder URL) behandeln.
+   */
+  public static function handleImport(object $importer, string $sourceType, mixed $source): void
   {
-    return match ($manufacturer->manufacturer) {
-      'SingingRock' => new ImporterForSingingRock(),
-      default => throw new InvalidArgumentException("Kein XML-Importer für {$manufacturer->manufacturer} definiert"),
+    match ($sourceType) {
+      'csv' => $importer->handleUploadedFile($source),
+      'xml' => $importer->handleUploadedXmlFile($source),
+      'api' => $importer->handleFromUrl($source),
+      default => throw new InvalidArgumentException("Ungültiger Import-Typ: {$sourceType}"),
     };
-  }
-
-  protected static function apiImporter(Manufacturer $manufacturer)
-  {
-    // später: API-Importer implementieren
-    throw new InvalidArgumentException("API-Importer noch nicht implementiert für {$manufacturer->manufacturer}");
   }
 }
