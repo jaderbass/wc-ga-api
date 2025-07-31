@@ -3,51 +3,49 @@
 namespace App\Imports\Manufacturer;
 
 use App\Imports\BaseCsvImporter;
-use App\Models\Product;
-use Illuminate\Support\Facades\Log;
 
+/**
+ * Importer für Hersteller Aliens.
+ *
+ * Erbt von BaseCsvImporter und definiert das Feld-Mapping sowie feste Werte
+ * für Produkte des Herstellers Aliens.
+ */
 class ImporterForAliens extends BaseCsvImporter
 {
+  /**
+   * Gibt das Modell zurück, in dem die Daten gespeichert werden.
+   *
+   * @return string Vollqualifizierter Klassenname des Zielmodells.
+   */
   protected function model(): string
   {
-    return Product::class;
+    return \App\Models\Product::class;
   }
 
-  protected function fixedValues(): array
-  {
-    return [
-      'manufacturer_id' => 1, // Aliens-ID
-    ];
-  }
-
+  /**
+   * Gibt ein Mapping von Datenbankfeldern zu CSV-Spalten zurück.
+   *
+   * @return array Assoziatives Array im Format [DB-Feld => CSV-Spalte].
+   */
   protected function columnMap(): array
   {
     return [
-      'productnumber' => 'PRODUCT_NO',
-      'productname' => 'NAME',
-      'eancode' => 'EAN',
-      'description' => 'DESCRIPTION',
-      'weight' => 'WEIGHT',
+      'productnumber'   => 'Artikelnummer',
+      'productname'     => 'Bezeichnung',
+      'eancode'         => 'EAN',
+      'manufacturer_id' => 'HerstellerID',
     ];
   }
 
-  protected function upsertRecord(array $data): void
+  /**
+   * Gibt zusätzliche feste Werte zurück, die beim Import gesetzt werden.
+   *
+   * @return array Key-Value-Paare fester Werte.
+   */
+  protected function fixedValues(): array
   {
-    $model = $this->model();
-
-    if (empty($data['productnumber'])) {
-      Log::warning('❗ Kein productnumber gesetzt – Datensatz wird ignoriert', $data);
-      return;
-    }
-
-    $record = $model::where('productnumber', $data['productnumber'])->first();
-
-    if ($record) {
-      $record->update($data);
-      Log::info("Produkt aktualisiert", ['id' => $record->id]);
-    } else {
-      $model::create($data);
-      Log::info("Neues Produkt erstellt", ['productnumber' => $data['productnumber']]);
-    }
+    return [
+      'manufacturer_id' => 1, // Aliens
+    ];
   }
 }
