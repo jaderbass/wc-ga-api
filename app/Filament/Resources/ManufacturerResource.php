@@ -128,7 +128,7 @@ class ManufacturerResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\ManufacturerAuditRelationManager::class,
         ];
     }
 
