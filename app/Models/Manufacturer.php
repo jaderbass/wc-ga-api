@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\ManufacturerAudit;
 
 class Manufacturer extends Model
 {
@@ -30,5 +31,10 @@ class Manufacturer extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function audits()
+    {
+        return $this->hasMany(ManufacturerAudit::class);
     }
 }

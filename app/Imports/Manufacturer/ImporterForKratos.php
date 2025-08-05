@@ -5,7 +5,7 @@ namespace App\Imports\Manufacturer;
 use App\Imports\BaseCsvImporter;
 
 /**
- * Importer für Hersteller Aliens.
+ * Importer für Hersteller Kratos.
  *
  * Erbt von BaseCsvImporter und definiert das Feld-Mapping sowie feste Werte
  * für Produkte des Herstellers Aliens.

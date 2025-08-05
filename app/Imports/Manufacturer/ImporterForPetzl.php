@@ -2,51 +2,90 @@
 
 namespace App\Imports\Manufacturer;
 
-use App\Imports\BaseCsvImporter;
+use App\Models\Product;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Importer für Hersteller Aliens.
+ * Importer für Petzl-Produktdaten.
  *
- * Erbt von BaseCsvImporter und definiert das Feld-Mapping sowie feste Werte
- * für Produkte des Herstellers Aliens.
+ * Liest CSV-Dateien von Petzl ein, mappt die Werte auf die Products-Tabelle
+ * und speichert sie in der Datenbank.
+ * Alle nicht vorhandenen Werte werden auf null gesetzt,
+ * der Produktname ("name") wird immer aus "Product Name" gefüllt.
  */
-class ImporterForPetzl extends BaseCsvImporter
+class ImporterForPetzl
 {
   /**
-   * Gibt das Modell zurück, in dem die Daten gespeichert werden.
+   * Verarbeitet eine hochgeladene CSV-Datei und speichert Produkte.
    *
-   * @return string Vollqualifizierter Klassenname des Zielmodells.
+   * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage
+   * @return void
    */
-  protected function model(): string
+  public function handleUploadedFile(string $filePath): void
   {
-    return \App\Models\Product::class;
+    Log::info('CSV-Import gestartet', [
+      'importer' => self::class,
+      'file' => $filePath,
+      'model' => Product::class,
+      'map' => [
+        'productnumber' => 'Reference',
+        'productname' => 'Designation',
+        'eancode' => 'EAN Code',
+        'weight' => 'Weight',
+        'manufacturercountry' => 'Country',
+        'name' => 'Product Name',
+        'description' => 'Description',
+      ],
+    ]);
+
+    $handle = fopen(storage_path('app/' . $filePath), 'r');
+    $header = null;
+    $rowCount = 0;
+
+    while (($row = fgetcsv($handle, 1000, ';')) !== false) {
+      if (!$header) {
+        $header = $row;
+        continue;
+      }
+
+      $row = array_combine($header, $row);
+      $mappedData = $this->mapRow($row);
+      $rowCount++;
+
+      try {
+        $product = Product::create($mappedData);
+        Log::debug('Importiert', $product->toArray());
+      } catch (\Throwable $e) {
+        Log::error("Fehler beim Import in Zeile {$rowCount}", [
+          'exception' => $e->getMessage(),
+          'row' => $row
+        ]);
+      }
+    }
+
+    fclose($handle);
+
+    Log::info('CSV-Import abgeschlossen', ['importierte_zeilen' => $rowCount]);
   }
 
   /**
-   * Gibt ein Mapping von Datenbankfeldern zu CSV-Spalten zurück.
+   * Mappt eine CSV-Zeile auf die Felder der Products-Tabelle.
    *
-   * @return array Assoziatives Array im Format [DB-Feld => CSV-Spalte].
+   * @param array $row Array der CSV-Zeile (Spaltenname => Wert)
+   * @return array Gemappte Produktdaten
    */
-  protected function columnMap(): array
+  private function mapRow(array $row): array
   {
     return [
-      'productnumber'       => 'Reference', 
-      'productname'         => 'Designation', 
-      'eancode'             => 'EAN', 
-      'weight'              => 'Weight', 
-      'manufacturercountry' => 'Country',
-    ];
-  }
-
-  /**
-   * Gibt zusätzliche feste Werte zurück, die beim Import gesetzt werden.
-   *
-   * @return array Key-Value-Paare fester Werte.
-   */
-  protected function fixedValues(): array
-  {
-    return [
-      'manufacturer_id' => 4, // Petzl
+      'name' => $row['Product Name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
+      'productnumber' => $row['Reference'] ?? null,
+      'productname' => $row['Designation'] ?? null,
+      'eancode' => $row['EAN Code'] ?? null,
+      'description' => $row['Description'] ?? null,
+      'weight' => $row['Weight'] ?? null,
+      'manufacturer_id' => 4,                                       // Petzl
+      'slug' => $row['Reference'] ?? uniqid('produkt-'),
+      'status' => 'draft',
     ];
   }
 }
