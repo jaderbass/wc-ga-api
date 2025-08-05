@@ -3,62 +3,58 @@
 namespace App\Imports\Manufacturer;
 
 use App\Imports\BaseCsvImporter;
-use App\Models\Product;
-use Illuminate\Support\Facades\Log;
 
+/**
+ * Importer für Hersteller Aliens.
+ *
+ * Erbt von BaseCsvImporter und definiert das Feld-Mapping sowie feste Werte
+ * für Produkte des Herstellers Aliens.
+ */
 class ImporterForKask extends BaseCsvImporter
 {
+  /**
+   * Gibt das Modell zurück, in dem die Daten gespeichert werden.
+   *
+   * @return string Vollqualifizierter Klassenname des Zielmodells.
+   */
   protected function model(): string
   {
-    return Product::class;
+    return \App\Models\Product::class;
   }
 
-  protected function fixedValues(): array
-  {
-    return [
-      'manufacturer_id' => 2, // Kask-ID
-    ];
-  }
-
+  /**
+   * Gibt ein Mapping von Datenbankfeldern zu CSV-Spalten zurück.
+   *
+   * @return array Assoziatives Array im Format [DB-Feld => CSV-Spalte].
+   */
   protected function columnMap(): array
   {
     return [
-      'productnumber' => 'PART #',
-      'productname' => 'DESCRIPTION',
-      'eancode' => 'EAN CODE',
-      'width' => 'SWIDHT',
-      'length' => 'SLENGHT',
-      'height' => 'SHEIGHT',
-      'pcsperbox' => 'PCS X BOX',
-      'boxwidth' => 'MWIDHT',
-      'boxlength' => 'MLENGHT',
-      'boxheight' => 'MHEIGHT',
-      'weight' => 'GROSS WEIGHT',
+      'productnumber'       => 'PART #', 
+      'productname'         => 'DESCRIPTION', 
+      'eancode'             => 'EAN CODE', 
+      'width'               => 'SWIDHT', 
+      'length'              => 'SLENGHT', 
+      'height'              => 'SHEIGHT', 
+      'pcsperbox'           => 'PCS X BOX', 
+      'boxwidth'            => 'MWIDHT', 
+      'boxlength'           => 'MLENGHT', 
+      'boxheight'           => 'MHEIGHT', 
+      'weight'              => 'GROSS WEIGHT', 
       'manufacturercountry' => 'COUNTRY OF ORIGIN',
     ];
   }
 
-  protected function upsertRecord(array $data): void
+
+  /**
+   * Gibt zusätzliche feste Werte zurück, die beim Import gesetzt werden.
+   *
+   * @return array Key-Value-Paare fester Werte.
+   */
+  protected function fixedValues(): array
   {
-    $model = $this->model();
-
-    if (empty($data['productnumber'])) {
-      Log::warning('❗ Kein productnumber gesetzt – Datensatz wird ignoriert', $data);
-      return;
-    }
-
-    $record = $model::where('productnumber', $data['productnumber'])->first();
-
-    // Vor dem Speichern in der Importer-Klasse
-    Log::info('Import Row Data:', $data);
-
-
-    if ($record) {
-      $record->update($data);
-      Log::info("Produkt aktualisiert", ['id' => $record->id]);
-    } else {
-      $model::create($data);
-      Log::info("Neues Produkt erstellt", ['productnumber' => $data['productnumber']]);
-    }
+    return [
+      'manufacturer_id' => 2, // Kask
+    ];
   }
 }
