@@ -24,12 +24,14 @@ class Product extends Model
         'slug',
         'woo_synced_at',
 
-        // NEU: für Import & Filament-Tabelle
+        // Zusätzliche Importfelder
         'productnumber',
         'eancode',
         'skucode',
         'productname',
         'price',
+        'regularprice',
+        'saleprice',
         'width',
         'length',
         'height',
@@ -42,7 +44,6 @@ class Product extends Model
         'mpn',
         'weight',
     ];
-
 
     protected $casts = [
         'woo_synced_at' => 'datetime',

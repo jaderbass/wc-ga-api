@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
         Schema::create('products', function (Blueprint $table) {
@@ -23,7 +26,9 @@ return new class extends Migration
             $table->foreignId('manufacturer_id')->nullable()->constrained()->nullOnDelete();
             $table->enum('status', ['draft', 'publish'])->default('draft');
             $table->string('slug')->unique();
-            // Zusätzliche Felder für Lieferantenimport
+            $table->timestamp('woo_synced_at')->nullable();
+
+            /** ---- Zusätzliche Felder für Lieferantenimport ---- */
             $table->string('productnumber')->nullable();
             $table->string('eancode')->nullable();
             $table->string('skucode')->nullable();
@@ -43,11 +48,13 @@ return new class extends Migration
             $table->string('mpn')->nullable();
             $table->string('weight')->nullable();
 
-            $table->timestamp('woo_synced_at')->nullable();
             $table->timestamps();
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::dropIfExists('products');
