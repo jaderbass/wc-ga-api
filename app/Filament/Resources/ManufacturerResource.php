@@ -51,17 +51,19 @@ class ManufacturerResource extends Resource
                     ->label('API-Passwort')
                     ->password()
                     ->helperText('Um das Passwort zu ändern, hier ein neues Passwort eingeben. Wenn leer gelassen, bleibt das bestehende Passwort erhalten.')
-                    
-                    ->hint(
-                        fn($record) => ($record?->api_password_changed_at
-                            ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
-                            : 'Noch nie geändert.')
-                            )
-                            
-                    ->dehydrateStateUsing(function ($state, $record) {
+
+                ->hint(
+                    fn($record) => ($record?->api_password_changed_at instanceof \Illuminate\Support\Carbon
+                        ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
+                        : 'Noch nie geändert.')
+                )
+
+
+                ->dehydrateStateUsing(function ($state, $record) {
                         if ($state) {
-                            // Setze Änderungsdatum, wenn ein neues Passwort eingegeben wurde
-                            $record->api_password_changed_at = now();
+                            if ($record) {
+                                $record->api_password_changed_at = now();
+                            }
                             return Crypt::encryptString($state);
                         }
                         return $record->api_password; // Falls leer, behalte das alte Passwort
@@ -69,7 +71,7 @@ class ManufacturerResource extends Resource
                     ->afterStateHydrated(fn($state, callable $set) => $set('api_password', null)) // Immer leer anzeigen
                     ->nullable()
                     ->columnSpan(1),
-                
+
                 Forms\Components\TextInput::make('api_token')
                     ->label('API-Token')
                     ->password(),
@@ -83,7 +85,7 @@ class ManufacturerResource extends Resource
                 Forms\Components\Textarea::make('notes')
                     ->label('Notizen'),
 
-        ]);
+            ]);
     }
 
     public static function table(Table $table): Table
@@ -140,6 +142,4 @@ class ManufacturerResource extends Resource
             'edit' => Pages\EditManufacturer::route('/{record}/edit'),
         ];
     }
-
-    
 }

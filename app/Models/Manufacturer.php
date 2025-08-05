@@ -6,12 +6,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\ManufacturerAudit;
 
+/**
+ * Modell für Hersteller.
+ *
+ * Repräsentiert einen Hersteller, dessen Produkte und API-Zugangsdaten.
+ */
 class Manufacturer extends Model
 {
     use HasFactory;
-    
+
     /**
-     * The attributes that are mass assignable.
+     * Die Attribute, die massenweise befüllt werden können.
      *
      * @var array
      */
@@ -27,14 +32,32 @@ class Manufacturer extends Model
         'notes',
     ];
 
-
+    /**
+     * Beziehung: Ein Hersteller hat viele Produkte.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function products()
     {
         return $this->hasMany(Product::class);
     }
 
+    /**
+     * Beziehung: Ein Hersteller hat viele Audit-Einträge.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
     public function audits()
     {
         return $this->hasMany(ManufacturerAudit::class);
     }
+
+    /**
+     * Die Attribut-Casts.
+     *
+     * @var array
+     */
+    protected $casts = [
+        'api_password_changed_at' => 'datetime',
+    ];
 }
