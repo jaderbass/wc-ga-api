@@ -47,6 +47,12 @@ class ImporterSelector
    */
   public static function handleImport(object $importer, string $sourceType, mixed $source): void
   {
+    Log::info('Starte Import', [
+      'importer_class' => get_class($importer),
+      'source_type' => $sourceType,
+      'source' => $source,
+    ]);
+    
     match ($sourceType) {
       'csv' => $importer->handleUploadedFile($source),
       'xml' => $importer->handleUploadedXmlFile($source),

@@ -264,13 +264,23 @@ class ProductResource extends Resource
               'api'        => $data['api_url'],
             };
 
+        // Debug-Log: Was geht in den Importer?
+        Log::info('Import gestartet', [
+          'manufacturer_id' => $data['manufacturer_id'],
+          'sourceType' => $data['sourceType'],
+          'source' => $source,
+        ]);
+
             ImporterSelector::handleImport($importer, $data['sourceType'], $source);
 
             \Filament\Notifications\Notification::make()
               ->title('Import gestartet')
               ->success()
               ->send();
-          }),
+          })
+        /* ->bulkActions([
+          Tables\Actions\DeleteBulkAction::make(),
+        ]), */
 
       ]);
   }

@@ -23,7 +23,26 @@ class Product extends Model
         'status',
         'slug',
         'woo_synced_at',
+
+        // NEU: für Import & Filament-Tabelle
+        'productnumber',
+        'eancode',
+        'skucode',
+        'productname',
+        'price',
+        'width',
+        'length',
+        'height',
+        'unit',
+        'unitprice',
+        'pcsperbox',
+        'boxwidth',
+        'boxlength',
+        'boxheight',
+        'mpn',
+        'weight',
     ];
+
 
     protected $casts = [
         'woo_synced_at' => 'datetime',

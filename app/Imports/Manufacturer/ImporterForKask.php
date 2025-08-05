@@ -49,6 +49,10 @@ class ImporterForKask extends BaseCsvImporter
 
     $record = $model::where('productnumber', $data['productnumber'])->first();
 
+    // Vor dem Speichern in der Importer-Klasse
+    Log::info('Import Row Data:', $data);
+
+
     if ($record) {
       $record->update($data);
       Log::info("Produkt aktualisiert", ['id' => $record->id]);
