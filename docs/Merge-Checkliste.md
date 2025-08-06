@@ -5,6 +5,7 @@ Diese Checkliste beschreibt die Schritte, um einen Feature-Branch (z. B. `feat
 ---
 
 ## 1. Lokale Arbeitsumgebung aktualisieren
+
 ```bash
 git checkout main
 git fetch origin
@@ -44,6 +45,7 @@ CONFLICT (content): Merge conflict in <file>
 git add <file>
 git commit
 ```
+
 ## 5. Testlauf starten
 
 Bevor du pushst:
