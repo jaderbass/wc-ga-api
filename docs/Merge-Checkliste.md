@@ -80,7 +80,9 @@ git branch --merged main
 
 **Zweck:** Prüfen, ob der alte Feature-Branch bereits vollständig in main gemergt ist.
 
----
+## ➕ Neuer Branch für Produktvarianten
 
-Willst du, dass ich dir noch ein **Git-Shortcut-Skript** schreibe (z. B. `merge-feature.sh`), das diese Schritte halbautomatisch macht?  
-Dann könntest du einen Merge mit **einem einzigen Befehl** starten. Soll ich das auch bauen?
+```bash
+git checkout -b feature/product-variations
+git push origin feature/product-variations
+```
