@@ -258,8 +258,16 @@ class ProductResource extends Resource
           ])
           ->action(function (array $data) {
             $importer = ImporterSelector::forManufacturer($data['manufacturer_id']);
+            if (in_array($data['sourceType'], ['csv', 'xml']) && empty($data[$data['sourceType']])) {
+              Notification::make()
+                ->title('Bitte wählen Sie eine Datei für den Import aus.')
+                ->danger()
+                ->send();
 
-            $source = match ($data['sourceType']) {
+              return;
+            }
+
+        $source = match ($data['sourceType']) {
               'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
               'api'        => $data['api_url'],
             };
