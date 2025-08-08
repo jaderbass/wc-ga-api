@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
 use League\Csv\Reader;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Class GenericCsvProductImporter
@@ -38,11 +40,27 @@ class GenericCsvProductImporter
   public function import(string $filePath): void
   {
     $csv = Reader::createFromPath($filePath, 'r');
+    $csv->setDelimiter(';');
     $csv->setHeaderOffset(0);
-    $records = iterator_to_array($csv->getRecords());
+    $csv->skipEmptyRecords();
 
-    // Gruppieren nach Hauptprodukt
-    $grouped = collect($records)->groupBy($this->mapping['group_by']);
+    // records + Header holen
+    $records = iterator_to_array($csv->getRecords());
+    $headers = $csv->getHeader();
+
+    Log::debug('CSV Header', ['headers' => $headers, 'count' => count($records)]);
+
+    // Trim alle Zellen, damit „Product name “ ≠ „Product name“ verhindert wird
+    $normalized = collect($records)->map(function (array $row) {
+      foreach ($row as $k => $v) {
+        $row[$k] = is_string($v) ? trim($v) : $v;
+      }
+      return $row;
+    });
+
+    // Gruppieren nach (getrimmtem) group_by
+    $groupByKey = $this->mapping['group_by'];
+    $grouped = $normalized->groupBy(fn($r) => trim($r[$groupByKey] ?? ''));
 
     DB::transaction(function () use ($grouped) {
       foreach ($grouped as $groupKey => $rows) {
@@ -60,23 +78,54 @@ class GenericCsvProductImporter
    */
   protected function importProductGroup(string $groupKey, $rows)
   {
-    $firstRow = $rows->first();
+    Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => count($rows)]);
 
-    // Produkt anlegen oder updaten
+    $firstRow = $rows->first();
+    $referenceKey = $this->mapping['reference'] ?? 'Reference';
+
+    // Name robuster bestimmen (Petzl hat oft leere Felder in manchen Zeilen)
+    $nameKey = $this->mapping['product']['name'] ?? null;
+    $descKey = $this->mapping['product']['description'] ?? null;
+
+    $name = trim($firstRow[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
+    $description = trim($firstRow[$descKey] ?? '') ?: null;
+
+    $slugBase = \Illuminate\Support\Str::slug($name) ?: 'product';
+    $slug = $slugBase;
+    $i = 1;
+    while (Product::where('slug', $slug)->exists()) {
+      $slug = "{$slugBase}-{$i}";
+      $i++;
+    }
+
     $product = Product::updateOrCreate(
-      ['sku' => $firstRow[$this->mapping['reference']] ?? null],
+      // Lieber über slug matchen (Parent-SKU ist oft leer)
+      ['slug' => $slug],
       [
-        'name' => $firstRow[$this->mapping['product']['name']] ?? 'Unnamed Product',
-        'description' => $firstRow[$this->mapping['product']['description']] ?? null,
-        'product_type' => 'variable'
+        'name'         => $name,
+        'description'  => $description,
+        'product_type' => 'variable',
       ]
     );
 
-    // Varianten anlegen/updaten
+    $skipped = 0;
     foreach ($rows as $row) {
+      if (empty($row[$referenceKey])) {
+        $skipped++;
+        continue;
+      }
       $this->importVariation($product, $row);
     }
+
+    if ($skipped > 0) {
+      Log::warning('Variations skipped due to missing reference', [
+        'group' => $groupKey,
+        'skipped' => $skipped,
+      ]);
+    }
   }
+
+
 
   /**
    * Importiert eine einzelne Produktvariante.
@@ -88,22 +137,22 @@ class GenericCsvProductImporter
   protected function importVariation(Product $product, array $row)
   {
     $referenceKey = $this->mapping['reference'] ?? 'Reference';
-
-    if (empty($row[$referenceKey])) {
+    $ref = isset($row[$referenceKey]) ? trim($row[$referenceKey]) : null;
+    if ($ref === null || $ref === '') {
       return;
     }
 
     ProductVariation::updateOrCreate(
-      ['sku' => $row[$referenceKey]],
+      ['sku' => $ref],
       [
-        'product_id' => $product->id,
-        'regular_price' => $row['Regular price'] ?? null,
-        'sale_price' => $row['Sale price'] ?? null,
-        'stock_quantity' => $row['Stock quantity'] ?? null,
-        'attributes' => json_encode([
-          'color' => $row[$this->mapping['variation']['color']] ?? null,
-          'size'  => $row[$this->mapping['variation']['size']] ?? null,
-        ])
+        'product_id'      => $product->id,
+        'regular_price'   => $row['Regular price'] ?? null,
+        'sale_price'      => $row['Sale price'] ?? null,
+        'stock_quantity'  => $row['Stock quantity'] ?? null,
+        'attributes'      => json_encode([
+          'color' => isset($this->mapping['variation']['color']) ? ($row[$this->mapping['variation']['color']] ?? null) : null,
+          'size'  => isset($this->mapping['variation']['size'])  ? ($row[$this->mapping['variation']['size']]  ?? null) : null,
+        ]),
       ]
     );
   }

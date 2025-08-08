@@ -215,7 +215,7 @@ class ProductResource extends Resource
                 })
                 ->required(),
 
-        /* Forms\Components\Select::make('sourceType')
+            /* Forms\Components\Select::make('sourceType')
               ->label('Import-Typ')
               ->options([
                 'csv' => 'CSV-Datei',
@@ -257,40 +257,62 @@ class ProductResource extends Resource
               ->visible(fn($get) => $get('sourceType') === 'api'), */
           ])
           ->action(function (array $data) {
-            $importer = ImporterSelector::forManufacturer($data['manufacturer_id']);
             if (in_array($data['sourceType'], ['csv', 'xml']) && empty($data[$data['sourceType']])) {
               Notification::make()
                 ->title('Bitte wählen Sie eine Datei für den Import aus.')
                 ->danger()
                 ->send();
-
               return;
             }
 
-        $source = match ($data['sourceType']) {
+            $source = match ($data['sourceType']) {
               'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
               'api'        => $data['api_url'],
             };
 
-        // Debug-Log: Was geht in den Importer?
-        Log::info('Import gestartet', [
-          'manufacturer_id' => $data['manufacturer_id'],
-          'sourceType' => $data['sourceType'],
-          'source' => $source,
-        ]);
+            Log::info('Import gestartet', [
+              'manufacturer_id' => $data['manufacturer_id'],
+              'sourceType' => $data['sourceType'],
+              'source' => $source,
+            ]);
 
-            ImporterSelector::handleImport($importer, $data['sourceType'], $source);
+            try {
+              if ($data['sourceType'] === 'csv') {
+                // Mapping bestimmen (Fallback 'petzl')
+                $mapping = \App\Models\Manufacturer::find($data['manufacturer_id'])?->slug ?? 'petzl';
+                $fullPath = storage_path("app/{$source}");
 
-            \Filament\Notifications\Notification::make()
-              ->title('Import gestartet')
-              ->success()
-              ->send();
+                // CSV → unser Varianten-Importer (legt products + product_variations an)
+                (new \App\Importers\GenericCsvProductImporter($mapping))->import($fullPath);
+
+                Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
+                return;
+              }
+
+              // Für XML/API bleibt deine bisherige Pipeline aktiv
+              $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
+              \App\Services\ImporterSelector::handleImport($importer, $data['sourceType'], $source);
+
+              Notification::make()->title('Import gestartet')->success()->send();
+            } catch (\Throwable $e) {
+              Log::error('Import fehlgeschlagen', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+              ]);
+              Notification::make()
+                ->title('Import fehlgeschlagen')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
+            }
           })
-        /* ->bulkActions([
-          Tables\Actions\DeleteBulkAction::make(),
-        ]), */
 
-      ]);
+
+      /* ->bulkActions([
+            Tables\Actions\DeleteBulkAction::make(),
+          ]), */
+
+    ]);
   }
 
   public static function getRelations(): array
