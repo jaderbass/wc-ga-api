@@ -282,8 +282,11 @@ class ProductResource extends Resource
                 $mapping = \App\Models\Manufacturer::find($data['manufacturer_id'])?->slug ?? 'petzl';
                 $fullPath = storage_path("app/{$source}");
 
-                // CSV → unser Varianten-Importer (legt products + product_variations an)
-                (new \App\Importers\GenericCsvProductImporter($mapping))->import($fullPath);
+              // CSV → unser Varianten-Importer (legt products + product_variations an)
+              (new \App\Importers\GenericCsvProductImporter(
+                mappingFile: $mapping,
+                manufacturerId: (int) $data['manufacturer_id'] // 👈 neu
+              ))->import($fullPath);
 
                 Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
                 return;
@@ -305,14 +308,18 @@ class ProductResource extends Resource
                 ->danger()
                 ->send();
             }
-          })
-
+          }),
 
       /* ->bulkActions([
             Tables\Actions\DeleteBulkAction::make(),
           ]), */
 
-    ]);
+    ])
+      ->bulkActions([
+        Tables\Actions\BulkActionGroup::make([
+          Tables\Actions\DeleteBulkAction::make(),
+        ]),
+      ]);
   }
 
   public static function getRelations(): array

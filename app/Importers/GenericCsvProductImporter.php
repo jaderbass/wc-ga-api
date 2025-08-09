@@ -26,8 +26,10 @@ class GenericCsvProductImporter
    *
    * @param string $mappingFile Der Mapping-Schlüssel (z. B. "petzl" für config/import_mappings/petzl.php)
    */
-  public function __construct(protected string $mappingFile)
-  {
+  public function __construct(
+    protected string $mappingFile,
+    protected ?int $manufacturerId = null // 👈 neu
+  ){
     $this->mapping = config("import_mappings.$mappingFile");
   }
 
@@ -87,26 +89,37 @@ class GenericCsvProductImporter
     $nameKey = $this->mapping['product']['name'] ?? null;
     $descKey = $this->mapping['product']['description'] ?? null;
 
-    $name = trim($firstRow[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
+    $firstNonEmpty = collect($rows)->first(fn($r) => !empty(trim($r[$nameKey] ?? ''))); // optional!!
+    $name = trim($firstNonEmpty[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
+    // $name = trim($firstRow[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
     $description = trim($firstRow[$descKey] ?? '') ?: null;
 
-    $slugBase = \Illuminate\Support\Str::slug($name) ?: 'product';
-    $slug = $slugBase;
-    $i = 1;
-    while (Product::where('slug', $slug)->exists()) {
-      $slug = "{$slugBase}-{$i}";
-      $i++;
-    }
+    // deterministischer Slug (ohne -1/-2-Anhängsel)
+    $slug = Str::slug($name) ?: Str::slug('product');
 
-    $product = Product::updateOrCreate(
-      // Lieber über slug matchen (Parent-SKU ist oft leer)
-      ['slug' => $slug],
-      [
-        'name'         => $name,
-        'description'  => $description,
-        'product_type' => 'variable',
-      ]
-    );
+    // 1) Match: slug + (optional) manufacturer_id
+    $query = \App\Models\Product::query()->where('slug', $slug);
+    if ($this->manufacturerId) {
+      $query->where('manufacturer_id', $this->manufacturerId);
+    }
+    $product = $query->first();
+
+    $payload = [
+      'name'           => $name,
+      'description'    => $description,
+      'product_type'   => 'variable',
+      'manufacturer_id' => $this->manufacturerId,
+    ];
+
+    // 2) Upsert
+    if ($product) {
+      $product->fill($payload)->save();
+    } else {
+      $product = \App\Models\Product::create(array_merge($payload, [
+        'slug' => $slug, // nur beim erstmaligen Anlegen
+        // optional: productnumber / mpn etc. aus CSV, wenn gewünscht
+      ]));
+    }
 
     $skipped = 0;
     foreach ($rows as $row) {
@@ -139,20 +152,19 @@ class GenericCsvProductImporter
     $referenceKey = $this->mapping['reference'] ?? 'Reference';
     $ref = isset($row[$referenceKey]) ? trim($row[$referenceKey]) : null;
     if ($ref === null || $ref === '') {
-      return;
+      return; // ohne SKU keine Variante
     }
 
     ProductVariation::updateOrCreate(
-      ['sku' => $ref],
+      ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
       [
-        'product_id'      => $product->id,
-        'regular_price'   => $row['Regular price'] ?? null,
-        'sale_price'      => $row['Sale price'] ?? null,
-        'stock_quantity'  => $row['Stock quantity'] ?? null,
-        'attributes'      => json_encode([
+        'regular_price'  => $row['Regular price'] ?? null,
+        'sale_price'     => $row['Sale price'] ?? null,
+        'stock_quantity' => $row['Stock quantity'] ?? null,
+        'attributes'     => json_encode([
           'color' => isset($this->mapping['variation']['color']) ? ($row[$this->mapping['variation']['color']] ?? null) : null,
           'size'  => isset($this->mapping['variation']['size'])  ? ($row[$this->mapping['variation']['size']]  ?? null) : null,
-        ]),
+        ], JSON_UNESCAPED_UNICODE),
       ]
     );
   }
