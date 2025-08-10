@@ -16,13 +16,13 @@
 
 ## 🔹 Tabellen
 
-**products**
+### products
 
 - Enthält Hauptprodukt-Daten
 - Felder u.a.: sku, name, description, product_type (simple|variable), manufacturer_id, slug (unique)
 - Slug wird aus Produktname generiert
 
-**product_variations**
+### product_variations
 
 - Enthält Varianten-Daten (Preis, Maße, Gewicht, SKU etc.)
 
@@ -85,3 +85,4 @@ Beim nächsten Prompt immer davon ausgehen, dass der Code im beschriebenen Zusta
     Antworte nur auf Deutsch, außer wenn Code-Kommentare in Englisch sinnvoller sind.
 
     Meine erste Frage ist: [Hier deine Frage einsetzen]
+    

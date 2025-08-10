@@ -44,7 +44,7 @@ Ablauf:
    - Falls nein: **Anlegen**  
 4. Varianten iterieren und anlegen/updaten (matching über `sku`)
 
-**Besonderheiten**
+### Besonderheiten
 
 - Slug wird deterministisch erzeugt (`Str::slug($name)`), um Dubletten zu vermeiden
 - Name wird robust bestimmt (nimmt erste nicht-leere Zeile aus Gruppe)
