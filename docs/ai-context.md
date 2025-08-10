@@ -87,3 +87,6 @@ Ablauf:
 - **Ziel:** Saubere, erweiterbare Import-Architektur, die CSV, XML und API-Quellen unterstützt
 - **Sprache:** Deutsch bevorzugt, Code-Kommentare zweisprachig (de/en)
 - **Stil:** Klare, kommentierte Laravel-/Filament-Beispiele
+
+API-Key:
+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
