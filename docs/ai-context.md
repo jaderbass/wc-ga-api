@@ -55,11 +55,12 @@ Ablauf:
 
 ## 4. Offene Punkte
 
-- [ ] Option zum manuellen Löschen aller Produkte + Varianten (Bulk-Action existiert bereits)
+- [✔️] Option zum manuellen Löschen aller Produkte + Varianten (Bulk-Action existiert bereits)
 - [ ] FileUpload-Validierung verbessert (aktuell nur Notification bei fehlender Datei)
 - [ ] API-Import-Modul fertigstellen
 - [ ] XML-Importer umsetzen
 - [ ] Bessere UX: Import-Popup bei Fehlermeldung offen halten
+- [ ] Fehler im Benutzer-Dashboard fixen
 
 ---
 
