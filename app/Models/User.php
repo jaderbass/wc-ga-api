@@ -14,6 +14,12 @@ class User extends Authenticatable
     use HasFactory, Notifiable, HasRoles;
 
     /**
+     * Guard-Name für Spatie Permission
+     * Muss zum verwendeten Auth-Guard passen (z.B. 'web' oder 'filament').
+     */
+    protected string $guard_name = 'web';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>

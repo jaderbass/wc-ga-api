@@ -5,10 +5,11 @@ namespace App\Filament\Resources\UserResource\Pages;
 use App\Filament\Resources\UserResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
-use Filament\Forms\Form;
+use Filament\Notifications\Notification;
+/* use Filament\Forms\Form;
 use Spatie\Permission\Models\Role;
 use App\Http\Controllers\UserController;
-use Filament\Forms\Components\Select; // Sicherstellen, dass dies korrekt importiert wird
+use Filament\Forms\Components\Select; // Sicherstellen, dass dies korrekt importiert wird */
 
 class EditUser extends EditRecord
 {
@@ -18,10 +19,24 @@ class EditUser extends EditRecord
     {
         return [
             Actions\DeleteAction::make(),
+            Actions\Action::make('clearRoles')
+                ->label('Alle Rollen entfernen')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->action(function () {
+                    $this->record->syncRoles([]);
+                    $this->record->refresh();             // DB -> Model
+                    $this->fillForm();                    // Model -> Formular (EditRecord-Hilfsmethode)
+                    \Filament\Notifications\Notification::make()
+                        ->title('Alle Rollen entfernt')
+                        ->success()
+                        ->send();
+                }),
+
         ];
     }
 
-    public function form(Form $form): Form
+    /* public function form(Form $form): Form
     {
         return $form
             ->schema([
@@ -33,10 +48,11 @@ class EditUser extends EditRecord
             ]);
     }
 
-    public function save()
+    // nach dem Speichern Rollen synchronisieren
+    protected function afterSave():void
     {
-        parent::save();
-        // Rufe die Methode aus dem Controller auf oder direkt hier implementieren
-        app(UserController::class)->assignRole(request(), $this->record->id);
-    }
+        // Rollen aus dem Formularstate lesen (Select-Feld 'roles')
+        $roles = $this->form->getState()['roles'] ?? [];
+        $this->record->syncRoles($roles); // Spatie HasRoles
+    } */
 }
