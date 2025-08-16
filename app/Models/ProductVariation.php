@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductVariation extends Model
@@ -15,15 +16,22 @@ class ProductVariation extends Model
     'sale_price',
     'stock_quantity',
     'stock_status',
-    'attributes',
   ];
 
   protected $casts = [
-    'attributes' => 'array', // JSON: {"size": "M", "color": "Blue"}
+    // Die 'attributes' Spalte wird nicht mehr als JSON gecastet, da sie entfernt wird.
   ];
 
   public function product(): BelongsTo
   {
     return $this->belongsTo(Product::class);
+  }
+
+  /**
+   * The attribute values that belong to the ProductVariation.
+   */
+  public function attributeValues(): BelongsToMany
+  {
+    return $this->belongsToMany(ProductAttributeValue::class, 'product_variation_attribute_value');
   }
 }
