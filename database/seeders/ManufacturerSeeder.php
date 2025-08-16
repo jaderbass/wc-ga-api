@@ -5,10 +5,19 @@ namespace Database\Seeders;
 use App\Models\Manufacturer;
 use Illuminate\Database\Seeder;
 
+/**
+ * Seeder für die initialen Hersteller.
+ *
+ * Legt eine vordefinierte Liste von Herstellern in der Datenbank an.
+ * Verwendet `updateOrCreate`, um bestehende Einträge anhand des Herstellernamens
+ * zu aktualisieren und Duplikate zu vermeiden.
+ */
 class ManufacturerSeeder extends Seeder
 {
     /**
-     * Run the database seeds.
+     * Führt den Seeder aus.
+     *
+     * Iteriert durch ein Array
      *
      * @return void
      */

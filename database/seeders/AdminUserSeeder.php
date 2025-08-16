@@ -16,7 +16,12 @@ use Illuminate\Support\Facades\Hash;
 class AdminUserSeeder extends Seeder
 {
     /**
-     * Führt den Seeder aus.
+     * Führt den Seeder aus, um die initialen Admin-Benutzer anzulegen.
+     *
+     * Erstellt einen Admin-Benutzer basierend auf den Werten in der .env-Datei
+     * sowie einen festen Admin-Benutzer für "Jörg Aderhold".
+     * Allen erstellten Benutzern wird die Rolle "Admin" zugewiesen.
+     * Verwendet `firstOrCreate`, um doppelte Einträge zu verhindern.
      *
      * @return void
      */

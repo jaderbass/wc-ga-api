@@ -9,18 +9,15 @@ use Illuminate\Database\Seeder;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed the application's database.
+     * Führt die Datenbank-Seeder aus.
+     *
+     * Ruft die Seeder für Rollen, Admin-Benutzer und Hersteller in der
+     * korrekten Reihenfolge auf.
      */
     public function run(): void
     {
-        // User::factory(10)->create();
         $this->call(RoleSeeder::class);
         $this->call(AdminUserSeeder::class);
         $this->call(ManufacturerSeeder::class);
-
-        /* User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]); */
     }
 }

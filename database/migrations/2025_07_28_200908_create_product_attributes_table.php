@@ -7,7 +7,9 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * Führt die Migration aus und erstellt die `product_attributes` Tabelle.
+     *
+     * @return void
      */
     public function up(): void
     {
@@ -21,7 +23,9 @@ return new class extends Migration
     }
 
     /**
-     * Reverse the migrations.
+     * Macht die Migration rückgängig und löscht die `product_attributes` Tabelle.
+     *
+     * @return void
      */
     public function down(): void
     {

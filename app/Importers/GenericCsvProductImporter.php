@@ -24,21 +24,26 @@ class GenericCsvProductImporter
   protected array $mapping;
 
   /**
-   * GenericCsvProductImporter constructor.
+   * Initialisiert den Importer mit dem spezifischen Mapping und der Hersteller-ID.
    *
-   * @param string $mappingFile Der Mapping-Schlüssel (z. B. "petzl" für config/import_mappings/petzl.php)
+   * @param string $mappingFile Der Name der Mapping-Datei (ohne .php), die unter `config/import_mappings/` liegt.
+   * @param int|null $manufacturerId Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
    */
   public function __construct(
     protected string $mappingFile,
-    protected ?int $manufacturerId = null // 👈 neu
+    protected ?int $manufacturerId = null
   ) {
     $this->mapping = config("import_mappings.$mappingFile");
   }
 
   /**
-   * Führt den CSV-Import aus.
+   * Führt den Importprozess für die angegebene CSV-Datei aus.
    *
-   * @param string $filePath Pfad zur CSV-Datei mit Produktdaten.
+   * Liest die CSV-Datei, normalisiert die Daten (z.B. trimmt Leerzeichen),
+   * gruppiert die Zeilen zu Hauptprodukten und startet den Import für jede Gruppe
+   * innerhalb einer Datenbanktransaktion.
+   *
+   * @param string $filePath Der Pfad zur hochgeladenen CSV-Datei.
    * @return void
    */
   public function import(string $filePath): void
@@ -74,13 +79,17 @@ class GenericCsvProductImporter
   }
 
   /**
-   * Importiert ein Hauptprodukt und alle zugehörigen Varianten.
+   * Importiert eine Produktgruppe, bestehend aus einem Hauptprodukt und dessen Varianten.
    *
-   * @param string $groupKey Schlüssel zum Gruppieren (z. B. Produktname)
-   * @param \Illuminate\Support\Collection|array $rows Die Zeilen, die zu einem Produkt gehören
+   * Ermittelt, ob das Hauptprodukt bereits existiert (via Slug und optional Hersteller-ID).
+   * Legt das Produkt an oder aktualisiert es (Upsert-Logik).
+   * Anschließend werden die einzelnen Zeilen als Produktvarianten importiert.
+   *
+   * @param string $groupKey Der Wert, nach dem die Produkte gruppiert wurden (z.B. Produktname oder Artikelnummer).
+   * @param \Illuminate\Support\Collection $rows Eine Sammlung von CSV-Zeilen, die zu dieser Produktgruppe gehören.
    * @return void
    */
-  protected function importProductGroup(string $groupKey, $rows)
+  protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows)
   {
     Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => count($rows)]);
 
@@ -143,10 +152,14 @@ class GenericCsvProductImporter
 
 
   /**
-   * Importiert eine einzelne Produktvariante.
+   * Importiert oder aktualisiert eine einzelne Produktvariante.
    *
-   * @param Product $product Das zugehörige Hauptprodukt
-   * @param array $row Die CSV-Zeile mit Variantendaten
+   * Nutzt die SKU (Referenz) aus der CSV-Zeile, um eine Variante zu identifizieren.
+   * Führt ein `updateOrCreate` für die Variante durch und stößt die Zuweisung
+   * der Attribute (z.B. Farbe, Größe) an.
+   *
+   * @param Product $product Das übergeordnete Hauptprodukt.
+   * @param array   $row     Die CSV-Zeile, die die Daten der Variante enthält.
    * @return void
    */
   protected function importVariation(Product $product, array $row)
@@ -172,10 +185,16 @@ class GenericCsvProductImporter
   }
 
   /**
-   * Verarbeitet die Attribute für eine gegebene Variation.
+   * Erstellt und verknüpft Attribute und deren Werte mit einer Produktvariante.
    *
-   * @param ProductVariation $variation Die Produktvariante.
-   * @param array $row Die CSV-Zeile.
+   * Liest die Attribut-Mappings aus der Konfigurationsdatei (z.B. 'color' => 'Farbe').
+   * Erstellt die `ProductAttribute` (z.B. "Farbe") und `ProductAttributeValue` (z.B. "Blau")
+   * falls sie noch nicht existieren (`firstOrCreate`).
+   * Synchronisiert anschließend die gefundenen/erstellten Attributwerte mit der Variante
+   * über die Pivot-Tabelle `product_variation_attribute_value`.
+   *
+   * @param ProductVariation $variation Die zu bearbeitende Produktvariante.
+   * @param array            $row       Die CSV-Zeile mit den Attributwerten.
    * @return void
    */
   protected function handleVariationAttributes(ProductVariation $variation, array $row): void
