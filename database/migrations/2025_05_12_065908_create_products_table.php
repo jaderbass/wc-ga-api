@@ -31,28 +31,28 @@ return new class extends Migration
             $table->string('sku')->nullable()->unique();
             $table->string('ean')->nullable();
             $table->string('mpn')->nullable();
-            $table->string('productnumber')->nullable();
+            $table->string('product_number')->nullable();
 
             // designations
-            $table->string('productname')->nullable();
+            $table->string('product_name')->nullable();
             $table->text('description')->nullable();
             $table->text('short_description')->nullable();
 
             // prices
+            $table->string('price')->nullable();
             $table->string('regular_price')->nullable();
             $table->string('sale_price')->nullable();
-            $table->string('price')->nullable();
+            $table->string('unit_price')->nullable();
 
             // meta informations
             $table->string('width')->nullable();       // Maße als Text (z.B. "25 cm")
             $table->string('length')->nullable();
             $table->string('height')->nullable();
             $table->string('unit')->nullable();
-            $table->string('unitprice')->nullable();
-            $table->string('pcsperbox')->nullable();
-            $table->string('boxwidth')->nullable();
-            $table->string('boxlength')->nullable();
-            $table->string('boxheight')->nullable();
+            $table->string('pcs_per_box')->nullable();
+            $table->string('box_width')->nullable();
+            $table->string('box_length')->nullable();
+            $table->string('box_height')->nullable();
             $table->string('weight')->nullable();
 
             $table->timestamps();
