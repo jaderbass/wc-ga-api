@@ -2,6 +2,8 @@
 
 namespace App\Importers;
 
+use App\Models\ProductAttribute;
+use App\Models\ProductAttributeValue;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +31,7 @@ class GenericCsvProductImporter
   public function __construct(
     protected string $mappingFile,
     protected ?int $manufacturerId = null // 👈 neu
-  ){
+  ) {
     $this->mapping = config("import_mappings.$mappingFile");
   }
 
@@ -155,17 +157,59 @@ class GenericCsvProductImporter
       return; // ohne SKU keine Variante
     }
 
-    ProductVariation::updateOrCreate(
+    // 1. Variante erstellen oder aktualisieren (ohne die alte 'attributes' Spalte)
+    $variation = ProductVariation::updateOrCreate(
       ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
       [
         'regular_price'  => $row['Regular price'] ?? null,
         'sale_price'     => $row['Sale price'] ?? null,
         'stock_quantity' => $row['Stock quantity'] ?? null,
-        'attributes'     => json_encode([
-          'color' => isset($this->mapping['variation']['color']) ? ($row[$this->mapping['variation']['color']] ?? null) : null,
-          'size'  => isset($this->mapping['variation']['size'])  ? ($row[$this->mapping['variation']['size']]  ?? null) : null,
-        ], JSON_UNESCAPED_UNICODE),
       ]
     );
+
+    // 2. Attribute über die neuen Tabellen zuweisen
+    $this->handleVariationAttributes($variation, $row);
+  }
+
+  /**
+   * Verarbeitet die Attribute für eine gegebene Variation.
+   *
+   * @param ProductVariation $variation Die Produktvariante.
+   * @param array $row Die CSV-Zeile.
+   * @return void
+   */
+  protected function handleVariationAttributes(ProductVariation $variation, array $row): void
+  {
+    $attributeValueIds = [];
+    $variationMapping = $this->mapping['variation'] ?? [];
+
+    foreach ($variationMapping as $attributeName => $csvColumn) {
+      $value = trim($row[$csvColumn] ?? '');
+
+      if (empty($value)) {
+        continue;
+      }
+
+      // z.B. aus 'color' wird 'Farbe' und 'farbe'
+      $attributeDisplayName = ucfirst($attributeName);
+      $attributeSlug = Str::slug($attributeDisplayName);
+
+      $attribute = ProductAttribute::firstOrCreate(
+        ['slug' => $attributeSlug],
+        ['name' => $attributeDisplayName]
+      );
+
+      $attributeValue = ProductAttributeValue::firstOrCreate(
+        ['attribute_id' => $attribute->id, 'slug' => Str::slug($value)],
+        ['value' => $value]
+      );
+
+      $attributeValueIds[] = $attributeValue->id;
+    }
+
+    // Verknüpft die Attributwerte mit der Variante über die Pivot-Tabelle
+    if (!empty($attributeValueIds)) {
+      $variation->attributeValues()->sync($attributeValueIds);
+    }
   }
 }
