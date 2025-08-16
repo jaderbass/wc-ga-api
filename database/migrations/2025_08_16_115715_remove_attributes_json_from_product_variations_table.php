@@ -6,18 +6,29 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            $table->dropColumn('attributes');
-        });
+        // Prüfen, ob die Spalte existiert, bevor sie gelöscht wird.
+        if (Schema::hasColumn('product_variations', 'attributes')) {
+            Schema::table('product_variations', function (Blueprint $table) {
+                $table->dropColumn('attributes');
+            });
+        }
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            // Stellt die Spalte wieder her, falls die Migration rückgängig gemacht wird
-            $table->json('attributes')->nullable()->after('stock_status');
-        });
+        // Prüfen, ob die Spalte NICHT existiert, bevor sie hinzugefügt wird.
+        if (!Schema::hasColumn('product_variations', 'attributes')) {
+            Schema::table('product_variations', function (Blueprint $table) {
+                $table->json('attributes')->nullable()->after('stock_status');
+            });
+        }
     }
 };
