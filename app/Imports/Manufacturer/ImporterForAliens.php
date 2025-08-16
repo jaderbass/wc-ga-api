@@ -74,10 +74,10 @@ class ImporterForAliens
   private function mapRow(array $row): array
   {
     return [
-      'name' => $row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt',
-      'productnumber' => $row['Artikelnummer'] ?? null,
-      'productname' => $row['Artikelbezeichnung'] ?? null,
-      'eancode' => $row['EAN'] ?? null,
+      'product_name' => $row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt',
+      'product_number' => $row['Artikelnummer'] ?? null,
+      'short_description' => $row['Artikelbezeichnung'] ?? null,
+      'ean' => $row['EAN'] ?? null,
       'price' => $row['eVK netto'] ?? null,
       'manufacturer_id' => 1, // Aliens
       'slug' => $row['Artikelnummer'] ?? uniqid('produkt-'),

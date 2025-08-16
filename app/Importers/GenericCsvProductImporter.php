@@ -86,7 +86,7 @@ class GenericCsvProductImporter
     $referenceKey = $this->mapping['reference'] ?? 'Reference';
 
     // Name robuster bestimmen (Petzl hat oft leere Felder in manchen Zeilen)
-    $nameKey = $this->mapping['product']['name'] ?? null;
+    $nameKey = $this->mapping['product']['product_name'] ?? null;
     $descKey = $this->mapping['product']['description'] ?? null;
 
     $firstNonEmpty = collect($rows)->first(fn($r) => !empty(trim($r[$nameKey] ?? ''))); // optional!!
@@ -105,7 +105,7 @@ class GenericCsvProductImporter
     $product = $query->first();
 
     $payload = [
-      'name'           => $name,
+      'product_name'   => $name,
       'description'    => $description,
       'product_type'   => 'variable',
       'manufacturer_id' => $this->manufacturerId,

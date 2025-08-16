@@ -112,7 +112,7 @@ abstract class BaseCsvImporter
   {
     $model = $this->model();
 
-    $record = $model::where('productnumber', $data['productnumber'] ?? null)->first();
+    $record = $model::where('productnumber', $data['produc_tnumber'] ?? null)->first();
 
     if ($record) {
       $record->update($data);

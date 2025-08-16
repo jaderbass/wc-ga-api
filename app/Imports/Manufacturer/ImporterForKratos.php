@@ -30,11 +30,11 @@ class ImporterForKratos extends BaseCsvImporter
   protected function columnMap(): array
   {
     return [
-      'productnumber' => 'Product Code', 
-      'productname'   => 'Product Name', 
-      'eancode'       => 'EAN', 
-      'weight'        => 'Weight', 
-      'pcsperbox'     => 'Qty/Box',
+      'product_number'  => 'Product Code', 
+      'product_name'    => 'Product Name', 
+      'ean'             => 'EAN', 
+      'weight'          => 'Weight', 
+      'pcs_per_box'     => 'Qty/Box',
     ];
   }
 

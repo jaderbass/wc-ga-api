@@ -168,17 +168,17 @@ class ImporterForSingingRock
     private function mapCsvRow(array $row): array
     {
         return [
-            'name' => $row['description'] ?? 'Unbenanntes Produkt',
-            'productnumber' => $row['product_code'] ?? null,
-            'productname' => $row['description'] ?? null,
-            'eancode' => $row['ean'] ?? null,
+            'product_name' => $row['description'] ?? 'Unbenanntes Produkt',
+            'product_number' => $row['product_code'] ?? null,
+            'description' => $row['description'] ?? null,
+            'ean' => $row['ean'] ?? null,
             'width' => $row['width'] ?? null,
             'length' => $row['length'] ?? null,
             'height' => $row['height'] ?? null,
-            'pcsperbox' => $row['pcs_per_box'] ?? null,
-            'boxwidth' => $row['box_width'] ?? null,
-            'boxlength' => $row['box_length'] ?? null,
-            'boxheight' => $row['box_height'] ?? null,
+            'pcs_per_box' => $row['pcs_per_box'] ?? null,
+            'box_width' => $row['box_width'] ?? null,
+            'box_length' => $row['box_length'] ?? null,
+            'box_height' => $row['box_height'] ?? null,
             'weight' => $row['weight'] ?? null,
             'manufacturer_id' => 3,
             'slug' => $row['description'] ?? uniqid('produkt-'),
@@ -196,9 +196,9 @@ class ImporterForSingingRock
     private function mapXmlRow(array $row): array
     {
         return [
-            'name' => $this->normalizeValue($row['ARTICLE_NAME'] ?? 'Unbenanntes Produkt'),
-            'productnumber' => $this->normalizeValue($row['ARTICLE'] ?? null),
-            'productname' => $this->normalizeValue($row['ARTICLE_NAME'] ?? null),
+            'product_name' => $this->normalizeValue($row['ARTICLE_NAME'] ?? 'Unbenanntes Produkt'),
+            'product_number' => $this->normalizeValue($row['ARTICLE'] ?? null),
+            'description' => $this->normalizeValue($row['ARTICLE_NAME'] ?? null),
             'eancode' => $this->normalizeValue($row['EAN'] ?? null),
             'description' => $this->normalizeValue($row['DESCRIPTION'] ?? null, true), // HTML behalten
             'short_description' => $this->normalizeValue($row['SHORT_DESCRIPTION'] ?? null, true), // HTML behalten

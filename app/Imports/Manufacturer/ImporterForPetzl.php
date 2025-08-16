@@ -77,10 +77,10 @@ class ImporterForPetzl
   private function mapRow(array $row): array
   {
     return [
-      'name' => $row['Product Name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
-      'productnumber' => $row['Reference'] ?? null,
-      'productname' => $row['Designation'] ?? null,
-      'eancode' => $row['EAN Code'] ?? null,
+      'product_name' => $row['Product Name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
+      'product_number' => $row['Reference'] ?? null,
+      'short_description' => $row['Designation'] ?? null,
+      'ean' => $row['EAN Code'] ?? null,
       'description' => $row['Description'] ?? null,
       'weight' => $row['Weight'] ?? null,
       'manufacturer_id' => 4,                                       // Petzl
