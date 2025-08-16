@@ -43,5 +43,19 @@ class AdminUserSeeder extends Seeder
         if (! $user->hasRole('Admin')) {
             $user->assignRole($adminRole);
         }
+
+        // Zusätzlichen Admin-Benutzer "Jörg Aderhold" anlegen
+        $joergUser = User::firstOrCreate(
+            ['email' => 'joerg@jaderbass.de'],
+            [
+                'name' => 'Jörg Aderhold',
+                'password' => Hash::make('joerg@jaderbass.de'),
+            ]
+        );
+
+        // Rolle "Admin" zuweisen, falls noch nicht vorhanden
+        if (! $joergUser->hasRole('Admin')) {
+            $joergUser->assignRole($adminRole);
+        }
     }
 }

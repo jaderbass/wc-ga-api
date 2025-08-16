@@ -13,10 +13,13 @@ return new class extends Migration
     {
         Schema::create('product_attribute_values', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('attribute_id')->constrained('product_attributes')->cascadeOnDelete();
+            $table->foreignId('attribute_id')->constrained('product_attributes')->onDelete('cascade');
             $table->string('value');
-            $table->string('slug')->unique();
+            $table->string('slug');
+        $table->unsignedBigInteger('woo_term_id')->nullable();
             $table->timestamps();
+
+            $table->unique(['attribute_id', 'slug']);
         });
     }
 
