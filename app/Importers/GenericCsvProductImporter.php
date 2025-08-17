@@ -93,20 +93,36 @@ class GenericCsvProductImporter
   {
     Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => count($rows)]);
 
-    $firstRow = $rows->first();
     $referenceKey = $this->mapping['reference'] ?? 'Reference';
 
-    // Name robuster bestimmen (Petzl hat oft leere Felder in manchen Zeilen)
-    $nameKey = $this->mapping['product']['product_name'] ?? null;
-    $descKey = $this->mapping['product']['description'] ?? null;
+    // --- Robuste Payload-Erstellung für das Hauptprodukt ---
+    // Wir durchlaufen das 'product'-Mapping und suchen für jedes Feld
+    // den ersten nicht-leeren Wert innerhalb der gesamten Produktgruppe.
+    $productMapping = $this->mapping['product'] ?? [];
+    $productPayload = [];
 
-    $firstNonEmpty = collect($rows)->first(fn($r) => !empty(trim($r[$nameKey] ?? ''))); // optional!!
-    $name = trim($firstNonEmpty[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
-    // $name = trim($firstRow[$nameKey] ?? '') ?: trim($groupKey) ?: 'Unnamed Product';
-    $description = trim($firstRow[$descKey] ?? '') ?: null;
+    foreach ($productMapping as $dbField => $csvColumn) {
+        // Finde die erste Zeile in der Gruppe, die für diese Spalte einen Wert hat.
+        $sourceRow = $rows->first(function ($row) use ($csvColumn) {
+            return !empty(trim($row[$csvColumn] ?? ''));
+        });
 
-    // deterministischer Slug (ohne -1/-2-Anhängsel)
-    $slug = Str::slug($name) ?: Str::slug('product');
+        if ($sourceRow) {
+            $productPayload[$dbField] = trim($sourceRow[$csvColumn]);
+        }
+    }
+
+    // Fallbacks und feste Werte setzen
+    $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
+    $slug = Str::slug($name) ?: Str::slug('product-' . uniqid());
+
+    // Finale Payload mit festen Werten zusammenführen
+    $finalProductPayload = array_merge($productPayload, [
+        'product_name'    => $name, // Sicherstellen, dass der Name gesetzt ist
+        'product_type'    => 'variable',
+        'manufacturer_id' => $this->manufacturerId,
+        'status'          => 'draft',
+    ]);
 
     // 1) Match: slug + (optional) manufacturer_id
     $query = \App\Models\Product::query()->where('slug', $slug);
@@ -115,20 +131,12 @@ class GenericCsvProductImporter
     }
     $product = $query->first();
 
-    $payload = [
-      'product_name'   => $name,
-      'description'    => $description,
-      'product_type'   => 'variable',
-      'manufacturer_id' => $this->manufacturerId,
-    ];
-
     // 2) Upsert
     if ($product) {
-      $product->fill($payload)->save();
+      $product->fill($finalProductPayload)->save();
     } else {
-      $product = \App\Models\Product::create(array_merge($payload, [
+      $product = \App\Models\Product::create(array_merge($finalProductPayload, [
         'slug' => $slug, // nur beim erstmaligen Anlegen
-        // optional: productnumber / mpn etc. aus CSV, wenn gewünscht
       ]));
     }
 
@@ -170,14 +178,19 @@ class GenericCsvProductImporter
       return; // ohne SKU keine Variante
     }
 
-    // 1. Variante erstellen oder aktualisieren (ohne die alte 'attributes' Spalte)
+    // 1. Payload für die Variante aus der Mapping-Datei erstellen
+    $variationPayload = [];
+    $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
+    foreach ($variationFieldsMapping as $dbField => $csvColumn) {
+        if (isset($row[$csvColumn])) {
+            $variationPayload[$dbField] = trim($row[$csvColumn]);
+        }
+    }
+
+    // 2. Variante erstellen oder aktualisieren
     $variation = ProductVariation::updateOrCreate(
       ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
-      [
-        'regular_price'  => $row['Regular price'] ?? null,
-        'sale_price'     => $row['Sale price'] ?? null,
-        'stock_quantity' => $row['Stock quantity'] ?? null,
-      ]
+      $variationPayload
     );
 
     // 2. Attribute über die neuen Tabellen zuweisen

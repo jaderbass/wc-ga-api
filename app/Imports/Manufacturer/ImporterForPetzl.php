@@ -2,90 +2,49 @@
 
 namespace App\Imports\Manufacturer;
 
-use App\Models\Product;
+use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Importer für Petzl-Produktdaten.
+ * Importer für Petzl-Produktdaten, der variable Produkte unterstützt.
  *
- * Liest CSV-Dateien von Petzl ein, mappt die Werte auf die Products-Tabelle
- * und speichert sie in der Datenbank.
- * Alle nicht vorhandenen Werte werden auf null gesetzt,
- * der Produktname ("name") wird immer aus "Product Name" gefüllt.
+ * Diese Klasse erweitert den GenericCsvProductImporter und nutzt ein spezifisches
+ * Mapping, um CSV-Dateien von Petzl korrekt zu verarbeiten. Sie gruppiert
+ * Zeilen zu Hauptprodukten und legt die einzelnen Zeilen als Varianten an.
  */
-class ImporterForPetzl
+class ImporterForPetzl extends GenericCsvProductImporter
 {
   /**
-   * Verarbeitet eine hochgeladene CSV-Datei und speichert Produkte.
+   * Initialisiert den Importer mit dem Petzl-spezifischen Mapping.
+   * Die Hersteller-ID für Petzl wird hier fest auf 4 gesetzt.
+   */
+  public function __construct()
+  {
+    // Ruft den Konstruktor der Elternklasse auf und übergibt
+    // den Namen der Mapping-Datei und die Hersteller-ID.
+    parent::__construct('petzl', 4); // 'petzl' -> petzl.php, 4 -> Manufacturer ID
+  }
+
+  /**
+   * Verarbeitet die hochgeladene CSV-Datei.
    *
-   * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage
+   * Diese Methode dient als öffentlicher Einstiegspunkt und ruft die
+   * generische `import`-Methode der Elternklasse auf, die die gesamte
+   * Logik für das Einlesen, Gruppieren und Speichern enthält.
+   *
+   * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage.
    * @return void
    */
   public function handleUploadedFile(string $filePath): void
   {
-    Log::info('CSV-Import gestartet', [
-      'importer' => self::class,
+    Log::info('Petzl-Import mit generischer Logik gestartet.', [
       'file' => $filePath,
-      'model' => Product::class,
-      'map' => [
-        'product_number' => 'Reference',
-        'product_name' => 'Designation',
-        'ean' => 'EAN Code',
-        'weight' => 'Weight',
-        'manufacturercountry' => 'Country',
-        'product_name' => 'Product Name',
-        'description' => 'Description',
-      ],
+      'manufacturer_id' => $this->manufacturerId,
     ]);
 
-    $handle = fopen(storage_path('app/' . $filePath), 'r');
-    $header = null;
-    $rowCount = 0;
+    // Die eigentliche Import-Logik wird von der Elternklasse gehandhabt.
+    $this->import($filePath);
 
-    while (($row = fgetcsv($handle, 1000, ';')) !== false) {
-      if (!$header) {
-        $header = $row;
-        continue;
-      }
-
-      $row = array_combine($header, $row);
-      $mappedData = $this->mapRow($row);
-      $rowCount++;
-
-      try {
-        $product = Product::create($mappedData);
-        Log::debug('Importiert', $product->toArray());
-      } catch (\Throwable $e) {
-        Log::error("Fehler beim Import in Zeile {$rowCount}", [
-          'exception' => $e->getMessage(),
-          'row' => $row
-        ]);
-      }
-    }
-
-    fclose($handle);
-
-    Log::info('CSV-Import abgeschlossen', ['importierte_zeilen' => $rowCount]);
-  }
-
-  /**
-   * Mappt eine CSV-Zeile auf die Felder der Products-Tabelle.
-   *
-   * @param array $row Array der CSV-Zeile (Spaltenname => Wert)
-   * @return array Gemappte Produktdaten
-   */
-  private function mapRow(array $row): array
-  {
-    return [
-      'product_name' => $row['Product name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
-      'product_number' => $row['Reference'] ?? null,
-      'short_description' => $row['Description'] ?? null,
-      'ean' => $row['EAN Code'] ?? null,
-      'description' => $row['Designation'] ?? null,
-      'weight' => $row['Weight'] ?? null,
-      'manufacturer_id' => 4,                                       // Petzl
-      'slug' => $row['Reference'] ?? uniqid('produkt-'),
-      'status' => 'draft',
-    ];
+    Log::info('Petzl-Import abgeschlossen.');
   }
 }
