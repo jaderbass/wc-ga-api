@@ -12,7 +12,7 @@
 |`app/Filament/Widgets/`|Die einzelnen Cards für die Dashboard-Übersicht|
 |`app/Helpers/`|Ordner mit verschiedenen Hilfsdateien|
 |`app/Http/Controllers/`|Controller-Klassen für die Datenbank-Funktionalität|
-|`app/Importers/GenericCsvProductImporter.php`|Generelle Logik für den IMport von CSV-Dateien, benötigt eine Mapping-Datei!|
+|`app/Importers/GenericCsvProductImporter.php`|Generelle Logik für den Import von CSV-Dateien, benötigt eine Mapping-Datei!|
 |`app/Imports/`|Basis-Importer für die verschiedenen Import-Methoden (CSV, XML, API-URL)|
 |`app/Imports/Manufacturer/`|spezielle Importer für die einzelnen Hersteller|
 |`config/import_mappings/{HerstellerName}.php`|Die Mapping-Datei für den generischen Importer|

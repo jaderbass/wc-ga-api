@@ -28,12 +28,12 @@ class ImporterForPetzl
       'file' => $filePath,
       'model' => Product::class,
       'map' => [
-        'productnumber' => 'Reference',
-        'productname' => 'Designation',
-        'eancode' => 'EAN Code',
+        'product_number' => 'Reference',
+        'product_name' => 'Designation',
+        'ean' => 'EAN Code',
         'weight' => 'Weight',
         'manufacturercountry' => 'Country',
-        'name' => 'Product Name',
+        'product_name' => 'Product Name',
         'description' => 'Description',
       ],
     ]);
@@ -77,11 +77,11 @@ class ImporterForPetzl
   private function mapRow(array $row): array
   {
     return [
-      'product_name' => $row['Product Name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
+      'product_name' => $row['Product name'] ?? 'Unbenanntes Produkt',       // Pflichtfeld
       'product_number' => $row['Reference'] ?? null,
-      'short_description' => $row['Designation'] ?? null,
+      'short_description' => $row['Description'] ?? null,
       'ean' => $row['EAN Code'] ?? null,
-      'description' => $row['Description'] ?? null,
+      'description' => $row['Designation'] ?? null,
       'weight' => $row['Weight'] ?? null,
       'manufacturer_id' => 4,                                       // Petzl
       'slug' => $row['Reference'] ?? uniqid('produkt-'),

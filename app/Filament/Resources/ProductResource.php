@@ -133,66 +133,36 @@ class ProductResource extends Resource
   {
     return $table
       ->columns([
-        Tables\Columns\TextColumn::make('productnumber')
+        Tables\Columns\TextColumn::make('product_number')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('eancode')
+        Tables\Columns\TextColumn::make('ean')
           ->searchable()
           ->sortable(),
         Tables\Columns\TextColumn::make('skucode')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('productname')
+        Tables\Columns\TextColumn::make('product_name')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('description')
+        /* Tables\Columns\TextColumn::make('description')
+          ->searchable()
+          ->sortable(), */
+        Tables\Columns\TextColumn::make('short_description')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('shortdescription')
+        Tables\Columns\TextColumn::make('product_type')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('price')
+        /* Tables\Columns\TextColumn::make('price')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('regularprice')
+        Tables\Columns\TextColumn::make('regular_price')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('saleprice')
+        Tables\Columns\TextColumn::make('sale_price')
           ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('width')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('length')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('height')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('unit')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('unitprice')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('pcsperbox')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('boxwidth')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('boxlength')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('boxheight')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('mpn')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('weight')
-          ->searchable()
-          ->sortable(),
+          ->sortable(), */
       ])
       ->filters([
         //
@@ -214,30 +184,17 @@ class ProductResource extends Resource
                   $set('sourceType', $importType);
                 })
                 ->required(),
-
-            /* Forms\Components\Select::make('sourceType')
-              ->label('Import-Typ')
-              ->options([
-                'csv' => 'CSV-Datei',
-                'xml' => 'XML-Datei',
-                'api' => 'API-URL',
-              ])
-              ->reactive()
-              ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv')
-              
-              ->required(), */
             Forms\Components\Hidden::make('sourceType')
               ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
-
-            // Info-Box bei API-Import
-            Placeholder::make('api_info')
-              ->label('')
-              ->content(
-                fn($get) =>
-                $get('sourceType') === 'api'
-                  ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
-                  : ''
-              )
+                // Info-Box bei API-Import
+                Placeholder::make('api_info')
+                  ->label('')
+                  ->content(
+                    fn($get) =>
+                    $get('sourceType') === 'api'
+                      ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
+                      : ''
+                  )
               ->visible(fn($get) => $get('sourceType') === 'api'),
 
             Forms\Components\FileUpload::make('csv')
@@ -251,10 +208,6 @@ class ProductResource extends Resource
               ->acceptedFileTypes(['text/xml', 'application/xml'])
               ->visible(fn($get) => $get('sourceType') === 'xml')
               ->storeFiles(false),
-
-            /* Forms\Components\TextInput::make('api_url')
-              ->label('API-URL')
-              ->visible(fn($get) => $get('sourceType') === 'api'), */
           ])
           ->action(function (array $data) {
             if (in_array($data['sourceType'], ['csv', 'xml']) && empty($data[$data['sourceType']])) {
@@ -310,11 +263,7 @@ class ProductResource extends Resource
             }
           }),
 
-      /* ->bulkActions([
-            Tables\Actions\DeleteBulkAction::make(),
-          ]), */
-
-    ])
+      ])
       ->bulkActions([
         Tables\Actions\BulkActionGroup::make([
           Tables\Actions\DeleteBulkAction::make(),
