@@ -26,7 +26,6 @@ class Product extends Model
         // Zusätzliche Importfelder
         'product_number',
         'ean',
-        'sku',
         'product_name',
         'price',
         'regular_price',
