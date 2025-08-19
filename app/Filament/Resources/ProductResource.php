@@ -37,23 +37,49 @@ class ProductResource extends Resource
   {
     return $form
       ->schema([
+      Forms\Components\Section::make('Stammdaten')
+        ->description('Grundlegende Produktinformationen')
+        ->schema([
+          Forms\Components\Grid::make(12)->schema([
+            Forms\Components\TextInput::make('product_name')
+              ->label('Produktname')
+              ->required()
+              ->maxLength(255)
+              ->columnSpan(8),
+
+            Forms\Components\TextInput::make('product_number')
+              ->label('Produktnummer')
+              ->maxLength(64)
+              ->helperText('Interne/Hersteller-Artikelnummer')
+              ->columnSpan(4),
+
+            Forms\Components\TextInput::make('ean')
+              ->label('EAN')
+              ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
+              ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
+              ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
+              ->columnSpan(4),
+          ]),
+        ])
+        ->collapsible(),
         Forms\Components\Select::make('manufacturer_id')
           ->required()
           ->relationship('manufacturer', 'manufacturer')
-          ->columnSpanFull(),
-        Forms\Components\TextInput::make('product_number')
+          // ->columnSpanFull(),
+          ->columnSpan(9),
+        /* Forms\Components\TextInput::make('product_number')
           ->maxLength(100)
-          ->columnSpan(3),
-        Forms\Components\TextInput::make('ean')
+          ->columnSpan(3), */
+        /* Forms\Components\TextInput::make('ean')
           ->maxLength(14)
-          ->columnSpan(3),
+          ->columnSpan(3), */
         Forms\Components\TextInput::make('sku')
           ->maxLength(32)
           ->columnSpan(3),
-        Forms\Components\TextInput::make('product_name')
+        /* Forms\Components\TextInput::make('product_name')
           ->required()
           ->maxLength(100)
-          ->columnSpan(3),
+          ->columnSpan(3), */
         Forms\Components\Textarea::make('description')
           ->required()
           ->columnSpan(6),
