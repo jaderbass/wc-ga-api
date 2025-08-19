@@ -22,7 +22,7 @@ class ImporterForPetzl extends GenericCsvProductImporter
   {
     // Ruft den Konstruktor der Elternklasse auf und übergibt
     // den Namen der Mapping-Datei und die Hersteller-ID.
-    parent::__construct('petzl', 4); // 'petzl' -> petzl.php, 4 -> Manufacturer ID
+    parent::__construct('petzl', 3); // 'petzl' -> petzl.php, 4 -> Manufacturer ID
   }
 
   /**
