@@ -62,122 +62,154 @@ class ProductResource extends Resource
   public static function form(Form $form): Form
   {
     return $form
-      ->schema([
-      Forms\Components\Section::make('Stammdaten')
-        ->description('Grundlegende Produktinformationen')
         ->schema([
-          Forms\Components\Grid::make(12)->schema([
+          Forms\Components\Section::make('Stammdaten')
+          ->schema([
+            Forms\Components\Grid::make(12)->schema([
             Forms\Components\TextInput::make('product_name')
-              ->label('Produktname')
+              ->label('Produktname (Artikelbezeichnung)')
               ->required()
               ->maxLength(255)
               ->columnSpan(8),
 
             Forms\Components\TextInput::make('product_number')
-              ->label('Produktnummer')
-              ->maxLength(64)
-              ->helperText('Interne/Hersteller-Artikelnummer')
+              ->label('Produktnummer (Artikelnummer)')
+              ->helperText('Artikelnummer des Hauptprodukts. Varianten‑SKUs erscheinen in der Variantenliste.')
+              ->maxLength(128)
               ->columnSpan(4),
 
             Forms\Components\TextInput::make('ean')
               ->label('EAN')
-              ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
-              ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
-              ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
+              ->maxLength(32)
+              ->rule('regex:/^[0-9\- ]*$/')
+              ->helperText('Nur Ziffern, ggf. mit Bindestrichen/Leerzeichen.')
               ->columnSpan(4),
-          ]),
-        ])
+
+            Forms\Components\Select::make('manufacturer_id')
+              ->required()
+              ->relationship('manufacturer', 'manufacturer')
+              // ->columnSpanFull(),
+              ->columnSpan(4),
+            Forms\Components\TextInput::make('sku')
+              // ->maxLength(32)
+              ->columnSpan(4),
+            ]),
+            ])
         ->collapsible(),
-        Forms\Components\Select::make('manufacturer_id')
-          ->required()
-          ->relationship('manufacturer', 'manufacturer')
-          // ->columnSpanFull(),
-          ->columnSpan(9),
-        /* Forms\Components\TextInput::make('product_number')
-          ->maxLength(100)
-          ->columnSpan(3), */
-        /* Forms\Components\TextInput::make('ean')
-          ->maxLength(14)
-          ->columnSpan(3), */
-        Forms\Components\TextInput::make('sku')
-          ->maxLength(32)
-          ->columnSpan(3),
-        /* Forms\Components\TextInput::make('product_name')
-          ->required()
-          ->maxLength(100)
-          ->columnSpan(3), */
-        Forms\Components\Textarea::make('description')
-          ->required()
-          ->columnSpan(6),
-        Forms\Components\TextInput::make('shortdescription')
-          ->columnSpan(6),
-        Forms\Components\TextInput::make('price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('regular_price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('sale_price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('width')
-          ->numeric()
-          ->integer()
-          ->helperText('Width in mm')
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('length')
-          ->numeric()
-          ->integer()
-          ->helperText('Length in mm')
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('height')
-          ->numeric()
-          ->integer()
-          ->helperText('Height in mm')
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('weight')
-          ->numeric()
-          ->integer()
-          ->helperText('Weight in mm')
-          ->columnSpan(2),
-        Forms\Components\Checkbox::make('unit')
-          ->label('Unit')
-          ->columnSpanFull(),
-        Forms\Components\TextInput::make('unit_price')
-          ->numeric()
-          ->integer()
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('pcs_per_box')
-          ->numeric()
-          ->integer()
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_width')
-          ->numeric()
-          ->integer()
-          ->helperText('Box width in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_length')
-          ->numeric()
-          ->integer()
-          ->helperText('Box length in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_height')
-          ->numeric()
-          ->integer()
-          ->helperText('Box height in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-      ])
+        
+        Forms\Components\Section::make('Beschreibungen')
+          ->schema([
+            Forms\Components\Textarea::make('short_description')
+              ->label('Kurzbeschreibung (USP’s)')
+              ->rows(3)
+              ->placeholder('Wichtige USPs in Kurzform …')
+              // explizit befüllen (falls automatische Hydration bei dir aus irgendeinem Grund nicht greift)
+              ->afterStateHydrated(function (Forms\Components\Textarea $component, $state, ?\App\Models\Product $record) {
+                if ($record) {
+                  $component->state($record->short_description ?? '');
+                }
+              })
+              ->columnSpanFull(),
+
+            Forms\Components\RichEditor::make('description')
+              ->label('Beschreibung (Produkt‑Text)')
+              ->toolbarButtons([
+                'bold',
+                'italic',
+                'strike',
+                'link',
+                'orderedList',
+                'bulletList',
+                'blockquote',
+                'codeBlock',
+                'h2',
+                'h3',
+                'undo',
+                'redo',
+              ])
+              // ebenfalls sicher befüllen
+              ->afterStateHydrated(function (Forms\Components\RichEditor $component, $state, ?\App\Models\Product $record) {
+                if ($record) {
+                  $component->state($record->description ?? '');
+                }
+              })
+              ->columnSpanFull(),
+          ])
+        ->collapsible(),
+        Forms\Components\Section::make('Weitere Eigenschaften')
+          ->schema([
+            Forms\Components\Grid::make(12)
+              ->schema([
+                Forms\Components\TextInput::make('price')
+                  ->required()
+                  ->numeric()
+                  ->integer()
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('regular_price')
+                  ->required()
+                  ->numeric()
+                  ->integer()
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('sale_price')
+                  ->required()
+                  ->numeric()
+                  ->integer()
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('width')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Width in mm')
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('length')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Length in mm')
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('height')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Height in mm')
+                  ->columnSpan(2),
+                Forms\Components\Checkbox::make('unit')
+                  ->label('Unit')
+                  ->columnSpanFull(),
+                Forms\Components\TextInput::make('weight')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Weight in mm')
+                  ->columnSpan(2),
+                Forms\Components\TextInput::make('unit_price')
+                  ->numeric()
+                  ->integer()
+                  ->columnSpan(2)
+                  ->hidden(fn(Get $get): bool => $get('unit')),
+                Forms\Components\TextInput::make('pcs_per_box')
+                  ->numeric()
+                  ->integer()
+                  ->columnSpan(2)
+                  ->hidden(fn(Get $get): bool => $get('unit')),
+                Forms\Components\TextInput::make('box_width')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Box width in mm')
+                  ->columnSpan(2)
+                  ->hidden(fn(Get $get): bool => $get('unit')),
+                Forms\Components\TextInput::make('box_length')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Box length in mm')
+                  ->columnSpan(2)
+                  ->hidden(fn(Get $get): bool => $get('unit')),
+                Forms\Components\TextInput::make('box_height')
+                  ->numeric()
+                  ->integer()
+                  ->helperText('Box height in mm')
+                  ->columnSpan(2)
+                  ->hidden(fn(Get $get): bool => $get('unit')),
+            ])
+            ])
+            ->collapsible(),
+            ])
       ->columns(12);
   }
 
@@ -198,18 +230,21 @@ class ProductResource extends Resource
         Tables\Columns\TextColumn::make('ean')
           ->searchable()
           ->sortable(),
-        Tables\Columns\TextColumn::make('skucode')
+        Tables\Columns\TextColumn::make('sku')
           ->searchable()
           ->sortable(),
         Tables\Columns\TextColumn::make('product_name')
           ->searchable()
           ->sortable(),
-        /* Tables\Columns\TextColumn::make('description')
+      /* Tables\Columns\TextColumn::make('description')
           ->searchable()
           ->sortable(), */
+        // NEU: hart auf 45 Zeichen begrenzen + Tooltip mit vollem Text
         Tables\Columns\TextColumn::make('short_description')
-          ->searchable()
-          ->sortable(),
+          ->label('Kurzbeschreibung (USP’s)')
+          ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string)$state, 40) : '—')
+          ->tooltip(fn($state) => $state ?: null)
+          ->toggleable(),
         Tables\Columns\TextColumn::make('product_type')
           ->searchable()
           ->sortable(),
@@ -223,6 +258,9 @@ class ProductResource extends Resource
           ->searchable()
           ->sortable(), */
       ])
+      ->defaultSort('product_name')
+      ->paginated([10, 25, 50])
+      ->defaultPaginationPageOption(25)
       ->filters([
         //
       ])

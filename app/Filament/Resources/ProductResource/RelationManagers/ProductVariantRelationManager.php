@@ -4,9 +4,7 @@
  * @file
  * RelationManager für die Anzeige von Produkt-Varianten in der Produkt-Detailansicht.
  *
- * Bindet die Beziehung `variations()` des Product-Models ein und zeigt eine Tabelle der Varianten.
- * Zusätzlich werden die Attribut-Kombinationen der Variante (z. B. Farbe/Größe) in einer Spalte
- * „Attribute“ zusammengefasst dargestellt.
+ * Zeigt je Variante u. a. SKU, EAN, Preis sowie die Attribut-Kombinationen (z. B. "Farbe: Blau · Größe: L").
  */
 
 namespace App\Filament\Resources\ProductResource\RelationManagers;
@@ -26,7 +24,7 @@ class ProductVariantRelationManager extends RelationManager
   protected static string $relationship = 'variations';
 
   /**
-   * Statischer Titel des Relation-Managers (Tab-Titel + Tabellenüberschrift).
+   * Titel der Relation (Tab-Überschrift).
    *
    * @var string|null
    */
@@ -35,8 +33,8 @@ class ProductVariantRelationManager extends RelationManager
   /**
    * Konfiguration der Varianten-Tabelle.
    *
-   * - Lädt Attributwerte + zugehörige Attribute eager (verhindert N+1).
-   * - Zeigt SKU, Name, Preis und eine zusammengefasste Attribut-Ansicht.
+   * - Lädt Attributwerte + Attribute eager (verhindert N+1-Queries).
+   * - Zeigt eine zusammengefasste Attribut-Spalte.
    *
    * @param \Filament\Tables\Table $table
    * @return \Filament\Tables\Table
@@ -44,23 +42,24 @@ class ProductVariantRelationManager extends RelationManager
   public function table(Table $table): Table
   {
     return $table
-      // N+1 vermeiden: Attributwerte samt Attribut laden
+      // Eager Loading: Attribute + deren Definition
       ->modifyQueryUsing(function ($query) {
         $query->with(['attributeValues.attribute']);
       })
 
-      ->recordTitleAttribute('sku') // ggf. anpassen
+      ->recordTitleAttribute('sku')
 
       ->columns([
         Tables\Columns\TextColumn::make('sku')
           ->label('SKU')
           ->searchable()
+          ->copyable()
           ->toggleable(),
 
-        Tables\Columns\TextColumn::make('name')
-          ->label('Variantenname')
-          ->wrap()
+        Tables\Columns\TextColumn::make('ean')
+          ->label('EAN')
           ->searchable()
+          ->copyable()
           ->toggleable(),
 
         Tables\Columns\TextColumn::make('price')
@@ -69,24 +68,26 @@ class ProductVariantRelationManager extends RelationManager
           ->sortable()
           ->toggleable(),
 
-        // Zusammenfassung der Attribut-Kombinationen, z. B. "Farbe: Blau · Größe: L"
+        /**
+         * Zusammenfassung der Attribut-Kombinationen, z. B. "Farbe: Blau · Größe: L"
+         * Beruht auf der Beziehung $variation->attributeValues (BelongsToMany) und
+         * $value->attribute (ProductAttribute) mit 'name' sowie $value->value.
+         */
         Tables\Columns\TextColumn::make('attributes_summary')
           ->label('Attribute')
           ->state(function (ProductVariation $record): string {
-            // attributeValues ist eine BelongsToMany zu ProductAttributeValue,
-            // jedes ProductAttributeValue ->attribute (ProductAttribute) mit name.
             $pairs = $record->attributeValues
-              ->filter(fn($v) => $v && $v->attribute) // Safety
+              ->filter(fn($v) => $v && $v->attribute)
               ->map(function ($value) {
-                $attrName  = trim((string) $value->attribute->name);
-                $valueName = trim((string) $value->value);
-                if ($attrName === '') {
-                  return $valueName;
+                $attr = trim((string) $value->attribute->name);
+                $val  = trim((string) $value->value);
+                if ($attr === '') {
+                  return $val;
                 }
-                if ($valueName === '') {
-                  return $attrName;
+                if ($val === '') {
+                  return $attr;
                 }
-                return "{$attrName}: {$valueName}";
+                return "{$attr}: {$val}";
               })
               ->values()
               ->all();
