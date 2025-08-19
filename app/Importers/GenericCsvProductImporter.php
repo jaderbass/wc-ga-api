@@ -2,13 +2,14 @@
 
 namespace App\Importers;
 
-use App\Importers\Contracts\CsvImporterContract;
-use App\Support\ImportLog;
+use App\Models\ProductAttribute;
+use App\Models\ProductAttributeValue;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
+use League\Csv\Reader;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Class GenericCsvProductImporter
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Erwartet eine Mapping-Datei unter config/import_mappings/<mappingName>.php.
  */
-class GenericCsvProductImporter implements CsvImporterContract
+class GenericCsvProductImporter
 {
   protected array $mapping;
 
@@ -29,84 +30,36 @@ class GenericCsvProductImporter implements CsvImporterContract
    * @param int|null $manufacturerId Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
    */
   public function __construct(
-    protected ?string $mappingFile = null,
+    protected string $mappingFile,
     protected ?int $manufacturerId = null
   ) {
-    // ❌ temporäre Edelrid-Sperre entfernen
-    // ✅ Mapping robust laden (aus config() ODER Datei)
-    if ($this->mappingFile === null) {
-      throw new \RuntimeException('GenericCsvProductImporter benötigt $mappingFile (z. B. "petzl", "edelrid").');
-    }
-
-    $this->mapping = $this->loadMapping($this->mappingFile);
+    $this->mapping = config("import_mappings.$mappingFile");
   }
 
-
   /**
-   * Importiert eine CSV-Datei, erkennt das Hersteller-Mapping automatisch an den Headern
-   * und gruppiert die Zeilen robust nach dem Mapping.
+   * Führt den Importprozess für die angegebene CSV-Datei aus.
    *
-   * Auto-Mapping:
-   * - Erkennt Edelrid an „Artikelbezeichnung“/„Artikelnummer“ (deutsche Header)
-   * - Erkennt Petzl an „Product name“/„Reference“ (englische Header)
-   * - Überschreibt nur dann das Mapping, wenn es noch nicht gesetzt ist
+   * Liest die CSV-Datei, normalisiert die Daten (z.B. trimmt Leerzeichen),
+   * gruppiert die Zeilen zu Hauptprodukten und startet den Import für jede Gruppe
+   * innerhalb einer Datenbanktransaktion.
    *
-   * @param string $filePath
+   * @param string $filePath Der Pfad zur hochgeladenen CSV-Datei.
    * @return void
    */
   public function import(string $filePath): void
   {
-    $csv = \League\Csv\Reader::createFromPath($filePath, 'r');
+    $csv = Reader::createFromPath($filePath, 'r');
     $csv->setDelimiter(';');
     $csv->setHeaderOffset(0);
     $csv->skipEmptyRecords();
 
-    // 1) Header + Records lesen
+    // records + Header holen
     $records = iterator_to_array($csv->getRecords());
     $headers = $csv->getHeader();
 
-    ImportLog::debug('CSV Header', [
-      'count'   => count($headers),
-      'sample'  => array_slice($headers, 0, 5),
-    ]);
+    Log::debug('CSV Header', ['headers' => $headers, 'count' => count($records)]);
 
-
-    ImportLog::debug('Active mapping snapshot', [
-      'product_keys'   => array_keys($mapping['product'] ?? []),
-      'variation_keys' => array_keys($mapping['variation'] ?? []),
-      'vf_keys'        => array_keys($mapping['variation_fields'] ?? []),
-    ]);
-
-
-    // 2) Header normalisieren (unsichtbare Zeichen entfernen, trimmen, lowercased)
-    $normalizeHeader = function (string $h): string {
-      $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $h) ?? $h; // Steuerz./NBSP/BOM
-      $s = preg_replace('/\s+/u', ' ', $s) ?? $s; // Mehrfachspaces
-      return mb_strtolower(trim($s));
-    };
-    $normalizedHeaders = array_map($normalizeHeader, $headers);
-
-    // 3) Mapping automatisch wählen, falls noch nicht gesetzt
-    //    (z. B. wenn ein generischer Importer genutzt wird)
-    if (empty($this->mapping) || !is_array($this->mapping)) {
-      $isEdelrid = in_array('artikelbezeichnung', $normalizedHeaders, true)
-        || in_array('artikelnummer', $normalizedHeaders, true);
-      $isPetzl   = in_array('product name', $normalizedHeaders, true)
-        || in_array('reference', $normalizedHeaders, true);
-
-      if ($isEdelrid) {
-        $this->mapping = config('import_mappings.edelrid');
-        ImportLog::debug('Auto-selected mapping', ['mapping' => 'edelrid']);
-      } elseif ($isPetzl) {
-        $this->mapping = config('import_mappings.petzl');
-        ImportLog::debug('Auto-selected mapping', ['mapping' => 'petzl']);
-      } else {
-        // falls nichts erkannt wird, Mapping so lassen (oder optional defaulten)
-        ImportLog::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
-      }
-    }
-
-    // 4) Alle Zellen trimmen
+    // Trim alle Zellen, damit „Product name “ ≠ „Product name“ verhindert wird
     $normalized = collect($records)->map(function (array $row) {
       foreach ($row as $k => $v) {
         $row[$k] = is_string($v) ? trim($v) : $v;
@@ -114,299 +67,101 @@ class GenericCsvProductImporter implements CsvImporterContract
       return $row;
     });
 
-    // 5) Gruppierung robust (group_by kann String oder Array sein)
-    $groupBy = $this->mapping['group_by'] ?? null;
-    $groupByCols = is_array($groupBy)
-      ? array_values($groupBy)
-      : ((is_string($groupBy) && $groupBy !== '') ? [$groupBy] : []);
+    // Gruppieren nach (getrimmtem) group_by
+    $groupByKey = $this->mapping['group_by'];
+    $grouped = $normalized->groupBy(fn($r) => trim($r[$groupByKey] ?? ''));
 
-    // Fallbacks für Edelrid (falls Mapping unvollständig)
-    $fallbackCols = ['Artikelbezeichnung', 'Artikelnummer'];
-
-    // Helfer: sauberer Text (entfernt Steuerz. & normalisiert Spaces)
-    $clean = function (?string $value): string {
-      if ($value === null) return '';
-      $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $value) ?? $value;
-      $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-      return trim($s);
-    };
-
-    // Helfer: erster nicht-leerer Wert aus Kandidaten
-    $firstNonEmpty = function (array $row, array $candidates) use ($clean): string {
-      if (empty($candidates)) return '';
-      // Map normalisierte Header → Original-Key der aktuellen Row
-      $map = [];
-      foreach (array_keys($row) as $key) {
-        $norm = mb_strtolower($clean((string)$key));
-        $map[$norm] = $key;
-      }
-      foreach ($candidates as $cand) {
-        $normCand = mb_strtolower($clean($cand));
-        if (isset($map[$normCand])) {
-          $val = $clean((string)($row[$map[$normCand]] ?? ''));
-          if ($val !== '') return $val;
-        }
-        // direkter Zugriff als Fallback
-        if (array_key_exists($cand, $row)) {
-          $val = $clean((string)($row[$cand] ?? ''));
-          if ($val !== '') return $val;
-        }
-      }
-      return '';
-    };
-
-    // Index für Notnagel-Gruppierung
-    $indexed = $normalized->values()->map(function (array $row, int $i) {
-      $row['__row_index'] = $i;
-      return $row;
-    });
-
-    $grouped = $indexed->groupBy(function (array $row) use ($groupByCols, $fallbackCols, $firstNonEmpty, $clean): string {
-      if (!empty($groupByCols)) {
-        $val = $firstNonEmpty($row, $groupByCols);
-        if ($val !== '') return $clean($val);
-      }
-      $val = $firstNonEmpty($row, $fallbackCols);
-      if ($val !== '') return $clean($val);
-      $i = $row['__row_index'] ?? 'x';
-      return '__ROW__:' . $i;
-    });
-
-    ImportLog::debug('CSV group keys (normalized)', [
-      'count_groups' => $grouped->count(),
-    ]);
-
-    // 6) Gruppen importieren (Transaktion)
     DB::transaction(function () use ($grouped) {
       foreach ($grouped as $groupKey => $rows) {
-        ImportLog::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
         $this->importProductGroup($groupKey, $rows);
       }
     });
   }
 
   /**
-   * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
-   * $spec kann 'Spaltenname' oder ['Alt1','Alt2',...] sein.
-   */
-  /**
-   * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
-   * $spec kann 'Spaltenname' oder ['Alt1','Alt2', …] sein.
+   * Importiert eine Produktgruppe, bestehend aus einem Hauptprodukt und dessen Varianten.
    *
-   * @param  array<string,mixed>      $row
-   * @param  string|array<int,string> $spec
-   * @return string|null
-   */
-  private function cell(array $row, string|array $spec): ?string
-  {
-    if (is_array($spec)) {
-      foreach ($spec as $col) {
-        if (array_key_exists($col, $row) && trim((string) $row[$col]) !== '') {
-          return trim((string) $row[$col]);
-        }
-      }
-      return null;
-    }
-
-    return array_key_exists($spec, $row) && trim((string) $row[$spec]) !== ''
-      ? trim((string) $row[$spec])
-      : null;
-  }
-
-  /**
-   * Importiert eine Produkt-Gruppe (Hauptprodukt + Varianten).
+   * Ermittelt, ob das Hauptprodukt bereits existiert (via Slug und optional Hersteller-ID).
+   * Legt das Produkt an oder aktualisiert es (Upsert-Logik).
+   * Anschließend werden die einzelnen Zeilen als Produktvarianten importiert.
    *
-   * - Spaltenzugriffe robust via firstNonEmptyFromRow() (Umlaute/NBSP tolerant)
-   * - Short-Description-Fallback aus Description
-   * - Upsert schema-robust (nur existierende Spalten) + forceFill()
-   * - Klare Diagnose-Logs: welche Felder werden geschrieben / gefiltert / Variantenanzahl
-   *
-   * @param string                                $groupKey
-   * @param \Illuminate\Support\Collection<int,array<string,mixed>> $rows
+   * @param string $groupKey Der Wert, nach dem die Produkte gruppiert wurden (z.B. Produktname oder Artikelnummer).
+   * @param \Illuminate\Support\Collection $rows Eine Sammlung von CSV-Zeilen, die zu dieser Produktgruppe gehören.
    * @return void
    */
-  protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
+  protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows)
   {
+    Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => count($rows)]);
 
-    // reference kann String oder Array sein
-    $referenceKey  = $this->mapping['reference'] ?? null;
-    $referenceCols = is_array($referenceKey)
-      ? $referenceKey
-      : ((is_string($referenceKey) && $referenceKey !== '') ? [$referenceKey] : []);
+    $referenceKey = $this->mapping['reference'] ?? 'Reference';
 
-    // Fallbacks: Edelrid 'Artikelnummer', generisch 'Reference'
-    if (empty($referenceCols) || $referenceCols === ['Reference']) {
-      $referenceCols = ['Artikelnummer', 'Reference'];
-    }
-
-    /**
-     * Erzeuge die Produkt-Payload aus dem Mapping.
-     * Zusätzlich: Diagnose-Logs je Feld, um zu sehen, welcher Kandidat greift.
-     */
+    // --- Robuste Payload-Erstellung für das Hauptprodukt ---
+    // Wir durchlaufen das 'product'-Mapping und suchen für jedes Feld
+    // den ersten nicht-leeren Wert innerhalb der gesamten Produktgruppe.
     $productMapping = $this->mapping['product'] ?? [];
     $productPayload = [];
 
-    foreach ($productMapping as $dbField => $csvColumn) {
-      $candidates = is_array($csvColumn) ? $csvColumn : [$csvColumn];
+    foreach ($productMapping as $dbField => $csvColumnOrList) {
+      $columns   = is_array($csvColumnOrList) ? $csvColumnOrList : [$csvColumnOrList];
 
-      // erste Zeile in der Gruppe mit nicht-leerem Wert (robust) finden
-      $sourceRow = $rows->first(function (array $row) use ($candidates) {
-        $v = $this->firstNonEmptyFromRow($row, $candidates);
-        return $v !== null && trim((string)$v) !== '';
+      // Finde die erste Zeile in der Gruppe, die für mind. eine der Spalten einen Wert hat.
+      $sourceRow = $rows->first(function (array $row) use ($columns) {
+        return $this->firstNonEmptyFromRow($row, $columns) !== null;
       });
 
-      $resolved = null;
       if ($sourceRow) {
-        $val = $this->firstNonEmptyFromRow($sourceRow, $candidates);
-        if ($val !== null && trim((string)$val) !== '') {
-          $resolved = trim((string)$val);
-          $productPayload[$dbField] = $resolved;
+        $val = $this->firstNonEmptyFromRow($sourceRow, $columns);
+        if ($val !== null) {
+          $productPayload[$dbField] = $val;
         }
       }
-
-      // Diagnose-Log: zeigt pro Feld, welche Kandidaten probiert wurden und was rauskam
-      /**
-       * ! Mit Flag aufrufen !!!
-       */
-      ImportLog::debug('Mapping check', [
-        'group'      => $groupKey,
-        'field'      => $dbField,
-        'candidates' => $candidates,
-        'resolved'   => $resolved, // null = kein Treffer
-      ]);
     }
 
-
-    // Debug pro Feld
-    ImportLog::debug('Mapping check', [
-      'field' => $dbField,
-      'candidates' => $candidates,
-      'resolved' => $productPayload[$dbField] ?? null,
-    ]);
-
-
-
-    // Fallback: Shortdescription aus Description (max 255, HTML raus)
-    if (
-      (!array_key_exists('short_description', $productPayload) ||
-        trim((string)($productPayload['short_description'] ?? '')) === '')
-      && !empty($productPayload['description'])
-    ) {
-      $productPayload['short_description'] = \Illuminate\Support\Str::limit(
-        strip_tags((string) $productPayload['description']),
-        255
-      );
-    }
-
-    // Name/Slug/Feste Werte
-    $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
-    $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());
+    // Name/Slug wie gehabt (dein bestehender Code hier weiterführen)
+    $name = trim((string) ($productPayload['product_name'] ?? $productPayload['name'] ?? $groupKey));
+    $slug = Str::slug($name);
 
     $finalProductPayload = array_merge($productPayload, [
       'product_name'    => $name,
-      // Achtung: diese Keys schreiben wir nur, wenn Spalten existieren (siehe unten)
       'product_type'    => 'variable',
       'manufacturer_id' => $this->manufacturerId,
       'status'          => 'draft',
     ]);
 
-    // --- Upsert schema-robust + Diagnose ---
-    /** @var \App\Models\Product $tmpModel */
-    $tmpModel   = app(\App\Models\Product::class);
-    $tableName  = $tmpModel->getTable();
-    $columns    = \Illuminate\Support\Facades\Schema::getColumnListing($tableName);
-    $columnSet  = array_flip($columns);
-
-    // Welche Felder KÖNNEN wir wirklich schreiben?
-    $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
-    $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
-
-    // Basisdaten für Create (nur vorhandene Spalten)
-    $baseCreate = [];
-    foreach (
-      [
-        'slug'            => $slug,
-        'manufacturer_id' => $this->manufacturerId,
-        'product_name'    => $name,
-        'product_type'    => $finalProductPayload['product_type'] ?? null,
-        'status'          => $finalProductPayload['status'] ?? null,
-      ] as $col => $val
-    ) {
-      if (isset($columnSet[$col]) && $val !== null) {
-        $baseCreate[$col] = $val;
-      }
-    }
-
-    // Produkt holen/erstellen
+    // 1) Match: slug + (optional) manufacturer_id
     $query = \App\Models\Product::query()->where('slug', $slug);
-    #if ($this->manufacturerId) {
-    #  $query->where('manufacturer_id', $this->manufacturerId);
-    #}
+    if ($this->manufacturerId) {
+      $query->where('manufacturer_id', $this->manufacturerId);
+    }
     $product = $query->first();
 
+    // 2) Upsert
     if ($product) {
-      $product->forceFill($writablePayload)->save();
+      $product->fill($finalProductPayload)->save();
     } else {
-      $product = \App\Models\Product::create($baseCreate);
-      if (!empty($writablePayload)) {
-        $product->forceFill($writablePayload)->save();
-      }
+      $product = \App\Models\Product::create(array_merge($finalProductPayload, [
+        'slug' => $slug, // nur beim erstmaligen Anlegen
+      ]));
     }
 
-    Log::info('Product upserted', [
-      'id'              => $product->id,
-      'name'            => $product->product_name,
-      'product_number'  => $product->product_number,
-      'ean'             => $product->external_url,
-    ]);
-
-    // --- Varianten importieren ---
     $skipped = 0;
-    $imported = 0;
-    $loggedRefDiag = false;
-
     foreach ($rows as $row) {
-      $ref = $this->firstNonEmptyFromRow($row, $referenceCols);
-      $ref = $ref !== null ? trim((string) $ref) : '';
-
-      if (!$loggedRefDiag) {
-        /**
-         * ! Mit Flag !!!
-         */
-        ImportLog::debug('Reference detection (group)', [
-          'group'          => $groupKey,
-          'reference_cols' => $referenceCols,
-          'sample_ref'     => $ref,
-        ]);
-        $loggedRefDiag = true;
-      }
-
-      if ($ref === '') {
+      if (empty($row[$referenceKey])) {
         $skipped++;
         continue;
       }
-
-      // Variante anlegen/aktualisieren (bestehende Logik)
       $this->importVariation($product, $row);
-      $imported++;
     }
 
-    // Nachzählung (falls Relation vorhanden)
-    try {
-      $relCount = method_exists($product, 'variations') ? $product->variations()->count() : null;
-    } catch (\Throwable $e) {
-      $relCount = null;
-    }
-
-    if ($skipped > 0 || $imported > 0) {
-      Log::info('Variation summary', [
-        'group'          => $groupKey,
-        'imported'       => $imported,
-        'skipped'        => $skipped,
-        'relation_count' => $relCount,
+    if ($skipped > 0) {
+      Log::warning('Variations skipped due to missing reference', [
+        'group' => $groupKey,
+        'skipped' => $skipped,
       ]);
     }
   }
+
+
 
   /**
    * Importiert oder aktualisiert eine einzelne Produktvariante.
@@ -415,176 +170,105 @@ class GenericCsvProductImporter implements CsvImporterContract
    * Führt ein `updateOrCreate` für die Variante durch und stößt die Zuweisung
    * der Attribute (z.B. Farbe, Größe) an.
    *
-   * @param Product $product Das übergeordnete Hauptprodukt.
-   * @param array   $row     Die CSV-Zeile, die die Daten der Variante enthält.
+   * @param App\Models\Product  $product Das übergeordnete Hauptprodukt.
+   * @param array               $row     Die CSV-Zeile, die die Daten der Variante enthält.
    * @return void
    */
   protected function importVariation(Product $product, array $row)
   {
     $referenceKey = $this->mapping['reference'] ?? 'Reference';
-    $ref = isset($row[$referenceKey]) ? trim($row[$referenceKey]) : null;
+    $ref = isset($row[$referenceKey]) ? trim((string) $row[$referenceKey]) : null;
     if ($ref === null || $ref === '') {
-      return; // ohne SKU keine Variante
+      return; // ohne eindeutige Referenz (SKU) keine Variante
     }
 
-    // 1. Payload für die Variante aus der Mapping-Datei erstellen
-    $variationPayload = [];
+    // 1) Payload für die Variante mit Fallback‑Spalten bauen
+    $variationPayload       = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
-    foreach ($variationFieldsMapping as $dbField => $csvColumn) {
-      if (isset($row[$csvColumn])) {
-        $variationPayload[$dbField] = trim($row[$csvColumn]);
+
+    foreach ($variationFieldsMapping as $dbField => $csvColumnOrList) {
+      $columns = is_array($csvColumnOrList) ? $csvColumnOrList : [$csvColumnOrList];
+      $val     = $this->firstNonEmptyFromRow($row, $columns);
+      if ($val !== null) {
+        $variationPayload[$dbField] = $val;
       }
     }
 
-    // 2. Variante erstellen oder aktualisieren
+    // 2) Upsert der Variante
     $variation = ProductVariation::updateOrCreate(
-      ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
+      ['product_id' => $product->id, 'sku' => $ref],
       $variationPayload
     );
 
-    // 2. Attribute über die neuen Tabellen zuweisen
+    // 3) Attribute zuweisen (Farbe/Größe etc. mit Fallbacks)
     $this->handleVariationAttributes($variation, $row);
   }
 
   /**
-   * Liest Varianten-Attribute aus der CSV-Zeile und verknüpft deren Werte
-   * mit der Variante (Pivot-Tabelle).
+   * Erstellt und verknüpft Attribute und deren Werte mit einer Produktvariante.
    *
-   * @param  \App\Models\ProductVariation  $variation
-   * @param  array<string,mixed>           $row
+   * Liest die Attribut-Mappings aus der Konfigurationsdatei (z.B. 'color' => 'Farbe').
+   * Erstellt die `ProductAttribute` (z.B. "Farbe") und `ProductAttributeValue` (z.B. "Blau")
+   * falls sie noch nicht existieren (`firstOrCreate`).
+   * Synchronisiert anschließend die gefundenen/erstellten Attributwerte mit der Variante
+   * über die Pivot-Tabelle `product_variation_attribute_value`.
+   *
+   * @param \App\Models\ProductVariation  $variation Die zu bearbeitende Produktvariante.
+   * @param array                         $row       Die CSV-Zeile mit den Attributwerten.
    * @return void
    */
-  protected function handleVariationAttributes(\App\Models\ProductVariation $variation, array $row): void
+  protected function handleVariationAttributes(ProductVariation $variation, array $row): void
   {
-    $attributeValueIds = [];
-    $variationMapping  = $this->mapping['variation'] ?? [];
+    $attributeValueIds  = [];
+    $variationMapping   = $this->mapping['variation'] ?? [];
 
-    foreach ($variationMapping as $attributeName => $csvSpec) {
-      $value = $this->cell($row, $csvSpec);
-      if ($value === null || $value === '') {
+    foreach ($variationMapping as $attributeName => $csvColumnOrList) {
+      $columns = is_array($csvColumnOrList) ? $csvColumnOrList : [$csvColumnOrList];
+
+      $value = $this->firstNonEmptyFromRow($row, $columns);
+      $value = $value !== null ? trim((string) $value) : '';
+
+      if ($value === '') {
         continue;
       }
 
-      $attributeDisplayName = (string) $attributeName;
-      $attributeSlug        = \Illuminate\Support\Str::slug($attributeDisplayName);
-
-      $attribute = \App\Models\ProductAttribute::firstOrCreate(
-        ['slug' => $attributeSlug],
-        ['name' => $attributeDisplayName]
+      // Attribut + Wert erstellen/ermitteln
+      $attribute = ProductAttribute::firstOrCreate(
+        ['slug' => Str::slug($attributeName)],
+        ['name' => $attributeName]
       );
 
-      $attributeValue = \App\Models\ProductAttributeValue::firstOrCreate(
-        ['attribute_id' => $attribute->id, 'slug' => \Illuminate\Support\Str::slug($value)],
+      $attributeValue = ProductAttributeValue::firstOrCreate(
+        ['attribute_id' => $attribute->id, 'slug' => Str::slug($value)],
         ['value' => $value]
       );
 
       $attributeValueIds[] = $attributeValue->id;
     }
 
-    if (! empty($attributeValueIds)) {
+    if (!empty($attributeValueIds)) {
       $variation->attributeValues()->sync($attributeValueIds);
     }
   }
 
-
-
   /**
-   * Normalisiert CSV-Headernamen robust:
-   * - entfernt Steuerzeichen / NBSP / BOM
-   * - reduziert Mehrfach-Spaces
-   * - trimmt
-   * - lowercased für case-insensitive Vergleiche
+   * Liefert den ersten nicht‑leeren Wert aus einer Liste von CSV‑Spalten.
    *
-   * @param string $header
-   * @return string
+   * @param array        $row      CSV‑Zeile (assoziatives Array Kopf→Wert)
+   * @param array<int,string> $columns  Liste möglicher Spaltenüberschriften (Priorität von links nach rechts)
+   * @return string|null
    */
-  protected function normalizeHeader(string $header): string
+  protected function firstNonEmptyFromRow(array $row, array $columns): ?string
   {
-    // unsichtbare/Steuerzeichen (inkl. NBSP \xA0 und BOM \xFEFF) entfernen
-    $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $header) ?? $header;
-    // Mehrfach-Spaces vereinheitlichen
-    $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-    return mb_strtolower(trim($s));
-  }
-
-  /**
-   * Liefert den ersten nicht-leeren Zellwert aus einer CSV-Zeile anhand einer Kandidatenliste
-   * von Spaltennamen. Berücksichtigt unterschiedliche Schreibweisen/Umlaute/Spaces dank
-   * Header-Normalisierung.
-   *
-   * Beispiel:
-   *   firstNonEmptyFromRow($row, ['Farbe Bezeichnung','Farb-Code','Farbcode','Farbe'])
-   *
-   * @param array<string,mixed> $row         Assoziatives Array (CSV-Zeile)
-   * @param array<int,string>   $candidates  Mögliche Spaltennamen (in Priorität)
-   * @return ?string                         Erster gefundener, getrimmter Wert oder null
-   */
-  protected function firstNonEmptyFromRow(array $row, array $candidates): ?string
-  {
-    if (empty($row) || empty($candidates)) {
-      return null;
-    }
-
-    // Map: normalisierter Header -> Original-Header
-    $keyMap = [];
-    foreach (array_keys($row) as $key) {
-      $keyMap[$this->normalizeHeader((string)$key)] = $key;
-    }
-
-    foreach ($candidates as $cand) {
-      $normCand = $this->normalizeHeader((string)$cand);
-
-      // 1) bevorzugt über normalisierte Header-Map
-      if (isset($keyMap[$normCand])) {
-        $val = $row[$keyMap[$normCand]] ?? null;
-        if (is_string($val)) {
-          $val = trim($val);
-          // erneut unsichtbare Zeichen entfernen
-          $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
-        }
-        if ($val !== null && $val !== '') {
-          return (string)$val;
-        }
+    foreach ($columns as $col) {
+      if (!array_key_exists($col, $row)) {
+        continue;
       }
-
-      // 2) Fallback: direkter Zugriff (falls Key exakt passt)
-      if (array_key_exists($cand, $row)) {
-        $val = $row[$cand];
-        if (is_string($val)) {
-          $val = trim($val);
-          $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
-        }
-        if ($val !== null && $val !== '') {
-          return (string)$val;
-        }
+      $val = trim((string) $row[$col]);
+      if ($val !== '') {
+        return $val;
       }
     }
-
     return null;
-  }
-
-  /**
-   * Lädt das Mapping entweder aus config('import_mappings.<name>')
-   * oder aus config/import_mappings/<name>.php (Datei muss ein Array returnen).
-   *
-   * @throws \RuntimeException wenn nichts gefunden.
-   */
-  protected function loadMapping(string $name): array
-  {
-    $fromConfig = config("import_mappings.{$name}");
-    if (is_array($fromConfig)) {
-      return $fromConfig;
-    }
-
-    $path = base_path("config/import_mappings/{$name}.php");
-    if (is_file($path)) {
-      $map = require $path;
-      if (! is_array($map)) {
-        throw new \RuntimeException("Mapping file {$path} must return an array.");
-      }
-      return $map;
-    }
-
-    throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
   }
 }
