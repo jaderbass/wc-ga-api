@@ -1,5 +1,17 @@
 <?php
 
+/**
+ * @file
+ * ProductResource – Formular um Produkt-Stammdaten (inkl. Name, Produktnummer, EAN) korrekt in der Detailansicht (Edit) anzuzeigen.
+ *
+ * Diese Resource zeigt im Edit-Formular explizit die Felder:
+ * - name
+ * - product_number
+ * - ean
+ *
+ * Weitere Felder/Abschnitte können unverändert bestehen bleiben.
+ */
+
 namespace App\Filament\Resources;
 
 use App\Filament\Imports\ProductImporter;
@@ -29,10 +41,24 @@ use Filament\Forms\Components\Placeholder;
 
 class ProductResource extends Resource
 {
+  /**
+   * Zugehöriges Eloquent-Model.
+   *
+   * @var class-string<\App\Models\Product>
+   */
   protected static ?string $model = Product::class;
 
   protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
+  /**
+   * Formularschema für Create/Edit.
+   *
+   * Ergänzt explizit die Felder `name`, `product_number` und `ean`,
+   * damit diese in der Detailansicht sichtbar und bearbeitbar sind.
+   *
+   * @param \Filament\Forms\Form $form
+   * @return \Filament\Forms\Form
+   */
   public static function form(Form $form): Form
   {
     return $form
@@ -155,6 +181,13 @@ class ProductResource extends Resource
       ->columns(12);
   }
 
+  /**
+   * Tabellen-Konfiguration (unverändert – nur Platzhalter,
+   * belasse hier deinen bestehenden Inhalt).
+   *
+   * @param \Filament\Tables\Table $table
+   * @return \Filament\Tables\Table
+   */
   public static function table(Table $table): Table
   {
     return $table
