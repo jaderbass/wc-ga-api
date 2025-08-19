@@ -1,4 +1,8 @@
 <?php
+/**
+ * @file
+ * Product Model – ergänzt um die Alias-Beziehung `variants()`.
+ */
 
 namespace App\Models;
 
@@ -47,7 +51,27 @@ class Product extends Model
         'woo_synced_at' => 'datetime',
     ];
 
-    /** Beziehungen */
+    /**
+     * Liefert die Produktvarianten (Alias für `variations()`).
+     *
+     * Dieser Alias wird vom Filament-RelationManager `ProductVariantRelationManager`
+     * erwartet, da dort `protected static string $relationship = 'variants';`
+     * gesetzt ist. So vermeiden wir einen Methoden-Namenskonflikt und können
+     * weiterhin eine ggf. bereits existierende Methode `variations()` parallel nutzen.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<ProductVariation>
+     */
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariation::class, 'product_id');
+    }
+
+    // Optional (falls noch nicht vorhanden und du sie nutzt):
+    /**
+     * Liefert die Produktvarianten.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany<ProductVariation>
+     */
     public function variations(): HasMany
     {
         return $this->hasMany(ProductVariation::class);
