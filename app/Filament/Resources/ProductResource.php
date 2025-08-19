@@ -41,16 +41,16 @@ class ProductResource extends Resource
           ->required()
           ->relationship('manufacturer', 'manufacturer')
           ->columnSpanFull(),
-        Forms\Components\TextInput::make('productnumber')
+        Forms\Components\TextInput::make('product_number')
           ->maxLength(100)
           ->columnSpan(3),
-        Forms\Components\TextInput::make('eancode')
+        Forms\Components\TextInput::make('ean')
           ->maxLength(14)
           ->columnSpan(3),
-        Forms\Components\TextInput::make('skucode')
+        Forms\Components\TextInput::make('sku')
           ->maxLength(32)
           ->columnSpan(3),
-        Forms\Components\TextInput::make('productname')
+        Forms\Components\TextInput::make('product_name')
           ->required()
           ->maxLength(100)
           ->columnSpan(3),
@@ -64,12 +64,12 @@ class ProductResource extends Resource
           ->numeric()
           ->integer()
           ->columnSpan(2),
-        Forms\Components\TextInput::make('regularprice')
+        Forms\Components\TextInput::make('regular_price')
           ->required()
           ->numeric()
           ->integer()
           ->columnSpan(2),
-        Forms\Components\TextInput::make('saleprice')
+        Forms\Components\TextInput::make('sale_price')
           ->required()
           ->numeric()
           ->integer()
@@ -97,29 +97,29 @@ class ProductResource extends Resource
         Forms\Components\Checkbox::make('unit')
           ->label('Unit')
           ->columnSpanFull(),
-        Forms\Components\TextInput::make('unitprice')
+        Forms\Components\TextInput::make('unit_price')
           ->numeric()
           ->integer()
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('pcsperbox')
+        Forms\Components\TextInput::make('pcs_per_box')
           ->numeric()
           ->integer()
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('boxwidth')
+        Forms\Components\TextInput::make('box_width')
           ->numeric()
           ->integer()
           ->helperText('Box width in mm')
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('boxlength')
+        Forms\Components\TextInput::make('box_length')
           ->numeric()
           ->integer()
           ->helperText('Box length in mm')
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('boxheight')
+        Forms\Components\TextInput::make('box_height')
           ->numeric()
           ->integer()
           ->helperText('Box height in mm')

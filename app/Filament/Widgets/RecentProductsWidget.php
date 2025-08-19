@@ -17,14 +17,14 @@ class RecentProductsWidget extends BaseWidget
                 Product::query()->latest()->limit(5)
             )
             ->columns([
-                Tables\Columns\TextColumn::make('productnumber')
+                Tables\Columns\TextColumn::make('product_number')
                     ->label('Artikelnummer')
                     ->sortable()
                     ->searchable(),
-                Tables\Columns\TextColumn::make('productname')
+                Tables\Columns\TextColumn::make('product_name')
                     ->label('Produktname')
                     ->limit(40),
-                Tables\Columns\TextColumn::make('manufacturer.name')
+                Tables\Columns\TextColumn::make('manufacturer.manufacturer')
                     ->label('Hersteller'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Importiert am')
