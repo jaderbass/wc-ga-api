@@ -1,17 +1,17 @@
-import { defineConfig } from 'vite';
-import laravel from 'laravel-vite-plugin';
-import tailwindcss from '@tailwindcss/vite';
+import { defineConfig } from 'vite'
+import laravel from 'laravel-vite-plugin'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
     plugins: [
+        tailwindcss(),
         laravel({
             input: [
-                'resources/css/app.css',                    // dein globales CSS
-                'resources/js/app.js',                      // optional
-                'resources/css/filament/admin/theme.css',   // <— NEU: dein Filament-Theme
+                'resources/css/app.css',
+                'resources/js/app.js',
+                'resources/css/filament/admin-overrides.css', // <— NEU
             ],
             refresh: true,
         }),
-        tailwindcss(),
     ],
-});
+})
