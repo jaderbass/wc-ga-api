@@ -1,0 +1,28 @@
+/* resources/css/filament/admin/theme.css */
+
+/* 1) Original-Styles von Filament einbinden */
+@import '/vendor/filament/filament/resources/css/theme.css';
+
+/* 2) (Tailwind v3) – falls vorhanden: Konfiguration referenzieren */
+// @config '../../tailwind.config.js';
+
+/* 3) Deine Overrides – nur das, was du wirklich ändern willst */
+html[data-theme="light"] h1,
+html[data-theme="light"] h2,
+html[data-theme="light"] h3,
+html[data-theme="light"] h4,
+html[data-theme="light"] h5,
+html[data-theme="light"] h6 {
+  color: #1f2937;
+  /* gray-800: hoher Kontrast, weniger „hart“ als Schwarz */
+}
+
+html[data-theme="light"] .fi-section-header-heading,
+html[data-theme="light"] .fi-header-heading,
+html[data-theme="light"] .fi-ta-header h1,
+html[data-theme="light"] .fi-resource-name,
+html[data-theme="light"] .prose h1,
+html[data-theme="light"] .prose h2,
+html[data-theme="light"] .prose h3 {
+  color: #1f2937;
+}

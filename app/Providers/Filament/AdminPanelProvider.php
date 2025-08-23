@@ -61,6 +61,7 @@ class AdminPanelProvider extends PanelProvider
             // ->brandLogo(asset('images/geoalpin-shop-favicon.svg'))
             ->brandLogo(fn () => view('components.filament-brand-logo'))
             ->brandLogoHeight('2rem')
-            ->brandName('WooCommerce-Geoalpin-API');
+            ->brandName('WooCommerce-Geoalpin-API')
+            ->viteTheme('resources/css/filament/admin/theme.css'); // <— wichtig;
     }
 }

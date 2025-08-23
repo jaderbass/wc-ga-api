@@ -16,3 +16,4 @@
 |`app/Imports/`|Basis-Importer für die verschiedenen Import-Methoden (CSV, XML, API-URL)|
 |`app/Imports/Manufacturer/`|spezielle Importer für die einzelnen Hersteller|
 |`config/import_mappings/{HerstellerName}.php`|Die Mapping-Datei für den generischen Importer|
+|`resources/css/filament/admin/theme.css`|Einstellungen für das Layout (css)|
