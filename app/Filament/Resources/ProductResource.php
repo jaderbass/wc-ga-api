@@ -192,40 +192,56 @@ class ProductResource extends Resource
   {
     return $table
       ->columns([
-        Tables\Columns\TextColumn::make('product_number')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('ean')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('skucode')
-          ->searchable()
-          ->sortable(),
         Tables\Columns\TextColumn::make('product_name')
+          ->label('Produktname')
+          ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string)$state, 20) : '—')
+          ->tooltip(fn($state) => $state ?: null)
           ->searchable()
-          ->sortable(),
-        /* Tables\Columns\TextColumn::make('description')
+          ->sortable()
+          ->wrap()
+          ->toggleable(),
+
+        Tables\Columns\TextColumn::make('manufacturer.manufacturer')
+          ->label('Hersteller')
           ->searchable()
-          ->sortable(), */
+          ->sortable()
+          ->toggleable(),
+
+        Tables\Columns\TextColumn::make('product_number')
+          ->label('Artikelnummer')
+          ->searchable()
+          ->sortable()
+          ->toggleable(),
+
+        Tables\Columns\TextColumn::make('ean')
+          ->label('EAN')
+          ->searchable()
+          ->sortable()
+          ->toggleable(),
+
+        // NEU: hart auf 45 Zeichen begrenzen + Tooltip mit vollem Text
         Tables\Columns\TextColumn::make('short_description')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('product_type')
-          ->searchable()
-          ->sortable(),
-        /* Tables\Columns\TextColumn::make('price')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('regular_price')
-          ->searchable()
-          ->sortable(),
-        Tables\Columns\TextColumn::make('sale_price')
-          ->searchable()
-          ->sortable(), */
+          ->label('Kurzbeschreibung')
+          // 1) State aus Record ableiten: short_description ODER Fallback auf description
+          ->state(fn($record) => $record->short_description ?: $record->description)
+          // 2) Anzeige kürzen
+          ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string) $state, 40) : '—')
+          // 3) Tooltip: voller Text (gleicher Fallback)
+          ->tooltip(fn($record) => ($record->short_description ?: $record->description) ?: null)
+          ->toggleable(),
       ])
+      ->defaultSort('product_name')
+      ->paginated([10, 25, 50])
+      ->defaultPaginationPageOption(25)
       ->filters([
-        //
-      ])
+        Tables\Filters\SelectFilter::make('manufacturer_id')
+          ->label('Hersteller')
+          ->relationship('manufacturer', 'manufacturer') // Relation + anzuzeigendes Feld
+          ->multiple()                                   // ⬅️ Mehrfachauswahl aktivieren
+          ->searchable()
+          ->preload()
+          ->indicator('Hersteller'),                     // hübscher Filter-Badge-Text
+    ])
       ->actions([
         Tables\Actions\EditAction::make(),
       ])
