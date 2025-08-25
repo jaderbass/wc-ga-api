@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @file
  * Product Model – ergänzt um die Alias-Beziehung `variants()`.
@@ -10,6 +11,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * Class Product
+ *
+ * Aktualisiert gemäß Änderungsanforderung (2025-08-25):
+ *  - Neue Felder: external_url, declaration_of_compliance, manual_url, size,
+ *    certification, author_firstname, author_lastname, author_name, author_mail
+ *  - Entfernte Felder: regular_price, sale_price, stock_quantity, status,
+ *    woo_synced_at, price, unit_price, pcs_per_box, mpn
+ *
+ * Hinweis: Maßeinheits- und Maß-Felder (width, length, height, unit,
+ * box_width, box_length, box_height, weight) werden als STRING beibehalten,
+ * da Lieferanten Zahl+Einheit kombiniert liefern können.
+ */
 class Product extends Model
 {
     protected $fillable = [
@@ -17,39 +31,33 @@ class Product extends Model
         'sku',
         'description',
         'short_description',
-        'regular_price',
-        'sale_price',
-        'stock_quantity',
         'stock_status',
         'product_type',
         'manufacturer_id',
-        'status',
         'slug',
-        'woo_synced_at',
-
-        // Zusätzliche Importfelder
         'product_number',
         'ean',
         'product_name',
-        'price',
-        'regular_price',
-        'sale_price',
         'width',
         'length',
         'height',
         'unit',
-        'unit_price',
-        'pcs_per_box',
         'box_width',
         'box_length',
         'box_height',
-        'mpn',
         'weight',
+        'external_url',
+        'declaration_of_compliance',
+        'manual_url',
+        'size',
+        'certification',
+        'author_firstname',
+        'author_lastname',
+        'author_name',
+        'author_mail',
     ];
 
-    protected $casts = [
-        'woo_synced_at' => 'datetime',
-    ];
+    protected $casts = [];
 
     /**
      * Liefert die Produktvarianten (Alias für `variations()`).

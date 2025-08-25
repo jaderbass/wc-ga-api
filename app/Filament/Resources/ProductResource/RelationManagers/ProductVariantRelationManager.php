@@ -63,12 +63,6 @@ class ProductVariantRelationManager extends RelationManager
           ->searchable()
           ->toggleable(),
 
-        Tables\Columns\TextColumn::make('price')
-          ->label('Preis')
-          ->money('EUR', true)
-          ->sortable()
-          ->toggleable(),
-
         // Zusammenfassung der Attribut-Kombinationen, z. B. "Farbe: Blau · Größe: L"
         Tables\Columns\TextColumn::make('attributes_summary')
           ->label('Attribute')

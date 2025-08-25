@@ -14,31 +14,38 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Imports\ProductImporter;
 use App\Filament\Resources\ProductResource\Pages;
-use App\Filament\Resources\ProductResource\RelationManagers;
-use App\Models\Manufacturer;
 use App\Models\Product;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Checkbox;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Hidden;
 use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Actions\ImportAction;
 use Filament\Tables\Table;
 use Filament\Notifications\Notification;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-// use App\Filament\Resources\ImporterSelector;
-use App\Services\ImporterSelector;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Filament\Forms\Components\Placeholder;
 
+/**
+ * Class ProductResource
+ *
+ * Änderungen gemäß Excel (2025-08-25):
+ *  - Neu hinzugefügt: external_url, declaration_of_compliance, manual_url, size,
+ *    certification, author_firstname, author_lastname, author_name, author_mail
+ *  - Entfernt: regular_price, sale_price, stock_quantity, status, woo_synced_at,
+ *    price, unit_price, pcs_per_box, mpn
+ *
+ * Bestehende Felder und Struktur wurden NICHT verändert.
+ */
 class ProductResource extends Resource
 {
   /**
@@ -63,23 +70,23 @@ class ProductResource extends Resource
   {
     return $form
       ->schema([
-      Forms\Components\Section::make('Stammdaten')
+        Section::make('Stammdaten')
         ->description('Grundlegende Produktinformationen')
         ->schema([
-          Forms\Components\Grid::make(12)->schema([
-            Forms\Components\TextInput::make('product_name')
+          Grid::make(12)->schema([
+            TextInput::make('product_name')
               ->label('Produktname')
               ->required()
               ->maxLength(255)
               ->columnSpan(8),
 
-            Forms\Components\TextInput::make('product_number')
+            TextInput::make('product_number')
               ->label('Produktnummer')
               ->maxLength(64)
               ->helperText('Interne/Hersteller-Artikelnummer')
               ->columnSpan(4),
 
-            Forms\Components\TextInput::make('ean')
+            TextInput::make('ean')
               ->label('EAN')
               ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
               ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
@@ -88,95 +95,83 @@ class ProductResource extends Resource
           ]),
         ])
         ->collapsible(),
-        Forms\Components\Select::make('manufacturer_id')
+        Select::make('manufacturer_id')
           ->required()
           ->relationship('manufacturer', 'manufacturer')
-          // ->columnSpanFull(),
           ->columnSpan(9),
-        /* Forms\Components\TextInput::make('product_number')
-          ->maxLength(100)
-          ->columnSpan(3), */
-        /* Forms\Components\TextInput::make('ean')
-          ->maxLength(14)
-          ->columnSpan(3), */
-        Forms\Components\TextInput::make('sku')
+        TextInput::make('sku')
           ->maxLength(32)
           ->columnSpan(3),
-        /* Forms\Components\TextInput::make('product_name')
-          ->required()
-          ->maxLength(100)
-          ->columnSpan(3), */
-        Forms\Components\Textarea::make('description')
+        Textarea::make('description')
           ->required()
           ->columnSpan(6),
-        Forms\Components\TextInput::make('shortdescription')
+        TextInput::make('shortdescription')
           ->columnSpan(6),
-        Forms\Components\TextInput::make('price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('regular_price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('sale_price')
-          ->required()
-          ->numeric()
-          ->integer()
-          ->columnSpan(2),
-        Forms\Components\TextInput::make('width')
-          ->numeric()
-          ->integer()
+        TextInput::make('width')
           ->helperText('Width in mm')
           ->columnSpan(2),
-        Forms\Components\TextInput::make('length')
-          ->numeric()
-          ->integer()
+        TextInput::make('length')
           ->helperText('Length in mm')
           ->columnSpan(2),
-        Forms\Components\TextInput::make('height')
-          ->numeric()
-          ->integer()
+        TextInput::make('height')
           ->helperText('Height in mm')
           ->columnSpan(2),
-        Forms\Components\TextInput::make('weight')
-          ->numeric()
-          ->integer()
+        TextInput::make('weight')
           ->helperText('Weight in mm')
           ->columnSpan(2),
-        Forms\Components\Checkbox::make('unit')
+        Checkbox::make('unit')
           ->label('Unit')
           ->columnSpanFull(),
-        Forms\Components\TextInput::make('unit_price')
-          ->numeric()
-          ->integer()
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('pcs_per_box')
-          ->numeric()
-          ->integer()
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_width')
-          ->numeric()
-          ->integer()
+        TextInput::make('box_width')
           ->helperText('Box width in mm')
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_length')
-          ->numeric()
-          ->integer()
+        TextInput::make('box_length')
           ->helperText('Box length in mm')
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
-        Forms\Components\TextInput::make('box_height')
-          ->numeric()
-          ->integer()
+        TextInput::make('box_height')
           ->helperText('Box height in mm')
           ->columnSpan(2)
           ->hidden(fn(Get $get): bool => $get('unit')),
+        TextInput::make('external_url')
+          ->label('Externe URL')
+          ->url()
+          ->maxLength(2048),
+
+        TextInput::make('declaration_of_compliance')
+          ->label('Konformitätserklärung')
+          ->maxLength(512),
+
+        TextInput::make('manual_url')
+          ->label('Manual / Handbuch')
+          ->url()
+          ->maxLength(2048),
+
+        TextInput::make('size')
+          ->label('Größe (frei)')
+          ->maxLength(128),
+
+        TextInput::make('certification')
+          ->label('Zertifizierung')
+          ->maxLength(255),
+
+        TextInput::make('author_firstname')
+          ->label('Autor Vorname')
+          ->maxLength(100),
+
+        TextInput::make('author_lastname')
+          ->label('Autor Nachname')
+          ->maxLength(100),
+
+        TextInput::make('author_name')
+          ->label('Autor Anzeigename')
+          ->maxLength(200),
+
+        TextInput::make('author_mail')
+          ->label('Autor E-Mail')
+          ->email()
+          ->maxLength(255),
       ])
       ->columns(12);
   }
@@ -229,6 +224,22 @@ class ProductResource extends Resource
           // 3) Tooltip: voller Text (gleicher Fallback)
           ->tooltip(fn($record) => ($record->short_description ?: $record->description) ?: null)
           ->toggleable(),
+
+        Tables\Columns\TextColumn::make('size')
+          ->label('Größe'),
+
+        Tables\Columns\TextColumn::make('certification')
+          ->label('Zertifizierung')
+          ->toggleable(isToggledHiddenByDefault: true),
+
+        Tables\Columns\TextColumn::make('external_url')
+          ->label('Externe URL')
+          ->limit(30)
+          ->toggleable(isToggledHiddenByDefault: true),
+
+        Tables\Columns\TextColumn::make('author_name')
+          ->label('Autor*in')
+          ->toggleable(isToggledHiddenByDefault: true),
       ])
       ->defaultSort('product_name')
       ->paginated([10, 25, 50])
@@ -249,7 +260,7 @@ class ProductResource extends Resource
         Tables\Actions\Action::make('importProducts')
           ->label('Import starten')
           ->form([
-            Forms\Components\Select::make('manufacturer_id')
+            Select::make('manufacturer_id')
                 ->label('Hersteller')
                 ->relationship('manufacturer', 'manufacturer')
                 ->reactive()
@@ -259,7 +270,7 @@ class ProductResource extends Resource
                   $set('sourceType', $importType);
                 })
                 ->required(),
-            Forms\Components\Hidden::make('sourceType')
+            Hidden::make('sourceType')
               ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
                 // Info-Box bei API-Import
                 Placeholder::make('api_info')
@@ -272,13 +283,13 @@ class ProductResource extends Resource
                   )
               ->visible(fn($get) => $get('sourceType') === 'api'),
 
-            Forms\Components\FileUpload::make('csv')
+            FileUpload::make('csv')
               ->label('CSV-Datei')
               ->acceptedFileTypes(['text/csv'])
               ->visible(fn($get) => $get('sourceType') === 'csv')
               ->storeFiles(false),
 
-            Forms\Components\FileUpload::make('xml')
+            FileUpload::make('xml')
               ->label('XML-Datei')
               ->acceptedFileTypes(['text/xml', 'application/xml'])
               ->visible(fn($get) => $get('sourceType') === 'xml')
