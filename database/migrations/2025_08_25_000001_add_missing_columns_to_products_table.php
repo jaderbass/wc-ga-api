@@ -34,7 +34,6 @@ return new class extends Migration
       // 2048 Zeichen als konservative Obergrenze für URLs.
       if (!Schema::hasColumn('products', 'external_url')) {
         $table->string('external_url', 2048)->nullable()->after('slug');
-        $table->index('external_url', 'products_external_url_idx');
       }
 
       // Konformitätserklärung (z. B. Dateipfad, Nummer, URL)
