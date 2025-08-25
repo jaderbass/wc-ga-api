@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
   /**
-   * Führe die Migration aus: markierte Spalten entfernen.
+   * Führe die Migration aus: markierte Spalten werden entfernt.
    *
    * @return void
    */

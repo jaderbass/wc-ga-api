@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
   /**
-   * Führe die Migration aus: Spalten hinzufügen.
+   * Führe die Migration aus: Spalten werden hinzugefügt.
    *
    * @return void
    */
