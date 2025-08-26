@@ -71,107 +71,151 @@ class ProductResource extends Resource
     return $form
       ->schema([
         Section::make('Stammdaten')
-        ->description('Grundlegende Produktinformationen')
+          ->description('Grundlegende Produktinformationen')
+          ->schema([
+            Grid::make(12)->schema([
+              TextInput::make('product_name')
+                ->label('Produktname')
+                ->required()
+                ->maxLength(255)
+                ->columnSpan(8),
+
+              TextInput::make('product_number')
+                ->label('Produktnummer')
+                ->maxLength(64)
+                ->helperText('Interne/Hersteller-Artikelnummer')
+                ->columnSpan(4),
+
+              TextInput::make('ean')
+                ->label('EAN')
+                ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
+                ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
+                ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
+                ->columnSpan(4),
+              Select::make('manufacturer_id')
+                ->required()
+                ->relationship('manufacturer', 'manufacturer')
+                ->columnSpan(4),
+              TextInput::make('sku')
+                ->maxLength(32)
+                ->columnSpan(4),
+            ]) //Grid
+          ]) //schema
+          ->collapsible(),
+
+        Section::make('Beschreibungen')
+          ->description('Weiterführende Produktinformationen')
+          ->schema([
+            Grid::make(12)->schema([
+              Textarea::make('description')
+                ->required()
+                ->columnSpan(6),
+                Textarea::make('shortdescription')
+                ->required()
+                ->columnSpan(6),
+            ]) // Grid
+          ]) //schema
+          ->collapsible(),
+
+        Section::make('Maße')
+          ->description('Produkt- und Verpackungsmaße')
+          ->schema([
+            Grid::make(12)->schema([          
+              Checkbox::make('unit')
+                ->label('Unit')
+                ->columnSpanFull(),
+              TextInput::make('width')
+                ->helperText('Width in mm')
+                ->columnSpan(3),
+              TextInput::make('length')
+                ->helperText('Length in mm')
+                ->columnSpan(3),
+              TextInput::make('height')
+                ->helperText('Height in mm')
+                ->columnSpan(3),
+              TextInput::make('weight')
+                ->helperText('Weight in g')
+                ->columnSpan(3),
+              TextInput::make('box_width')
+                ->helperText('Box width in mm')
+                ->columnSpan(3)
+                ->hidden(fn(Get $get): bool => $get('unit')),
+              TextInput::make('box_length')
+                ->helperText('Box length in mm')
+                ->columnSpan(3)
+                ->hidden(fn(Get $get): bool => $get('unit')),
+              TextInput::make('box_height')
+                ->helperText('Box height in mm')
+                ->columnSpan(3)
+                ->hidden(fn(Get $get): bool => $get('unit')),
+                TextInput::make('size')
+                ->label('Größe (frei)')
+                ->maxLength(128)
+                ->columnSpan(3),
+            ]) // Grid
+          ]) // schema
+          ->collapsible(),
+
+        Section::make('Unterlagen')
+          ->description('Gebrauchsanweisung/Zertifizierung/Konformitätserklärung')
+          ->schema([
+            Grid::make(12)->schema([
+              
+              TextInput::make('external_url')
+                  ->label('Externe URL')
+                  ->url()
+                  ->maxLength(2048)
+                  ->columnSpan(3),
+        
+                TextInput::make('declaration_of_compliance')
+                  ->label('Konformitätserklärung')
+                  ->maxLength(512)
+                  ->columnSpan(3),
+        
+                TextInput::make('manual_url')
+                  ->label('Manual / Handbuch')
+                  ->url()
+                  ->maxLength(2048)
+                  ->columnSpan(3),
+        
+        
+                TextInput::make('certification')
+                  ->label('Zertifizierung')
+                  ->maxLength(255)
+                  ->columnSpan(3),
+            ]) // Grid
+          ]) //schema
+        ->collapsible(),
+
+      Section::make('Author')
+        ->description('Benutzerdaten von WooCommerce')
         ->schema([
           Grid::make(12)->schema([
-            TextInput::make('product_name')
-              ->label('Produktname')
-              ->required()
-              ->maxLength(255)
-              ->columnSpan(8),
-
-            TextInput::make('product_number')
-              ->label('Produktnummer')
-              ->maxLength(64)
-              ->helperText('Interne/Hersteller-Artikelnummer')
-              ->columnSpan(4),
-
-            TextInput::make('ean')
-              ->label('EAN')
-              ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
-              ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
-              ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
-              ->columnSpan(4),
-          ]),
-        ])
+            
+            TextInput::make('author_firstname')
+                ->label('Vorname')
+                ->maxLength(100)
+                ->columnSpan(3),
+      
+              TextInput::make('author_lastname')
+                ->label('Nachname')
+                ->maxLength(100)
+                ->columnSpan(3),
+      
+              TextInput::make('author_name')
+                ->label('Benutzername')
+                ->maxLength(200)
+                ->columnSpan(3),
+      
+              TextInput::make('author_mail')
+                ->label('E-Mail')
+                ->email()
+                ->maxLength(255)
+                ->columnSpan(3),
+          ]) // Grid
+        ]) //schema
         ->collapsible(),
-        Select::make('manufacturer_id')
-          ->required()
-          ->relationship('manufacturer', 'manufacturer')
-          ->columnSpan(9),
-        TextInput::make('sku')
-          ->maxLength(32)
-          ->columnSpan(3),
-        Textarea::make('description')
-          ->required()
-          ->columnSpan(6),
-        TextInput::make('shortdescription')
-          ->columnSpan(6),
-        TextInput::make('width')
-          ->helperText('Width in mm')
-          ->columnSpan(2),
-        TextInput::make('length')
-          ->helperText('Length in mm')
-          ->columnSpan(2),
-        TextInput::make('height')
-          ->helperText('Height in mm')
-          ->columnSpan(2),
-        TextInput::make('weight')
-          ->helperText('Weight in mm')
-          ->columnSpan(2),
-        Checkbox::make('unit')
-          ->label('Unit')
-          ->columnSpanFull(),
-        TextInput::make('box_width')
-          ->helperText('Box width in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        TextInput::make('box_length')
-          ->helperText('Box length in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        TextInput::make('box_height')
-          ->helperText('Box height in mm')
-          ->columnSpan(2)
-          ->hidden(fn(Get $get): bool => $get('unit')),
-        TextInput::make('external_url')
-          ->label('Externe URL')
-          ->url()
-          ->maxLength(2048),
 
-        TextInput::make('declaration_of_compliance')
-          ->label('Konformitätserklärung')
-          ->maxLength(512),
-
-        TextInput::make('manual_url')
-          ->label('Manual / Handbuch')
-          ->url()
-          ->maxLength(2048),
-
-        TextInput::make('size')
-          ->label('Größe (frei)')
-          ->maxLength(128),
-
-        TextInput::make('certification')
-          ->label('Zertifizierung')
-          ->maxLength(255),
-
-        TextInput::make('author_firstname')
-          ->label('Autor Vorname')
-          ->maxLength(100),
-
-        TextInput::make('author_lastname')
-          ->label('Autor Nachname')
-          ->maxLength(100),
-
-        TextInput::make('author_name')
-          ->label('Autor Anzeigename')
-          ->maxLength(200),
-
-        TextInput::make('author_mail')
-          ->label('Autor E-Mail')
-          ->email()
-          ->maxLength(255),
       ])
       ->columns(12);
   }
