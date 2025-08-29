@@ -21,7 +21,11 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
+use App\Support\ImportLog;
 
+/**
+ * @param  int  $manufacturerId  ID des Herstellers (z. B. 6)
+ */
 class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
   /**
@@ -48,15 +52,6 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
     logger()->debug('ImporterForEdelrid constructed');
     // Mapping EXPLIZIT setzen – keine Header-Auto-Erkennung.
     $this->mapping = config('import_mappings.edelrid', []);
-
-    Log::debug('Importer constructed', [
-      'class'            => static::class,
-      'manufacturer_id'  => $this->manufacturerId,
-      'mapping_loaded'   => !empty($this->mapping),
-      'product_keys'     => array_keys($this->mapping['product'] ?? []),
-      'variation_fields' => array_keys($this->mapping['variation_fields'] ?? []),
-      'variation_keys'   => array_keys($this->mapping['variation'] ?? []),
-    ]);
   }
 
   /**
@@ -67,11 +62,11 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
    */
   public function handleUploadedFile(UploadedFile $file): void
   {
-    Log::debug('ImporterForEdelrid.handleUploadedFile ENTER', [
+    ImportLog::debug('ImporterForEdelrid.handleUploadedFile ENTER', [
       'mapping_keys' => array_keys($this->mapping ?? []),
     ]);
     
-    Log::debug('ImporterForEdelrid mapping keys', [
+    ImportLog::debug('ImporterForEdelrid mapping keys', [
       'keys' => array_keys($this->mapping),
     ]);
     
@@ -90,10 +85,9 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
   }
 
   /**
-   * Überschreibt import(), um das Edelrid-Mapping UNMITTELBAR vor dem Import
-   * nochmal zu erzwingen (falls es irgendwo unterwegs überschrieben wurde).
+   * CSV-Import per Pfad starten.
    *
-   * @param string $filePath
+   * @param  string  $path  Absoluter Pfad zur CSV-Datei
    * @return void
    */
   public function import(string $filePath): void
@@ -101,7 +95,7 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
     // HARTES ENFORCEMENT direkt vor dem eigentlichen Import.
     $this->mapping = config('import_mappings.edelrid', []);
 
-    Log::debug('Importer import() enforcing mapping', [
+    ImportLog::debug('Importer import() enforcing mapping', [
       'class'          => static::class,
       'manufacturer_id' => $this->manufacturerId,
       'product_map'    => $this->mapping['product']          ?? null,

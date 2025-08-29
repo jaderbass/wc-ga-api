@@ -9,22 +9,33 @@ use InvalidArgumentException;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
+use App\Support\ImportLog;
 
+/**
+ * Wählt zur Hersteller-ID den passenden Importer und bietet einen
+ * einheitlichen Dispatcher für CSV/XML/API-Importe.
+ */
 class ImporterSelector
 {
   /**
-   * Wählt automatisch den richtigen Importer anhand Hersteller & Quelle.
+   * Liefert den passenden Importer zur übergebenen Hersteller-ID.
    *
-   * @throws InvalidArgumentException
-   */ /**
-   * @return CsvImporterContract|HandlesUploadedFile
+   * Ermittelt aus Hersteller-Slug/-Name einen Normalized Key (z. B. "edelrid")
+   * und instanziiert die entsprechende Importer-Klasse (inkl. evtl. benötigter
+   * Konstruktor-Parameter wie manufacturerId).
+   *
+   * @param  int|string  $manufacturerId  Primärschlüssel des Herstellers
+   * @return object  Konkrete Importer-Instanz für diesen Hersteller
+   *
+   * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+   * @throws \InvalidArgumentException
    */
   public static function forManufacturer(int|string $manufacturerId): CsvImporterContract|HandlesUploadedFile
   {
     $m = Manufacturer::query()->findOrFail($manufacturerId);
     $short = Str::before(Str::slug((string)($m->slug ?: $m->manufacturer ?: '')), '-');
 
-    Log::debug('ImporterSelector resolving', [
+    ImportLog::debug('ImporterSelector resolving', [
       'manufacturer_id'   => $m->id,
       'manufacturer_name' => $m->manufacturer ?? null,
       'manufacturer_slug' => $m->slug ?? null,
@@ -54,11 +65,21 @@ class ImporterSelector
   }
 
   /**
-   * Quelle (Datei oder URL) behandeln.
+   * Führt den Import für die gegebene Importer-Instanz und Quelle aus.
+   *
+   * Erkennt automatisch, ob der Importer CSV (Pfad), Upload-Objekte,
+   * XML- oder API-Methoden unterstützt, und ruft die passende Methode auf.
+   *
+   * @param  object            $importer  Hersteller-spezifischer Importer
+   * @param  string            $type      'csv'|'xml'|'api'
+   * @param  mixed             $source    CSV: string Pfad; XML/API: Quelle (URL/Path/Stream)
+   * @return void
+   *
+   * @throws \RuntimeException|\InvalidArgumentException
    */
   public static function handleImport(object $importer, string $type, mixed $source): void
   {
-    Log::debug('ImporterSelector.handleImport ENTER', [
+    ImportLog::debug('ImporterSelector.handleImport ENTER', [
       'type'     => $type,
       'importer' => get_class($importer),
     ]);

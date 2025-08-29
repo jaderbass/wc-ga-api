@@ -10,14 +10,31 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
 
+/**
+ * Filament-Importer, der den Hersteller-Importer selektiert und
+ * sowohl Upload-Objekte als auch Pfad-basierte CSV-Importer unterstützt.
+ */
 class ProductImporter extends Importer
 {
+    /**
+     * Spalten-Definition wird hier nicht verwendet, da Sub-Importer
+     * die Mappings selbst verwalten.
+     *
+     * @return array<int, mixed>
+     */
     public static function getColumns(): array
     {
         // Diese Methode wird ignoriert – echtes Mapping passiert im Sub-Importer
         return [];
     }
 
+    /**
+     * Einstiegspunkt für Filament-Uploads.
+     *
+     * @param  TemporaryUploadedFile  $file     Hochgeladene Datei
+     * @param  array<string,mixed>    $formData Formularwerte inkl. manufacturer_id
+     * @return void
+     */
     public function handleUploadedFile(TemporaryUploadedFile $file, array $formData): void
     {
         $manufacturerId = (int) ($formData['manufacturer_id'] ?? 0);
@@ -44,6 +61,12 @@ class ProductImporter extends Importer
         ));
     }
 
+    /**
+     * Hinweistext nach Start/Abschluss eines Imports.
+     *
+     * @param  Import  $import
+     * @return string
+     */
     public static function getCompletedNotificationBody(Import $import): string
     {
         return 'Der Import wurde gestartet. Sie erhalten eine Benachrichtigung nach Abschluss.';

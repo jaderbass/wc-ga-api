@@ -188,21 +188,30 @@ class GenericCsvProductImporter implements CsvImporterContract
    * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
    * $spec kann 'Spaltenname' oder ['Alt1','Alt2',...] sein.
    */
+  /**
+   * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
+   * $spec kann 'Spaltenname' oder ['Alt1','Alt2', …] sein.
+   *
+   * @param  array<string,mixed>      $row
+   * @param  string|array<int,string> $spec
+   * @return string|null
+   */
   private function cell(array $row, string|array $spec): ?string
   {
     if (is_array($spec)) {
       foreach ($spec as $col) {
-        if (array_key_exists($col, $row) && trim((string)$row[$col]) !== '') {
-          return trim((string)$row[$col]);
+        if (array_key_exists($col, $row) && trim((string) $row[$col]) !== '') {
+          return trim((string) $row[$col]);
         }
       }
       return null;
     }
 
-    return array_key_exists($spec, $row) && trim((string)$row[$spec]) !== ''
-      ? trim((string)$row[$spec])
+    return array_key_exists($spec, $row) && trim((string) $row[$spec]) !== ''
+      ? trim((string) $row[$spec])
       : null;
   }
+
 
 
   /**
@@ -452,52 +461,45 @@ class GenericCsvProductImporter implements CsvImporterContract
   }
 
   /**
-   * Erstellt und verknüpft Attribute und deren Werte mit einer Produktvariante.
+   * Liest Varianten-Attribute aus der CSV-Zeile und verknüpft deren Werte
+   * mit der Variante (Pivot-Tabelle).
    *
-   * Liest die Attribut-Mappings aus der Konfigurationsdatei (z.B. 'color' => 'Farbe').
-   * Erstellt die `ProductAttribute` (z.B. "Farbe") und `ProductAttributeValue` (z.B. "Blau")
-   * falls sie noch nicht existieren (`firstOrCreate`).
-   * Synchronisiert anschließend die gefundenen/erstellten Attributwerte mit der Variante
-   * über die Pivot-Tabelle `product_variation_attribute_value`.
-   *
-   * @param ProductVariation $variation Die zu bearbeitende Produktvariante.
-   * @param array            $row       Die CSV-Zeile mit den Attributwerten.
+   * @param  \App\Models\ProductVariation  $variation
+   * @param  array<string,mixed>           $row
    * @return void
    */
-  protected function handleVariationAttributes(ProductVariation $variation, array $row): void
+  protected function handleVariationAttributes(\App\Models\ProductVariation $variation, array $row): void
   {
     $attributeValueIds = [];
-    $variationMapping = $this->mapping['variation'] ?? [];
+    $variationMapping  = $this->mapping['variation'] ?? [];
 
     foreach ($variationMapping as $attributeName => $csvSpec) {
-      // csvSpec kann String ODER Array sein → cell() nimmt den ersten nicht-leeren Wert
       $value = $this->cell($row, $csvSpec);
-
       if ($value === null || $value === '') {
         continue;
       }
 
-      // Verwende den Key aus dem Mapping als Anzeigename (z. B. "Farbe", "Größe")
       $attributeDisplayName = (string) $attributeName;
-      $attributeSlug = Str::slug($attributeDisplayName);
+      $attributeSlug        = \Illuminate\Support\Str::slug($attributeDisplayName);
 
-      $attribute = ProductAttribute::firstOrCreate(
+      $attribute = \App\Models\ProductAttribute::firstOrCreate(
         ['slug' => $attributeSlug],
         ['name' => $attributeDisplayName]
       );
 
-      $attributeValue = ProductAttributeValue::firstOrCreate(
-        ['attribute_id' => $attribute->id, 'slug' => Str::slug($value)],
+      $attributeValue = \App\Models\ProductAttributeValue::firstOrCreate(
+        ['attribute_id' => $attribute->id, 'slug' => \Illuminate\Support\Str::slug($value)],
         ['value' => $value]
       );
 
       $attributeValueIds[] = $attributeValue->id;
     }
 
-    if (!empty($attributeValueIds)) {
+    if (! empty($attributeValueIds)) {
       $variation->attributeValues()->sync($attributeValueIds);
     }
   }
+
 
 
   /**
