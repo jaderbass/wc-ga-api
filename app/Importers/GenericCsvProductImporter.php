@@ -11,6 +11,7 @@ use League\Csv\Reader;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Importers\Contracts\CsvImporterContract;
 
 /**
  * Class GenericCsvProductImporter
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Schema;
  *
  * Erwartet eine Mapping-Datei unter config/import_mappings/<mappingName>.php.
  */
-class GenericCsvProductImporter
+class GenericCsvProductImporter implements CsvImporterContract
 {
   protected array $mapping;
 
@@ -34,6 +35,9 @@ class GenericCsvProductImporter
     protected string $mappingFile,
     protected ?int $manufacturerId = null
   ) {
+    if (($this->manufacturerId ?? null) === 6 /* Edelrid-ID bei dir */) {
+      throw new \RuntimeException('Edelrid darf nicht über GenericCsvProductImporter laufen.');
+    }
     $this->mapping = config("import_mappings.$mappingFile");
   }
 
@@ -61,6 +65,12 @@ class GenericCsvProductImporter
     $headers = $csv->getHeader();
 
     Log::debug('CSV Header', ['headers' => $headers, 'count' => count($records)]);
+
+    Log::debug('Active mapping snapshot', [
+      'product'          => $this->mapping['product'] ?? null,
+      'variation_fields' => $this->mapping['variation_fields'] ?? null,
+      'variation'        => $this->mapping['variation'] ?? null,
+    ]);
 
     // 2) Header normalisieren (unsichtbare Zeichen entfernen, trimmen, lowercased)
     $normalizeHeader = function (string $h): string {
@@ -174,6 +184,25 @@ class GenericCsvProductImporter
     });
   }
 
+  /**
+   * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
+   * $spec kann 'Spaltenname' oder ['Alt1','Alt2',...] sein.
+   */
+  private function cell(array $row, string|array $spec): ?string
+  {
+    if (is_array($spec)) {
+      foreach ($spec as $col) {
+        if (array_key_exists($col, $row) && trim((string)$row[$col]) !== '') {
+          return trim((string)$row[$col]);
+        }
+      }
+      return null;
+    }
+
+    return array_key_exists($spec, $row) && trim((string)$row[$spec]) !== ''
+      ? trim((string)$row[$spec])
+      : null;
+  }
 
 
   /**
@@ -440,15 +469,16 @@ class GenericCsvProductImporter
     $attributeValueIds = [];
     $variationMapping = $this->mapping['variation'] ?? [];
 
-    foreach ($variationMapping as $attributeName => $csvColumn) {
-      $value = trim($row[$csvColumn] ?? '');
+    foreach ($variationMapping as $attributeName => $csvSpec) {
+      // csvSpec kann String ODER Array sein → cell() nimmt den ersten nicht-leeren Wert
+      $value = $this->cell($row, $csvSpec);
 
-      if (empty($value)) {
+      if ($value === null || $value === '') {
         continue;
       }
 
-      // z.B. aus 'color' wird 'Farbe' und 'farbe'
-      $attributeDisplayName = ucfirst($attributeName);
+      // Verwende den Key aus dem Mapping als Anzeigename (z. B. "Farbe", "Größe")
+      $attributeDisplayName = (string) $attributeName;
       $attributeSlug = Str::slug($attributeDisplayName);
 
       $attribute = ProductAttribute::firstOrCreate(
@@ -464,11 +494,11 @@ class GenericCsvProductImporter
       $attributeValueIds[] = $attributeValue->id;
     }
 
-    // Verknüpft die Attributwerte mit der Variante über die Pivot-Tabelle
     if (!empty($attributeValueIds)) {
       $variation->attributeValues()->sync($attributeValueIds);
     }
   }
+
 
   /**
    * Normalisiert CSV-Headernamen robust:

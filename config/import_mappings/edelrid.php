@@ -21,6 +21,7 @@ return [
 
   'variation_fields' => [
     'sku' => 'Artikelnummer',
+    'ean' => 'EAN',
     // 'ean' usw. bei Bedarf ergänzen
   ],
 

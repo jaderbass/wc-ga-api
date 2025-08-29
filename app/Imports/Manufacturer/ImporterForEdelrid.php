@@ -8,20 +8,21 @@
  * Importer für Hersteller "Edelrid".
  *
  * Verantwortlichkeiten:
- * - Stellt sicher, dass das Edelrid-Mapping aus config/import_mappings/edelrid.php
- *   verwendet wird (kein Header-Raten).
- * - Nimmt die manufacturer_id entgegen, damit Produkte korrekt verknüpft werden.
- * - Bietet eine konsistente handleUploadedFile()-Methode analog zum Petzl-Importer.
+ * - Erzwingt das Edelrid-Mapping (config/import_mappings/edelrid.php).
+ * - Verknüpft Produkte mit der übergebenen manufacturer_id.
+ * - Bietet eine handleUploadedFile()-Methode analog zum Petzl-Importer.
  */
 
-namespace App\Importers\Manufacturer;
+namespace App\Imports\Manufacturer;
 
 use App\Importers\GenericCsvProductImporter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Importers\Contracts\CsvImporterContract;
+use App\Importers\Contracts\HandlesUploadedFile;
 
-class ImporterForEdelrid extends GenericCsvProductImporter
+class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
   /**
    * Hersteller-ID für die Produktverknüpfung.
@@ -36,7 +37,7 @@ class ImporterForEdelrid extends GenericCsvProductImporter
   protected array $mapping = [];
 
   /**
-   * Konstruktor
+   * Konstruktor.
    *
    * @param int $manufacturerId ID des Herstellers (aus dem Select im Backend)
    */
@@ -44,48 +45,71 @@ class ImporterForEdelrid extends GenericCsvProductImporter
   {
     $this->manufacturerId = $manufacturerId;
 
-    // Mapping explizit setzen – keine Auto-Erkennung über Header!
+    logger()->debug('ImporterForEdelrid constructed');
+    // Mapping EXPLIZIT setzen – keine Header-Auto-Erkennung.
     $this->mapping = config('import_mappings.edelrid', []);
 
-    // Sanity-Check & hilfreiches Logging
-    if (empty($this->mapping)) {
-      Log::warning('Edelrid-Mapping nicht gefunden oder leer.', [
-        'config_key' => 'import_mappings.edelrid',
-      ]);
-    } else {
-      // Minimal prüfen, ob die wichtigsten Keys vorhanden sind
-      Log::debug('Edelrid-Mapping geladen.', [
-        'has_group_by'   => array_key_exists('group_by', $this->mapping),
-        'has_reference'  => array_key_exists('reference', $this->mapping),
-        'product_keys'   => array_keys($this->mapping['product'] ?? []),
-        'variation_keys' => array_keys($this->mapping['variation'] ?? []),
-      ]);
-    }
+    Log::debug('Importer constructed', [
+      'class'            => static::class,
+      'manufacturer_id'  => $this->manufacturerId,
+      'mapping_loaded'   => !empty($this->mapping),
+      'product_keys'     => array_keys($this->mapping['product'] ?? []),
+      'variation_fields' => array_keys($this->mapping['variation_fields'] ?? []),
+      'variation_keys'   => array_keys($this->mapping['variation'] ?? []),
+    ]);
   }
 
   /**
    * Verarbeitet eine hochgeladene CSV-Datei (konsistent zum Petzl-Importer).
-   *
-   * Speichert die Datei temporär im Storage und ruft anschließend den
-   * CSV-Import auf Basis von GenericCsvProductImporter::import() auf.
    *
    * @param UploadedFile $file
    * @return void
    */
   public function handleUploadedFile(UploadedFile $file): void
   {
-    // CSV unter /storage/app/imports ablegen
+    Log::debug('ImporterForEdelrid.handleUploadedFile ENTER', [
+      'mapping_keys' => array_keys($this->mapping ?? []),
+    ]);
+    
+    Log::debug('ImporterForEdelrid mapping keys', [
+      'keys' => array_keys($this->mapping),
+    ]);
+    
     $filename = uniqid('edelrid_', true) . '.csv';
     $stored   = $file->storeAs('imports', $filename);
 
     Log::info('Import gestartet', [
+      'class'           => static::class,
       'manufacturer_id' => (string) $this->manufacturerId,
       'sourceType'      => 'csv',
       'source'          => $stored,
     ]);
 
-    // Absoluten Pfad ermitteln und importieren
     $path = Storage::path($stored);
     $this->import($path);
+  }
+
+  /**
+   * Überschreibt import(), um das Edelrid-Mapping UNMITTELBAR vor dem Import
+   * nochmal zu erzwingen (falls es irgendwo unterwegs überschrieben wurde).
+   *
+   * @param string $filePath
+   * @return void
+   */
+  public function import(string $filePath): void
+  {
+    // HARTES ENFORCEMENT direkt vor dem eigentlichen Import.
+    $this->mapping = config('import_mappings.edelrid', []);
+
+    Log::debug('Importer import() enforcing mapping', [
+      'class'          => static::class,
+      'manufacturer_id' => $this->manufacturerId,
+      'product_map'    => $this->mapping['product']          ?? null,
+      'variation_map'  => $this->mapping['variation']        ?? null,
+      'var_fields_map' => $this->mapping['variation_fields'] ?? null,
+    ]);
+
+    // Jetzt die eigentliche Import-Logik der Elternklasse ausführen.
+    parent::import($filePath);
   }
 }

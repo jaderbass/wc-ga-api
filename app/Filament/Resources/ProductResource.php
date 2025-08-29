@@ -355,27 +355,26 @@ class ProductResource extends Resource
 
             Log::info('Import gestartet', [
               'manufacturer_id' => $data['manufacturer_id'],
-              'sourceType' => $data['sourceType'],
-              'source' => $source,
+              'sourceType'      => $data['sourceType'],
+              'source'          => $source,
             ]);
 
             try {
               if ($data['sourceType'] === 'csv') {
-                // Mapping bestimmen (Fallback 'petzl')
-                $mapping = \App\Models\Manufacturer::find($data['manufacturer_id'])?->slug ?? 'petzl';
+                // ⬇︎ NEU: CSV läuft jetzt ebenfalls über den Selector (kein Generic/Fallback mehr)
                 $fullPath = storage_path("app/{$source}");
 
-              // CSV → unser Varianten-Importer (legt products + product_variations an)
-              (new \App\Importers\GenericCsvProductImporter(
-                mappingFile: $mapping,
-                manufacturerId: (int) $data['manufacturer_id'] // 👈 neu
-              ))->import($fullPath);
+                $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
+                Log::debug('ProductResource resolved importer (csv)', ['class' => get_class($importer)]);
+
+                // Einheitlicher Handler: akzeptiert Pfad oder Upload, je nach Importer
+                \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
 
                 Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
                 return;
               }
 
-              // Für XML/API bleibt deine bisherige Pipeline aktiv
+              // XML/API: unverändert über deine Pipeline
               $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
               \App\Services\ImporterSelector::handleImport($importer, $data['sourceType'], $source);
 
@@ -392,7 +391,6 @@ class ProductResource extends Resource
                 ->send();
             }
           }),
-
       ])
       ->bulkActions([
         Tables\Actions\BulkActionGroup::make([
