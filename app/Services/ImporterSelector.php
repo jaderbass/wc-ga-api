@@ -5,11 +5,11 @@ namespace App\Services;
 use App\Models\Manufacturer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Support\ImportLog;
 use InvalidArgumentException;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
-use App\Support\ImportLog;
 
 /**
  * Wählt zur Hersteller-ID den passenden Importer und bietet einen
@@ -35,6 +35,10 @@ class ImporterSelector
     $m = Manufacturer::query()->findOrFail($manufacturerId);
     $short = Str::before(Str::slug((string)($m->slug ?: $m->manufacturer ?: '')), '-');
 
+    /**
+     * ! Über Flag steuern !!!
+     */
+    
     ImportLog::debug('ImporterSelector resolving', [
       'manufacturer_id'   => $m->id,
       'manufacturer_name' => $m->manufacturer ?? null,

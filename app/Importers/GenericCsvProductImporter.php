@@ -2,16 +2,12 @@
 
 namespace App\Importers;
 
-use App\Models\ProductAttribute;
-use App\Models\ProductAttributeValue;
+use App\Importers\Contracts\CsvImporterContract;
+use App\Support\ImportLog;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
-use League\Csv\Reader;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
-use App\Importers\Contracts\CsvImporterContract;
 
 /**
  * Class GenericCsvProductImporter
@@ -64,13 +60,18 @@ class GenericCsvProductImporter implements CsvImporterContract
     $records = iterator_to_array($csv->getRecords());
     $headers = $csv->getHeader();
 
-    Log::debug('CSV Header', ['headers' => $headers, 'count' => count($records)]);
-
-    Log::debug('Active mapping snapshot', [
-      'product'          => $this->mapping['product'] ?? null,
-      'variation_fields' => $this->mapping['variation_fields'] ?? null,
-      'variation'        => $this->mapping['variation'] ?? null,
+    ImportLog::debug('CSV Header', [
+      'count'   => count($headers),
+      'sample'  => array_slice($headers, 0, 5),
     ]);
+
+
+    ImportLog::debug('Active mapping snapshot', [
+      'product_keys'   => array_keys($mapping['product'] ?? []),
+      'variation_keys' => array_keys($mapping['variation'] ?? []),
+      'vf_keys'        => array_keys($mapping['variation_fields'] ?? []),
+    ]);
+
 
     // 2) Header normalisieren (unsichtbare Zeichen entfernen, trimmen, lowercased)
     $normalizeHeader = function (string $h): string {
@@ -90,19 +91,15 @@ class GenericCsvProductImporter implements CsvImporterContract
 
       if ($isEdelrid) {
         $this->mapping = config('import_mappings.edelrid');
-        Log::debug('Auto-selected mapping', ['mapping' => 'edelrid']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'edelrid']);
       } elseif ($isPetzl) {
         $this->mapping = config('import_mappings.petzl');
-        Log::debug('Auto-selected mapping', ['mapping' => 'petzl']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'petzl']);
       } else {
         // falls nichts erkannt wird, Mapping so lassen (oder optional defaulten)
-        Log::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
       }
-    } else {
-      Log::debug('Mapping provided by importer', [
-        'keys' => array_keys($this->mapping),
-      ]);
-    }
+    } 
 
     // 4) Alle Zellen trimmen
     $normalized = collect($records)->map(function (array $row) {
@@ -170,15 +167,14 @@ class GenericCsvProductImporter implements CsvImporterContract
       return '__ROW__:' . $i;
     });
 
-    Log::debug('CSV group keys (normalized)', [
+    ImportLog::debug('CSV group keys (normalized)', [
       'count_groups' => $grouped->count(),
-      'sample_keys'  => $grouped->keys()->take(5)->all(),
     ]);
 
     // 6) Gruppen importieren (Transaktion)
     DB::transaction(function () use ($grouped) {
       foreach ($grouped as $groupKey => $rows) {
-        Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
+        ImportLog::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
         $this->importProductGroup($groupKey, $rows);
       }
     });
@@ -228,7 +224,6 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
   {
-    Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
 
     // reference kann String oder Array sein
     $referenceKey  = $this->mapping['reference'] ?? null;
@@ -267,7 +262,10 @@ class GenericCsvProductImporter implements CsvImporterContract
       }
 
       // Diagnose-Log: zeigt pro Feld, welche Kandidaten probiert wurden und was rauskam
-      Log::debug('Mapping check', [
+      /**
+       * ! Mit Flag aufrufen !!!
+       */
+      ImportLog::debug('Mapping check', [
         'group'      => $groupKey,
         'field'      => $dbField,
         'candidates' => $candidates,
@@ -277,7 +275,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
 
     // Debug pro Feld
-    Log::debug('Mapping check', [
+    ImportLog::debug('Mapping check', [
         'field' => $dbField,
         'candidates' => $candidates,
         'resolved' => $productPayload[$dbField] ?? null,
@@ -320,20 +318,6 @@ class GenericCsvProductImporter implements CsvImporterContract
     $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
     $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
 
-    Log::debug('Product upsert payload (pre-filter)', [
-      'group'          => $groupKey,
-      'final_keys'     => array_keys($finalProductPayload),
-      'writable_keys'  => array_keys($writablePayload),
-      'dropped_keys'   => array_values($droppedKeys), // z.B. status, falls Spalte fehlt
-      'sample_payload' => array_intersect_key($finalProductPayload, array_flip([
-        'product_name',
-        'product_number',
-        'ean',
-        'description',
-        'short_description'
-      ])),
-    ]);
-
     // Basisdaten für Create (nur vorhandene Spalten)
     $baseCreate = [];
     foreach (
@@ -366,13 +350,11 @@ class GenericCsvProductImporter implements CsvImporterContract
       }
     }
 
-    Log::debug('Product upserted', [
+    Log::info('Product upserted', [
       'id'              => $product->id,
-      'written_keys'    => array_keys($writablePayload),
       'name'            => $product->product_name,
-      // falls Spalten existieren, zeigen wir sie kurz:
-      'product_number'  => $product->product_number ?? null,
-      'ean'             => $product->ean ?? null,
+      'product_number'  => $product->product_number,
+      'ean'             => $product->external_url,
     ]);
 
     // --- Varianten importieren ---
@@ -385,7 +367,10 @@ class GenericCsvProductImporter implements CsvImporterContract
       $ref = $ref !== null ? trim((string) $ref) : '';
 
       if (!$loggedRefDiag) {
-        Log::debug('Reference detection (group)', [
+        /**
+         * ! Mit Flag !!!
+         */
+        ImportLog::debug('Reference detection (group)', [
           'group'          => $groupKey,
           'reference_cols' => $referenceCols,
           'sample_ref'     => $ref,
@@ -411,7 +396,7 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     if ($skipped > 0 || $imported > 0) {
-      Log::debug('Variation summary', [
+      Log::info('Variation summary', [
         'group'          => $groupKey,
         'imported'       => $imported,
         'skipped'        => $skipped,
