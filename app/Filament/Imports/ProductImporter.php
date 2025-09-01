@@ -4,7 +4,6 @@ namespace App\Filament\Imports;
 
 use Filament\Actions\Imports\Importer;
 use Filament\Actions\Imports\Models\Import;
-use App\Services\ImporterSelector;
 use Illuminate\Support\Facades\Log;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use App\Importers\Contracts\CsvImporterContract;
@@ -31,8 +30,8 @@ class ProductImporter extends Importer
     /**
      * Einstiegspunkt für Filament-Uploads.
      *
-     * @param  TemporaryUploadedFile  $file     Hochgeladene Datei
-     * @param  array<string,mixed>    $formData Formularwerte inkl. manufacturer_id
+     * @param  \Livewire\Features\SupportFileUploads\TemporaryUploadedFile  $file
+     * @param  array<string,mixed>  $formData  Formularwerte inkl. manufacturer_id
      * @return void
      */
     public function handleUploadedFile(TemporaryUploadedFile $file, array $formData): void
@@ -64,7 +63,7 @@ class ProductImporter extends Importer
     /**
      * Hinweistext nach Start/Abschluss eines Imports.
      *
-     * @param  Import  $import
+     * @param  \Filament\Actions\Imports\Models\Import  $import
      * @return string
      */
     public static function getCompletedNotificationBody(Import $import): string
