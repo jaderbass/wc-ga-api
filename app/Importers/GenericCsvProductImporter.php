@@ -208,8 +208,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       : null;
   }
 
-
-
   /**
    * Importiert eine Produkt-Gruppe (Hauptprodukt + Varianten).
    *
@@ -404,8 +402,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       ]);
     }
   }
-
-
 
   /**
    * Importiert oder aktualisiert eine einzelne Produktvariante.
