@@ -1,4 +1,38 @@
-@import 'tailwindcss';
+/* resources/css/app.css */
+
+/* 1) Tailwind v4 laden */
+@import "tailwindcss";
+
+/* 2) Deine Overrides – in der utilities-Layer,
+      damit sie NACH den Standard-Utilities stehen */
+@layer utilities {
+
+    /* Light-Mode im Admin (Filament setzt Dark explizit) */
+    html:not([data-theme="dark"]) body.fi-body h1,
+    html:not([data-theme="dark"]) body.fi-body h2,
+    html:not([data-theme="dark"]) body.fi-body h3,
+    html:not([data-theme="dark"]) body.fi-body h4,
+    html:not([data-theme="dark"]) body.fi-body h5,
+    html:not([data-theme="dark"]) body.fi-body h6,
+    html:not([data-theme="dark"]) body.fi-body .fi-section-header-heading,
+    html:not([data-theme="dark"]) body.fi-body .fi-header-heading,
+    html:not([data-theme="dark"]) body.fi-body .fi-ta-header h1,
+    html:not([data-theme="dark"]) body.fi-body .fi-resource-name,
+    html:not([data-theme="dark"]) body.fi-body .prose h1,
+    html:not([data-theme="dark"]) body.fi-body .prose h2,
+    html:not([data-theme="dark"]) body.fi-body .prose h3 {
+        color: #1f2937 !important;
+        /* gray-800 */
+    }
+
+    /* zu helle Utilities im Admin-Light-Mode übersteuern */
+    html:not([data-theme="dark"]) body.fi-body .text-gray-100,
+    html:not([data-theme="dark"]) body.fi-body .text-gray-200,
+    html:not([data-theme="dark"]) body.fi-body .text-zinc-100,
+    html:not([data-theme="dark"]) body.fi-body .text-neutral-100 {
+        color: #1f2937 !important;
+    }
+}
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';

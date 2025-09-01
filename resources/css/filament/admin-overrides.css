@@ -1,0 +1,37 @@
+/* KEIN @import "tailwindcss" hier – nur deine Regeln.
+   Wir platzieren sie in die utilities-Layer, damit sie nach Tailwind-Utilities landen. */
+@layer utilities {
+
+  /* Nur Filament-Admin, nur Light-Mode (Dark wird explizit markiert) */
+  html:not(.dark) body.fi-body h1,
+  html:not(.dark) body.fi-body h2,
+  html:not(.dark) body.fi-body h3,
+  html:not(.dark) body.fi-body h4,
+  html:not(.dark) body.fi-body h5,
+  html:not(.dark) body.fi-body h6,
+  html:not(.dark) body.fi-body .fi-section-header-heading,
+  html:not(.dark) body.fi-body .fi-header-heading,
+  html:not(.dark) body.fi-body .fi-ta-header h1,
+  html:not(.dark) body.fi-body .fi-resource-name,
+  html:not(.dark) body.fi-body .prose h1,
+  html:not(.dark) body.fi-body .prose h2,
+  html:not(.dark) body.fi-body .prose h3 {
+    color: #374151 !important;
+    /* Tailwind gray-800 – hoher Kontrast */
+  }
+
+  /* Utilities, die im Light-Mode zu hell sind, nur im Admin-Bereich übersteuern */
+  html:not(.dark) body.fi-body .text-gray-100,
+  html:not(.dark) body.fi-body .text-gray-200,
+  html:not(.dark) body.fi-body .text-zinc-100,
+  html:not(.dark) body.fi-body .text-neutral-100 {
+    color: #374151 !important;
+  }
+
+  /* Light-Mode im Admin: Weiß nicht auf weißem Hintergrund verschwinden lassen */
+  html:not(.dark) body.fi-body .fi-section .text-white,
+  html:not(.dark) body.fi-body .fi-card .text-white {
+    color: #374151 !important;
+    /* Tailwind gray-800: gut lesbar */
+  }
+}

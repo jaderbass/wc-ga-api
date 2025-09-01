@@ -46,7 +46,7 @@ class ImporterForKratos extends BaseCsvImporter
   protected function fixedValues(): array
   {
     return [
-      'manufacturer_id' => 4, // Kratos
+      'manufacturer_id' => 3, // Kratos
     ];
   }
 }
