@@ -16,7 +16,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
-use Filament\Forms;
+use App\Support\ImportLog;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
@@ -110,7 +110,7 @@ class ProductResource extends Resource
               Textarea::make('description')
                 ->required()
                 ->columnSpan(6),
-                Textarea::make('shortdescription')
+              Textarea::make('shortdescription')
                 ->required()
                 ->columnSpan(6),
             ]) // Grid
@@ -120,7 +120,7 @@ class ProductResource extends Resource
         Section::make('Maße')
           ->description('Produkt- und Verpackungsmaße')
           ->schema([
-            Grid::make(12)->schema([          
+            Grid::make(12)->schema([
               Checkbox::make('unit')
                 ->label('Unit')
                 ->columnSpanFull(),
@@ -148,7 +148,7 @@ class ProductResource extends Resource
                 ->helperText('Box height in mm')
                 ->columnSpan(3)
                 ->hidden(fn(Get $get): bool => $get('unit')),
-                TextInput::make('size')
+              TextInput::make('size')
                 ->label('Größe (frei)')
                 ->maxLength(128)
                 ->columnSpan(3),
@@ -160,61 +160,61 @@ class ProductResource extends Resource
           ->description('Gebrauchsanweisung/Zertifizierung/Konformitätserklärung')
           ->schema([
             Grid::make(12)->schema([
-              
+
               TextInput::make('external_url')
-                  ->label('Externe URL')
-                  ->url()
-                  ->maxLength(2048)
-                  ->columnSpan(3),
-        
-                TextInput::make('declaration_of_compliance')
-                  ->label('Konformitätserklärung')
-                  ->maxLength(512)
-                  ->columnSpan(3),
-        
-                TextInput::make('manual_url')
-                  ->label('Manual / Handbuch')
-                  ->url()
-                  ->maxLength(2048)
-                  ->columnSpan(3),
-        
-        
-                TextInput::make('certification')
-                  ->label('Zertifizierung')
-                  ->maxLength(255)
-                  ->columnSpan(3),
+                ->label('Externe URL')
+                ->url()
+                ->maxLength(2048)
+                ->columnSpan(3),
+
+              TextInput::make('declaration_of_compliance')
+                ->label('Konformitätserklärung')
+                ->maxLength(512)
+                ->columnSpan(3),
+
+              TextInput::make('manual_url')
+                ->label('Manual / Handbuch')
+                ->url()
+                ->maxLength(2048)
+                ->columnSpan(3),
+
+
+              TextInput::make('certification')
+                ->label('Zertifizierung')
+                ->maxLength(255)
+                ->columnSpan(3),
             ]) // Grid
           ]) //schema
-        ->collapsible(),
+          ->collapsible(),
 
-      Section::make('Author')
-        ->description('Benutzerdaten von WooCommerce')
-        ->schema([
-          Grid::make(12)->schema([
-            
-            TextInput::make('author_firstname')
+        Section::make('Author')
+          ->description('Benutzerdaten von WooCommerce')
+          ->schema([
+            Grid::make(12)->schema([
+
+              TextInput::make('author_firstname')
                 ->label('Vorname')
                 ->maxLength(100)
                 ->columnSpan(3),
-      
+
               TextInput::make('author_lastname')
                 ->label('Nachname')
                 ->maxLength(100)
                 ->columnSpan(3),
-      
+
               TextInput::make('author_name')
                 ->label('Benutzername')
                 ->maxLength(200)
                 ->columnSpan(3),
-      
+
               TextInput::make('author_mail')
                 ->label('E-Mail')
                 ->email()
                 ->maxLength(255)
                 ->columnSpan(3),
-          ]) // Grid
-        ]) //schema
-        ->collapsible(),
+            ]) // Grid
+          ]) //schema
+          ->collapsible(),
 
       ])
       ->columns(12);
@@ -296,7 +296,7 @@ class ProductResource extends Resource
           ->searchable()
           ->preload()
           ->indicator('Hersteller'),                     // hübscher Filter-Badge-Text
-    ])
+      ])
       ->actions([
         Tables\Actions\EditAction::make(),
       ])
@@ -305,26 +305,26 @@ class ProductResource extends Resource
           ->label('Import starten')
           ->form([
             Select::make('manufacturer_id')
-                ->label('Hersteller')
-                ->relationship('manufacturer', 'manufacturer')
-                ->reactive()
-                ->afterStateUpdated(function ($state, callable $set) {
-                  // Automatisch den Import-Typ setzen
-                  $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
-                  $set('sourceType', $importType);
-                })
-                ->required(),
+              ->label('Hersteller')
+              ->relationship('manufacturer', 'manufacturer')
+              ->reactive()
+              ->afterStateUpdated(function ($state, callable $set) {
+                // Automatisch den Import-Typ setzen
+                $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
+                $set('sourceType', $importType);
+              })
+              ->required(),
             Hidden::make('sourceType')
               ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
-                // Info-Box bei API-Import
-                Placeholder::make('api_info')
-                  ->label('')
-                  ->content(
-                    fn($get) =>
-                    $get('sourceType') === 'api'
-                      ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
-                      : ''
-                  )
+            // Info-Box bei API-Import
+            Placeholder::make('api_info')
+              ->label('')
+              ->content(
+                fn($get) =>
+                $get('sourceType') === 'api'
+                  ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
+                  : ''
+              )
               ->visible(fn($get) => $get('sourceType') === 'api'),
 
             FileUpload::make('csv')
@@ -365,7 +365,11 @@ class ProductResource extends Resource
                 $fullPath = storage_path("app/{$source}");
 
                 $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
-                Log::debug('ProductResource resolved importer (csv)', ['class' => get_class($importer)]);
+                // optional nur bei Debug
+                if (config('import.debug')) {
+                  ImportLog::debug('ProductResource resolved importer (csv)', ['class' => get_class($importer)]);
+                }
+
 
                 // Einheitlicher Handler: akzeptiert Pfad oder Upload, je nach Importer
                 \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
