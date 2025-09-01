@@ -1,72 +1,109 @@
 <?php
 
-namespace App\Importers\Manufacturer;
+/**
+ * @package   App\Importers\Manufacturer
+ * @author    GeoAlpin
+ * @license   Proprietary
+ *
+ * Importer für Hersteller "Edelrid".
+ *
+ * Verantwortlichkeiten:
+ * - Erzwingt das Edelrid-Mapping (config/import_mappings/edelrid.php).
+ * - Verknüpft Produkte mit der übergebenen manufacturer_id.
+ * - Bietet eine handleUploadedFile()-Methode analog zum Petzl-Importer.
+ */
+
+namespace App\Imports\Manufacturer;
 
 use App\Importers\GenericCsvProductImporter;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use App\Importers\Contracts\CsvImporterContract;
+use App\Importers\Contracts\HandlesUploadedFile;
+use App\Support\ImportLog;
 
 /**
- * ImporterForEdelrid
- *
- * Hersteller-spezifischer CSV-Importer für EDELRID.
- * - Lädt das Mapping "edelrid".
- * - Erzwingt zur Laufzeit korrekte Variations-Felder (Farbe/Größe), falls noch ein altes Mapping (color/size) aktiv wäre.
- *
- * Hintergrund:
- * In Logs wurden Variations-Mappings "color" => "Specifications" und "size" => "Size" sichtbar,
- * obwohl EDELRID die Spalten "Farbe Bezeichnung"/"Farb-Code" und "Größen Bezeichnung"/"Größen Code" liefert.
- * Um sofort korrekte Attribute zu bekommen, setzen wir hier notfalls ein "Hotfix"-Mapping.
+ * @param  int  $manufacturerId  ID des Herstellers (z. B. 6)
  */
-class ImporterForEdelrid extends GenericCsvProductImporter
+class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
   /**
-   * Konstruktor – wie bei Petzl, aber mit Mapping-Name "edelrid".
-   *
-   * @param int|null $manufacturerId
+   * Hersteller-ID für die Produktverknüpfung.
+   * @var int|null
    */
-  public function __construct(?int $manufacturerId = null)
+  protected ?int $manufacturerId = null;
+
+  /**
+   * Mapping-Konfiguration für Edelrid.
+   * @var array<string,mixed>
+   */
+  protected array $mapping = [];
+
+  /**
+   * Konstruktor.
+   *
+   * @param int $manufacturerId ID des Herstellers (aus dem Select im Backend)
+   */
+  public function __construct(int $manufacturerId)
   {
-    parent::__construct('edelrid', $manufacturerId);
+    $this->manufacturerId = $manufacturerId;
 
-    // --- Hotfix/Fallback: Wenn das geladene Mapping offenbar das falsche Schema nutzt, überschreiben. ---
-    $varMap = $this->mapping['variation'] ?? [];
-
-    $hasEnglishKeys = isset($varMap['color']) || isset($varMap['size']);
-    $hasWrongCols   = in_array('Specifications', (array)($varMap['color'] ?? []), true) || in_array('Size', (array)($varMap['size'] ?? []), true);
-
-    if ($hasEnglishKeys || $hasWrongCols) {
-      $this->mapping['variation'] = [
-        'Farbe' => ['Farbe Bezeichnung', 'Farb-Code'],
-        'Größe' => ['Größen Bezeichnung', 'Größen Code'],
-      ];
-      Log::warning('Edelrid: Variation mapping korrigiert (Fallback aktiviert).', [
-        'prev_variation_mapping' => $varMap,
-        'new_variation_mapping'  => $this->mapping['variation'],
-      ]);
-    }
+    logger()->debug('ImporterForEdelrid constructed');
+    // Mapping EXPLIZIT setzen – keine Header-Auto-Erkennung.
+    $this->mapping = config('import_mappings.edelrid', []);
   }
 
   /**
-   * Verarbeitung einer hochgeladenen CSV-Datei: nur Logging + Import.
+   * Verarbeitet eine hochgeladene CSV-Datei (konsistent zum Petzl-Importer).
    *
-   * @param string $filePath
+   * @param UploadedFile $file
    * @return void
    */
-  public function handleUploadedFile(string $filePath): void
+  public function handleUploadedFile(UploadedFile $file): void
   {
-    Log::info('Edelrid-Import gestartet.', [
-      'file' => $filePath,
+    ImportLog::debug('ImporterForEdelrid.handleUploadedFile ENTER', [
+      'mapping_keys' => array_keys($this->mapping ?? []),
+    ]);
+    
+    ImportLog::debug('ImporterForEdelrid mapping keys', [
+      'keys' => array_keys($this->mapping),
+    ]);
+    
+    $filename = uniqid('edelrid_', true) . '.csv';
+    $stored   = $file->storeAs('imports', $filename);
+
+    Log::info('Import gestartet', [
+      'class'           => static::class,
+      'manufacturer_id' => (string) $this->manufacturerId,
+      'sourceType'      => 'csv',
+      'source'          => $stored,
+    ]);
+
+    $path = Storage::path($stored);
+    $this->import($path);
+  }
+
+  /**
+   * CSV-Import per Pfad starten.
+   *
+   * @param  string  $path  Absoluter Pfad zur CSV-Datei
+   * @return void
+   */
+  public function import(string $filePath): void
+  {
+    // HARTES ENFORCEMENT direkt vor dem eigentlichen Import.
+    $this->mapping = config('import_mappings.edelrid', []);
+
+    ImportLog::debug('Importer import() enforcing mapping', [
+      'class'          => static::class,
       'manufacturer_id' => $this->manufacturerId,
+      'product_map'    => $this->mapping['product']          ?? null,
+      'variation_map'  => $this->mapping['variation']        ?? null,
+      'var_fields_map' => $this->mapping['variation_fields'] ?? null,
     ]);
 
-    // Zur Kontrolle: welches Mapping ist jetzt aktiv?
-    Log::debug('Edelrid-Mapping aktiv', [
-      'variation_mapping_keys' => array_keys($this->mapping['variation'] ?? []),
-      'variation_mapping'      => $this->mapping['variation'] ?? null,
-    ]);
-
-    $this->import($filePath);
-
-    Log::info('Edelrid-Import abgeschlossen.');
+    // Jetzt die eigentliche Import-Logik der Elternklasse ausführen.
+    parent::import($filePath);
   }
 }

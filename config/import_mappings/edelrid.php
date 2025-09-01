@@ -6,8 +6,14 @@ return [
   'reference' => 'Artikelnummer',
 
   'product' => [
+    // interner Anzeigename
     'product_name'      => 'Artikelbezeichnung',
+
+    // optionaler Alias – kannst du drin lassen oder entfernen
     'name'              => 'Artikelbezeichnung',
+
+    // HIER NEU: Produktnummer fürs Hauptprodukt
+    'product_number'    => 'Artikelnummer',
     'description'       => 'Produkt-Text',
     'short_description' => "USP´s",
     'ean'               => 'EAN',
@@ -15,6 +21,7 @@ return [
 
   'variation_fields' => [
     'sku' => 'Artikelnummer',
+    'ean' => 'EAN',
     // 'ean' usw. bei Bedarf ergänzen
   ],
 
