@@ -28,14 +28,18 @@ class GenericCsvProductImporter implements CsvImporterContract
    * @param int|null $manufacturerId Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
    */
   public function __construct(
-    protected string $mappingFile,
+    protected ?string $mappingFile = null,
     protected ?int $manufacturerId = null
   ) {
-    if (($this->manufacturerId ?? null) === 6 /* Edelrid-ID bei dir */) {
-      throw new \RuntimeException('Edelrid darf nicht über GenericCsvProductImporter laufen.');
+    // ❌ temporäre Edelrid-Sperre entfernen
+    // ✅ Mapping robust laden (aus config() ODER Datei)
+    if ($this->mappingFile === null) {
+      throw new \RuntimeException('GenericCsvProductImporter benötigt $mappingFile (z. B. "petzl", "edelrid").');
     }
-    $this->mapping = config("import_mappings.$mappingFile");
+
+    $this->mapping = $this->loadMapping($this->mappingFile);
   }
+
 
   /**
    * Importiert eine CSV-Datei, erkennt das Hersteller-Mapping automatisch an den Headern
@@ -99,7 +103,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         // falls nichts erkannt wird, Mapping so lassen (oder optional defaulten)
         ImportLog::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
       }
-    } 
+    }
 
     // 4) Alle Zellen trimmen
     $normalized = collect($records)->map(function (array $row) {
@@ -274,11 +278,11 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // Debug pro Feld
     ImportLog::debug('Mapping check', [
-        'field' => $dbField,
-        'candidates' => $candidates,
-        'resolved' => $productPayload[$dbField] ?? null,
-      ]);
-    
+      'field' => $dbField,
+      'candidates' => $candidates,
+      'resolved' => $productPayload[$dbField] ?? null,
+    ]);
+
 
 
     // Fallback: Shortdescription aus Description (max 255, HTML raus)
@@ -334,9 +338,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // Produkt holen/erstellen
     $query = \App\Models\Product::query()->where('slug', $slug);
-    if ($this->manufacturerId) {
-      $query->where('manufacturer_id', $this->manufacturerId);
-    }
+    #if ($this->manufacturerId) {
+    #  $query->where('manufacturer_id', $this->manufacturerId);
+    #}
     $product = $query->first();
 
     if ($product) {
@@ -426,9 +430,9 @@ class GenericCsvProductImporter implements CsvImporterContract
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
     foreach ($variationFieldsMapping as $dbField => $csvColumn) {
-        if (isset($row[$csvColumn])) {
-            $variationPayload[$dbField] = trim($row[$csvColumn]);
-        }
+      if (isset($row[$csvColumn])) {
+        $variationPayload[$dbField] = trim($row[$csvColumn]);
+      }
     }
 
     // 2. Variante erstellen oder aktualisieren
@@ -556,5 +560,30 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     return null;
+  }
+
+  /**
+   * Lädt das Mapping entweder aus config('import_mappings.<name>')
+   * oder aus config/import_mappings/<name>.php (Datei muss ein Array returnen).
+   *
+   * @throws \RuntimeException wenn nichts gefunden.
+   */
+  protected function loadMapping(string $name): array
+  {
+    $fromConfig = config("import_mappings.{$name}");
+    if (is_array($fromConfig)) {
+      return $fromConfig;
+    }
+
+    $path = base_path("config/import_mappings/{$name}.php");
+    if (is_file($path)) {
+      $map = require $path;
+      if (! is_array($map)) {
+        throw new \RuntimeException("Mapping file {$path} must return an array.");
+      }
+      return $map;
+    }
+
+    throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
   }
 }

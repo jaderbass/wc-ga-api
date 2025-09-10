@@ -360,39 +360,52 @@ class ProductResource extends Resource
             ]);
 
             try {
-              if ($data['sourceType'] === 'csv') {
-                // ⬇︎ NEU: CSV läuft jetzt ebenfalls über den Selector (kein Generic/Fallback mehr)
-                $fullPath = storage_path("app/{$source}");
+              if (in_array($data['sourceType'] ?? '', ['csv', 'xml'], true) && empty($data[$data['sourceType']])) {
+                Notification::make()->title('Bitte Datei wählen')->danger()->send();
+                return;
+              }
 
-                $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
-                // optional nur bei Debug
-                if (config('import.debug')) {
-                  ImportLog::debug('ProductResource resolved importer (csv)', ['class' => get_class($importer)]);
-                }
+              $source = match ($data['sourceType']) {
+                'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
+                'api'        => $data['api_url'] ?? null,
+                default      => null,
+              };
 
+              if (($data['sourceType'] ?? '') === 'csv') {
+                $fullPath = is_string($source) ? storage_path("app/{$source}") : null;
 
-                // Einheitlicher Handler: akzeptiert Pfad oder Upload, je nach Importer
+                // schlanke Debug-Infos, nur wenn IMPORT_DEBUG=true
+                ImportLog::debug('[PR] csv: path', [
+                  'is_string' => is_string($fullPath),
+                  'exists'    => is_string($fullPath) ? file_exists($fullPath) : false,
+                ]);
+
+                $importer = \App\Services\ImporterSelector::forManufacturer((int) $data['manufacturer_id']);
+                ImportLog::debug('[PR] csv: importer', ['class' => get_debug_type($importer)]);
+
                 \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
-
                 Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
                 return;
               }
 
-              // XML/API: unverändert über deine Pipeline
-              $importer = \App\Services\ImporterSelector::forManufacturer($data['manufacturer_id']);
-              \App\Services\ImporterSelector::handleImport($importer, $data['sourceType'], $source);
+              // XML / API
+              $importer = \App\Services\ImporterSelector::forManufacturer((int) $data['manufacturer_id']);
+              ImportLog::debug('[PR] xml/api: importer', ['class' => get_debug_type($importer)]);
+              \App\Services\ImporterSelector::handleImport($importer, (string) $data['sourceType'], $source);
 
               Notification::make()->title('Import gestartet')->success()->send();
             } catch (\Throwable $e) {
-              Log::error('Import fehlgeschlagen', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+              Log::error('ACTION_EXCEPTION', [
+                'msg'  => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
               ]);
-              Notification::make()
-                ->title('Import fehlgeschlagen')
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
+              Notification::make()->title('Import fehlgeschlagen')->body($e->getMessage())->danger()->send();
+
+              // Nur in der Entwicklungsphase:
+              if (config('app.debug')) {
+                throw $e; // zeigt dir im Filament-Iframe den Trace
+              }
             }
           }),
       ])

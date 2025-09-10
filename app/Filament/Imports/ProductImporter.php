@@ -42,7 +42,7 @@ class ProductImporter extends Importer
         $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
 
         if ($importer instanceof HandlesUploadedFile) {
-            Log::debug('ProductImporter using handleUploadedFile', ['class' => get_class($importer)]);
+            Log::debug('ProductImporter using handleUploadedFile', ['class' => get_debug_type($importer)]);
             $importer->handleUploadedFile($file);
             return;
         }
