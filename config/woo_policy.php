@@ -1,11 +1,31 @@
 <?php
+
+/**
+ * WooCommerce Write Policy Configuration
+ *
+ * Definiert, welche Felder niemals über die API gesetzt werden sollen.
+ * Kann pro Hersteller erweitert werden.
+ */
 return [
-  // Preise nie schreiben (manuell gepflegt)
-  'never_write' => ['regular_price', 'sale_price', '_regular_price', '_sale_price', '_price', 'min_price', 'max_price'],
 
-  // erstmal keine „no“-Listen (alles erlaubt) – kannst du später füllen oder via JSON baken
-  'manufacturer_allow' => [/* 'wc_field' => ['edelrid'=>true,'petzl'=>false,…] */],
+  /**
+   * Felder, die global nie geschrieben werden dürfen.
+   * Preise werden grundsätzlich nicht über die API gesetzt.
+   */
+  'never_write' => [
+    'regular_price',
+    'sale_price',
+    'price',
+    '_price',
+  ],
 
-  // veraltete Attribute (ohne pa_-Prefix in Klammern) – optional
-  'legacy_attributes' => [],
+  /**
+   * Hersteller-spezifische Write-Policies (Beispiele).
+   */
+  'manufacturers' => [
+    'Edelrid' => [
+      // Platzhalter für Hersteller-spezifische Regeln
+    ],
+  ],
+
 ];
