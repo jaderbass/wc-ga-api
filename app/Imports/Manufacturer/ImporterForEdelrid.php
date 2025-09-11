@@ -24,6 +24,10 @@ use App\Importers\Contracts\HandlesUploadedFile;
 use App\Support\ImportLog;
 
 /**
+ * Hersteller-Importer für Edelrid (CSV).
+ *
+ * Lädt das Edelrid-spezifische Mapping und führt den CSV-Import aus.
+ * Unterstützt sowohl Pfad-basierte Importe als auch Upload-Objekte.
  * @param  int  $manufacturerId  ID des Herstellers (z. B. 6)
  */
 class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
