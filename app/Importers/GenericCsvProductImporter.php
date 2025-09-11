@@ -2,16 +2,13 @@
 
 namespace App\Importers;
 
-use App\Models\ProductAttribute;
-use App\Models\ProductAttributeValue;
+use App\Importers\Contracts\CsvImporterContract;
+use App\Support\ImportLog;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
-use League\Csv\Reader;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use App\Importers\Contracts\CsvImporterContract;
 
 /**
  * Class GenericCsvProductImporter
@@ -32,14 +29,18 @@ class GenericCsvProductImporter implements CsvImporterContract
    * @param int|null $manufacturerId Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
    */
   public function __construct(
-    protected string $mappingFile,
+    protected ?string $mappingFile = null,
     protected ?int $manufacturerId = null
   ) {
-    if (($this->manufacturerId ?? null) === 6 /* Edelrid-ID bei dir */) {
-      throw new \RuntimeException('Edelrid darf nicht über GenericCsvProductImporter laufen.');
+    // ❌ temporäre Edelrid-Sperre entfernen
+    // ✅ Mapping robust laden (aus config() ODER Datei)
+    if ($this->mappingFile === null) {
+      throw new \RuntimeException('GenericCsvProductImporter benötigt $mappingFile (z. B. "petzl", "edelrid").');
     }
-    $this->mapping = config("import_mappings.$mappingFile");
+
+    $this->mapping = $this->loadMapping($this->mappingFile);
   }
+
 
   /**
    * Importiert eine CSV-Datei, erkennt das Hersteller-Mapping automatisch an den Headern
@@ -64,13 +65,18 @@ class GenericCsvProductImporter implements CsvImporterContract
     $records = iterator_to_array($csv->getRecords());
     $headers = $csv->getHeader();
 
-    Log::debug('CSV Header', ['headers' => $headers, 'count' => count($records)]);
-
-    Log::debug('Active mapping snapshot', [
-      'product'          => $this->mapping['product'] ?? null,
-      'variation_fields' => $this->mapping['variation_fields'] ?? null,
-      'variation'        => $this->mapping['variation'] ?? null,
+    ImportLog::debug('CSV Header', [
+      'count'   => count($headers),
+      'sample'  => array_slice($headers, 0, 5),
     ]);
+
+
+    ImportLog::debug('Active mapping snapshot', [
+      'product_keys'   => array_keys($mapping['product'] ?? []),
+      'variation_keys' => array_keys($mapping['variation'] ?? []),
+      'vf_keys'        => array_keys($mapping['variation_fields'] ?? []),
+    ]);
+
 
     // 2) Header normalisieren (unsichtbare Zeichen entfernen, trimmen, lowercased)
     $normalizeHeader = function (string $h): string {
@@ -90,18 +96,14 @@ class GenericCsvProductImporter implements CsvImporterContract
 
       if ($isEdelrid) {
         $this->mapping = config('import_mappings.edelrid');
-        Log::debug('Auto-selected mapping', ['mapping' => 'edelrid']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'edelrid']);
       } elseif ($isPetzl) {
         $this->mapping = config('import_mappings.petzl');
-        Log::debug('Auto-selected mapping', ['mapping' => 'petzl']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'petzl']);
       } else {
         // falls nichts erkannt wird, Mapping so lassen (oder optional defaulten)
-        Log::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
+        ImportLog::debug('Auto-selected mapping', ['mapping' => 'unchanged']);
       }
-    } else {
-      Log::debug('Mapping provided by importer', [
-        'keys' => array_keys($this->mapping),
-      ]);
     }
 
     // 4) Alle Zellen trimmen
@@ -170,15 +172,14 @@ class GenericCsvProductImporter implements CsvImporterContract
       return '__ROW__:' . $i;
     });
 
-    Log::debug('CSV group keys (normalized)', [
+    ImportLog::debug('CSV group keys (normalized)', [
       'count_groups' => $grouped->count(),
-      'sample_keys'  => $grouped->keys()->take(5)->all(),
     ]);
 
     // 6) Gruppen importieren (Transaktion)
     DB::transaction(function () use ($grouped) {
       foreach ($grouped as $groupKey => $rows) {
-        Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
+        ImportLog::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
         $this->importProductGroup($groupKey, $rows);
       }
     });
@@ -212,8 +213,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       : null;
   }
 
-
-
   /**
    * Importiert eine Produkt-Gruppe (Hauptprodukt + Varianten).
    *
@@ -228,7 +227,6 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
   {
-    Log::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
 
     // reference kann String oder Array sein
     $referenceKey  = $this->mapping['reference'] ?? null;
@@ -267,7 +265,10 @@ class GenericCsvProductImporter implements CsvImporterContract
       }
 
       // Diagnose-Log: zeigt pro Feld, welche Kandidaten probiert wurden und was rauskam
-      Log::debug('Mapping check', [
+      /**
+       * ! Mit Flag aufrufen !!!
+       */
+      ImportLog::debug('Mapping check', [
         'group'      => $groupKey,
         'field'      => $dbField,
         'candidates' => $candidates,
@@ -277,12 +278,12 @@ class GenericCsvProductImporter implements CsvImporterContract
 
 
     // Debug pro Feld
-    Log::debug('Mapping check', [
-        'field' => $dbField,
-        'candidates' => $candidates,
-        'resolved' => $productPayload[$dbField] ?? null,
-      ]);
-    
+    ImportLog::debug('Mapping check', [
+      'field' => $dbField,
+      'candidates' => $candidates,
+      'resolved' => $productPayload[$dbField] ?? null,
+    ]);
+
 
 
     // Fallback: Shortdescription aus Description (max 255, HTML raus)
@@ -320,20 +321,6 @@ class GenericCsvProductImporter implements CsvImporterContract
     $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
     $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
 
-    Log::debug('Product upsert payload (pre-filter)', [
-      'group'          => $groupKey,
-      'final_keys'     => array_keys($finalProductPayload),
-      'writable_keys'  => array_keys($writablePayload),
-      'dropped_keys'   => array_values($droppedKeys), // z.B. status, falls Spalte fehlt
-      'sample_payload' => array_intersect_key($finalProductPayload, array_flip([
-        'product_name',
-        'product_number',
-        'ean',
-        'description',
-        'short_description'
-      ])),
-    ]);
-
     // Basisdaten für Create (nur vorhandene Spalten)
     $baseCreate = [];
     foreach (
@@ -352,9 +339,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // Produkt holen/erstellen
     $query = \App\Models\Product::query()->where('slug', $slug);
-    if ($this->manufacturerId) {
-      $query->where('manufacturer_id', $this->manufacturerId);
-    }
+    #if ($this->manufacturerId) {
+    #  $query->where('manufacturer_id', $this->manufacturerId);
+    #}
     $product = $query->first();
 
     if ($product) {
@@ -366,13 +353,11 @@ class GenericCsvProductImporter implements CsvImporterContract
       }
     }
 
-    Log::debug('Product upserted', [
+    Log::info('Product upserted', [
       'id'              => $product->id,
-      'written_keys'    => array_keys($writablePayload),
       'name'            => $product->product_name,
-      // falls Spalten existieren, zeigen wir sie kurz:
-      'product_number'  => $product->product_number ?? null,
-      'ean'             => $product->ean ?? null,
+      'product_number'  => $product->product_number,
+      'ean'             => $product->external_url,
     ]);
 
     // --- Varianten importieren ---
@@ -385,7 +370,10 @@ class GenericCsvProductImporter implements CsvImporterContract
       $ref = $ref !== null ? trim((string) $ref) : '';
 
       if (!$loggedRefDiag) {
-        Log::debug('Reference detection (group)', [
+        /**
+         * ! Mit Flag !!!
+         */
+        ImportLog::debug('Reference detection (group)', [
           'group'          => $groupKey,
           'reference_cols' => $referenceCols,
           'sample_ref'     => $ref,
@@ -411,7 +399,7 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     if ($skipped > 0 || $imported > 0) {
-      Log::debug('Variation summary', [
+      Log::info('Variation summary', [
         'group'          => $groupKey,
         'imported'       => $imported,
         'skipped'        => $skipped,
@@ -419,8 +407,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       ]);
     }
   }
-
-
 
   /**
    * Importiert oder aktualisiert eine einzelne Produktvariante.
@@ -445,9 +431,9 @@ class GenericCsvProductImporter implements CsvImporterContract
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
     foreach ($variationFieldsMapping as $dbField => $csvColumn) {
-        if (isset($row[$csvColumn])) {
-            $variationPayload[$dbField] = trim($row[$csvColumn]);
-        }
+      if (isset($row[$csvColumn])) {
+        $variationPayload[$dbField] = trim($row[$csvColumn]);
+      }
     }
 
     // 2. Variante erstellen oder aktualisieren
@@ -575,5 +561,30 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     return null;
+  }
+
+  /**
+   * Lädt das Mapping entweder aus config('import_mappings.<name>')
+   * oder aus config/import_mappings/<name>.php (Datei muss ein Array returnen).
+   *
+   * @throws \RuntimeException wenn nichts gefunden.
+   */
+  protected function loadMapping(string $name): array
+  {
+    $fromConfig = config("import_mappings.{$name}");
+    if (is_array($fromConfig)) {
+      return $fromConfig;
+    }
+
+    $path = base_path("config/import_mappings/{$name}.php");
+    if (is_file($path)) {
+      $map = require $path;
+      if (! is_array($map)) {
+        throw new \RuntimeException("Mapping file {$path} must return an array.");
+      }
+      return $map;
+    }
+
+    throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
   }
 }
