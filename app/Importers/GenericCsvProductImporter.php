@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Class GenericCsvProductImporter

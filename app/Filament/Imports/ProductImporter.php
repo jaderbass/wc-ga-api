@@ -4,6 +4,7 @@ namespace App\Filament\Imports;
 
 use Filament\Actions\Imports\Importer;
 use Filament\Actions\Imports\Models\Import;
+use App\Services\ImporterSelector;
 use Illuminate\Support\Facades\Log;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use App\Importers\Contracts\CsvImporterContract;
@@ -30,8 +31,8 @@ class ProductImporter extends Importer
     /**
      * Einstiegspunkt für Filament-Uploads.
      *
-     * @param  \Livewire\Features\SupportFileUploads\TemporaryUploadedFile  $file
-     * @param  array<string,mixed>  $formData  Formularwerte inkl. manufacturer_id
+     * @param  TemporaryUploadedFile  $file     Hochgeladene Datei
+     * @param  array<string,mixed>    $formData Formularwerte inkl. manufacturer_id
      * @return void
      */
     public function handleUploadedFile(TemporaryUploadedFile $file, array $formData): void
