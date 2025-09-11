@@ -76,4 +76,4 @@
 **Risiken:** Backfill-Last → mitigiert durch Chunking & Off-Peak.  
 **Rollback:** Revert + `migrate:rollback` (nur additive Felder).
 
-**Tickets/Refs:** #<TicketNr> / Doku-Abschnitt „Datenbank-Schema & Neuinstallation“.
+**Tickets/Refs:** #&lt;TicketNr&gt; / Doku-Abschnitt „Datenbank-Schema & Neuinstallation“.
