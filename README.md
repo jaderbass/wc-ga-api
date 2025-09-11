@@ -9,6 +9,7 @@ in ein WooCommerce-kompatibles Format zu exportieren.
 ## 1. Installation
 
 ### 1.1 Voraussetzungen
+
 - PHP 8.2+
 - Composer
 - MySQL 8.x
@@ -16,6 +17,7 @@ in ein WooCommerce-kompatibles Format zu exportieren.
 - Laragon (oder gleichwertige lokale Umgebung)
 
 ### 1.2 Projekt einrichten
+
 ```bash
 git clone https://github.com/jaderbass/wc-ga-api.git
 cd wc-ga-api
@@ -24,6 +26,7 @@ npm install && npm run build
 ```
 
 ### 1.3 .env konfigurieren
+
 - Datenbank-Zugangsdaten (`DB_CONNECTION`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
 - Optional: zusätzliche Verbindungen (z. B. `mysql_dump` für Schema-Dump)
 
@@ -32,17 +35,21 @@ npm install && npm run build
 ## 2. Datenbank
 
 ### 2.1 Migrationen & Seed
+
 ```bash
 php artisan migrate --seed
 ```
 
 ### 2.2 Schema-Dump (für Neuinstallationen)
+
 ```bash
 php artisan schema:dump --prune
 ```
+
 → erstellt `database/schema/mysql-schema.sql` als Baseline.
 
 ### 2.3 Neue Installation (komplett von Null)
+
 ```bash
 git clone https://github.com/jaderbass/wc-ga-api.git
 cd wc-ga-api
@@ -57,6 +64,7 @@ php artisan migrate --seed
 ## 3. Artisan Commands – WooCommerce Sync
 
 ### 3.1 Backfill Commands
+
 - **`php artisan products:backfill`**  
   Füllt fehlende Felder in der `products`-Tabelle auf (z. B. Maße, Gewicht).  
   Optionen:  
@@ -70,6 +78,7 @@ php artisan migrate --seed
   - `--dry-run` → Nur Anzeige, keine DB-Änderung.
 
 ### 3.2 Export Commands
+
 - **`php artisan woo:export:sample`**  
   Erstellt eine kleine CSV-Stichprobe für den WooCommerce-Import.  
   Optionen:  
