@@ -10,12 +10,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Str;   // ✅
+use Illuminate\Support\Str;
 
 
 /**
  * Class Product
  *
+ * Produktmodell.
+ * Generiert bei create/update automatisch einen eindeutigen Slug,
+ * falls keiner gesetzt ist (Basis: product_name → sku → uuid).
+ * 
  * Aktualisiert gemäß Änderungsanforderung (2025-08-25):
  *  - Neue Felder: external_url, declaration_of_compliance, manual_url, size,
  *    certification, author_firstname, author_lastname, author_name, author_mail
@@ -97,6 +101,11 @@ class Product extends Model
         return $this->belongsTo(Manufacturer::class);
     }
 
+    /**
+     * Hookt sich in creating/updating ein, um Slug zu setzen.
+     *
+     * @return void
+     */
     protected static function booted(): void
     {
         static::creating(function (Product $p) {
@@ -113,6 +122,12 @@ class Product extends Model
         });
     }
 
+    /**
+     * Erzeugt einen eindeutigen Slug aus Name/SKU; hängt bei Kollisionen -2, -3, … an.
+     *
+     * @param Product $p
+     * @return string
+     */
     protected static function makeUniqueSlug(Product $p): string
     {
         // Basis: Produktname, sonst SKU, sonst UUID
