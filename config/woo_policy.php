@@ -28,4 +28,16 @@ return [
     ],
   ],
 
+  /**
+   * Woo Policy / Kompatibilitäts-Schalter
+   *
+   * - compat.wp_all_export_woo_addon:
+   *   Einige Versionen des "WP All Export – Woo Add-on" injizieren/erwarten REST-Felder
+   *   (z. B. attributes/options) und können POST /products blockieren.
+   *   Wenn true, entfernt der PayloadBuilder riskante Felder bei einfachen Produkten.
+   */
+  'compat' => [
+    'wp_all_export_woo_addon' => true,
+  ],
+
 ];
