@@ -10,6 +10,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;   // ✅
+
 
 /**
  * Class Product
@@ -93,5 +95,43 @@ class Product extends Model
     public function manufacturer(): BelongsTo
     {
         return $this->belongsTo(Manufacturer::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Product $p) {
+            if (blank($p->slug)) {
+                $p->slug = static::makeUniqueSlug($p);
+            }
+        });
+
+        // falls jemand den slug im UI leert, beim Update neu setzen
+        static::updating(function (Product $p) {
+            if (blank($p->slug)) {
+                $p->slug = static::makeUniqueSlug($p);
+            }
+        });
+    }
+
+    protected static function makeUniqueSlug(Product $p): string
+    {
+        // Basis: Produktname, sonst SKU, sonst UUID
+        $base = Str::slug($p->product_name ?: $p->sku ?: Str::uuid());
+        $base = Str::limit($base, 190, ''); // Puffer, falls wir Suffixe anhängen
+
+        $slug = $base;
+        $i = 2;
+
+        // Kollisionen vermeiden (bei update eigenen Datensatz ausschließen)
+        while (static::query()
+            ->when($p->exists, fn($q) => $q->whereKeyNot($p->getKey()))
+            ->where('slug', $slug)
+            ->exists()
+        ) {
+            $slug = $base . '-' . $i;
+            $i++;
+        }
+
+        return $slug ?: Str::uuid()->toString();
     }
 }
