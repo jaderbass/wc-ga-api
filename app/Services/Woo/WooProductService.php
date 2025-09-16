@@ -93,6 +93,24 @@ class WooProductService
                 }
             }
 
+            // 2.5) Falls keine ID + keine/leerere SKU: via Slug suchen und updaten
+            if ($resp === null && !empty($product->slug)) {
+                try {
+                    $found = $client->get('products', ['slug' => $product->slug, 'per_page' => 1]);
+                    if (is_array($found) && !empty($found[0]['id'])) {
+                        $product->woo_product_id = (int) $found[0]['id'];
+                        $product->save();
+                        $resp   = $client->put('products/' . $product->woo_product_id, $payload);
+                        $action = 'update:slug';
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Woo find-by-slug failed', [
+                        'slug'  => $product->slug,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
             // 3) Wenn bisher nichts aktualisiert: neu anlegen
             if ($resp === null) {
                 $resp   = $client->post('products', $payload);

@@ -26,6 +26,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -34,7 +35,7 @@ use Filament\Notifications\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Filament\Forms\Components\Placeholder;
+use Illuminate\Validation\Rule;
 
 /**
  * Class ProductResource
@@ -100,13 +101,28 @@ class ProductResource extends Resource
                 ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
                 ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
                 ->columnSpan(4),
+
               Select::make('manufacturer_id')
                 ->required()
                 ->relationship('manufacturer', 'manufacturer')
                 ->columnSpan(4),
+
               TextInput::make('sku')
-                ->maxLength(32)
+                ->label('SKU')
+                // Beim Editieren feldweise „password-like“: leer anzeigen
+                ->formatStateUsing(fn($state, $record, string $context) => $context === 'edit' ? '' : $state)
+                // Alte SKU als Platzhalter, damit man sie sieht ohne sie zu übernehmen
+                ->placeholder(fn($record) => $record?->sku)
+                // Nur beim Erstellen Pflicht
+                ->required(fn(string $context) => $context === 'create')
+                // Unique, aber aktuellen Datensatz ignorieren
+                ->unique(ignoreRecord: true)
+                // Beim Editieren nur speichern, wenn etwas eingegeben wurde (leer = unverändert)
+                ->dehydrated(fn($state) => filled($state))
+                ->maxLength(255)
+                ->helperText('Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
                 ->columnSpan(4),
+
             ]) //Grid
           ]) //schema
           ->collapsible(),
@@ -118,9 +134,11 @@ class ProductResource extends Resource
               Textarea::make('description')
                 ->required()
                 ->columnSpan(6),
+
               Textarea::make('shortdescription')
                 ->required()
                 ->columnSpan(6),
+
             ]) // Grid
           ]) //schema
           ->collapsible(),
