@@ -51,6 +51,15 @@ class WooProductService
     {
         $client  = new WooClient($shop);
         $payload = $this->builder->buildProductPayload($product);
+
+        // Kompatibilität: WP All Export Woo Add-on
+        if (
+            config('woo_policy.compat.wp_all_export_woo_addon')
+            && (($payload['type'] ?? 'simple') === 'simple')
+        ) {
+            unset($payload['attributes'], $payload['default_attributes']);
+        }
+
         $hash    = PayloadHasher::make($payload);
 
         // Optional: nur senden, wenn sich die Payload geändert hat
