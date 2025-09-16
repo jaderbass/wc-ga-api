@@ -120,6 +120,12 @@ class Product extends Model
                 $p->slug = static::makeUniqueSlug($p);
             }
         });
+
+        static::saving(function ($p) {
+            if ($p->isDirty('sku') && $p->sku === '') {
+                $p->sku = null; // gegen '' in DB (UNIQUE-Index & MySQL-NULL-Handling)
+            }
+        });
     }
 
     /**
