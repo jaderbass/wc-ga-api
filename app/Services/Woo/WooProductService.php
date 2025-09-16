@@ -53,15 +53,10 @@ class WooProductService
         $payload = $this->builder->buildProductPayload($product);
         $hash    = PayloadHasher::make($payload);
 
-        // Unverändert? -> Skip (optional)
+        // Optional: nur senden, wenn sich die Payload geändert hat
         if ($onlyChanged && $product->payload_hash === $hash) {
-            Log::info('Skip upsert (unchanged payload)', ['productId' => $product->id]);
-            // Touch minimal: Zeit/Status bleiben "synced"
-            $product->last_synced_at    = now();
-            $product->last_sync_status  = SyncStatus::Synced->value;
-            $product->last_sync_error   = null;
-            $product->save();
-
+            // Touch minimal, damit man den letzten Check-Zeitpunkt sieht
+            $this->touchSyncMeta($product, SyncStatus::Synced->value, null, $hash);
             return [
                 'status'  => SyncStatus::Synced->value,
                 'skipped' => true,
@@ -71,63 +66,44 @@ class WooProductService
 
         if ($dryRun) {
             return [
-                'status'  => 'dry-run',
-                'payload' => $payload,
+                'status'   => 'dry-run',
+                'payload'  => $payload,
                 'prevHash' => $product->payload_hash,
-                'newHash' => $hash,
+                'newHash'  => $hash,
             ];
         }
 
         try {
-            $resp = null;
+            $resp   = null;
             $action = null;
 
-            // 1) Direkter Update-Pfad über gespeicherte Woo-ID
-            if ($product->woo_product_id) {
-                $resp = $client->put('products/' . $product->woo_product_id, $payload);
+            // 1) Update per gespeicherter Woo-ID
+            if (!empty($product->woo_product_id)) {
+                $resp   = $client->put('products/' . $product->woo_product_id, $payload);
                 $action = 'update:id';
             }
 
             // 2) Falls keine ID: per SKU suchen und updaten
-            if (!$resp && !empty($product->sku)) {
-                try {
-                    $found = $client->get('products', ['sku' => $product->sku]);
-                    if (is_array($found) && !empty($found[0]['id'])) {
-                        $product->woo_product_id = (int) $found[0]['id'];
-                        $product->save();
-                        $resp = $client->put('products/' . $product->woo_product_id, $payload);
-                        $action = 'update:sku';
-                    }
-                } catch (Throwable $e) {
-                    // Nur warnen – wir versuchen danach einen Create
-                    Log::warning('Woo find-by-SKU failed', [
-                        'sku'   => $product->sku,
-                        'error' => $e->getMessage(),
-                    ]);
+            if ($resp === null && !empty($product->sku)) {
+                if ($wooId = $this->findWooIdBySku($client, (string)$product->sku)) {
+                    $product->woo_product_id = $wooId;
+                    $product->save();
+                    $resp   = $client->put('products/' . $wooId, $payload);
+                    $action = 'update:sku';
                 }
             }
 
-            // 3) Create, wenn bisher nichts aktualisiert wurde
-            if (!$resp) {
-                $resp = $client->post('products', $payload);
+            // 3) Wenn bisher nichts aktualisiert: neu anlegen
+            if ($resp === null) {
+                $resp   = $client->post('products', $payload);
                 $action = 'create';
                 if (isset($resp['id'])) {
                     $product->woo_product_id = (int) $resp['id'];
                 }
             }
 
-            // Erfolgreich: Metafelder setzen
-            $product->payload_hash     = $hash;
-            $product->last_sync_status = SyncStatus::Synced->value;
-            $product->last_synced_at   = now();
-            $product->last_sync_error  = null;
-            $product->save();
-
-            Log::info('Woo upsert ok', [
-                'productId' => $product->id,
-                'wooId'     => $product->woo_product_id,
-                'action'    => $action,
-            ]);
+            // Erfolgs-Metadaten pflegen
+            $this->touchSyncMeta($product, SyncStatus::Synced->value, null, $hash);
 
             return [
                 'id'       => $product->woo_product_id,
@@ -137,26 +113,7 @@ class WooProductService
             ];
         } catch (Throwable $e) {
             // Fehlerstatus pflegen
-            // robust: wenn Enum existiert und 'Failed'/'Error' Case vorhanden ist → dessen value, sonst 'error'
-            $status = 'error';
-            if (enum_exists(SyncStatus::class)) {
-                foreach (SyncStatus::cases() as $case) {
-                    if ($case->name === 'Failed' || $case->name === 'Error') {
-                        $status = $case->value;
-                        break;
-                    }
-                }
-            }
-            $product->last_sync_status = $status;
-
-            $product->last_synced_at   = now();
-            $product->last_sync_error  = $e->getMessage();
-            $product->save();
-
-            Log::error('Woo upsert failed', [
-                'productId' => $product->id,
-                'error'     => $e->getMessage(),
-            ]);
+            $this->touchSyncMeta($product, 'error', $e->getMessage(), $hash);
 
             return [
                 'status'  => 'error',
@@ -164,6 +121,7 @@ class WooProductService
             ];
         }
     }
+
 
     /**
      * Sucht in WooCommerce nach einem Produkt anhand der SKU und liefert die Woo-ID.
