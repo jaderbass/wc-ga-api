@@ -139,11 +139,17 @@ class ProductResource extends Resource
           ->schema([
             Grid::make(12)->schema([
               Textarea::make('description')
+                ->label('Beschreibung')
+                ->rows(6)
                 ->required()
+                ->maxLength(65535)
                 ->columnSpan(6),
 
-              Textarea::make('shortdescription')
+              Textarea::make('short_description')
+                ->label('Kurzbeschreibung')
+                ->rows(6)
                 ->required()
+                ->maxLength(65535)
                 ->columnSpan(6),
 
             ]) // Grid
