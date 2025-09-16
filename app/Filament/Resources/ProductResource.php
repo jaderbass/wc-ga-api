@@ -31,6 +31,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Filament\Forms\Components\Placeholder;
@@ -77,8 +78,15 @@ class ProductResource extends Resource
               TextInput::make('product_name')
                 ->label('Produktname')
                 ->required()
+                ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
                 ->maxLength(255)
-                ->columnSpan(8),
+                ->columnSpan(4),
+
+              TextInput::make('slug')
+                ->label('Slug')
+                ->helperText('URL-Teil, automatisch aus dem Namen. Kollisionen werden serverseitig aufgelöst.')
+                ->required()
+                ->columnSpan(4),
 
               TextInput::make('product_number')
                 ->label('Produktnummer')

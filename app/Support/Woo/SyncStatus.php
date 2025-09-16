@@ -7,4 +7,5 @@ enum SyncStatus: string {
     case Synced  = 'synced';
     case Error   = 'error';
     case Deleted = 'deleted';
+    case Failed = 'failed';
 }
