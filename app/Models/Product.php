@@ -63,6 +63,8 @@ class Product extends Model
         'author_mail',
     ];
 
+    protected $guarded = ['id'];
+
     protected $casts = [];
 
     /**
@@ -124,6 +126,9 @@ class Product extends Model
         static::saving(function ($p) {
             if ($p->isDirty('sku') && $p->sku === '') {
                 $p->sku = null; // gegen '' in DB (UNIQUE-Index & MySQL-NULL-Handling)
+            }
+            if ($p->short_description === '') {
+                $p->short_description = null;
             }
         });
     }
