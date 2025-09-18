@@ -66,3 +66,9 @@ git push
 - **Weiter ändern nach `git add`** → neue Änderungen sind wieder „modified“ (rot), die Version im Staging bleibt trotzdem drin → → **erneut `git add` nötig**, wenn du die neueste Version auch im Commit haben willst.  
 - **`git commit`** → speichert nur das, was im Staging ist (grün).  
 - **`git push`** → überträgt deine Commits ins Remote-Repo.
+
+## Nachrichten (Commits) klar strukturieren
+
+- `fix:` für Bugfixes
+- `feature:` für neue Features
+- `refactor:` für Code-Optimierungen
