@@ -15,6 +15,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Woo\WooProductService;
@@ -520,6 +521,7 @@ class ProductResource extends Resource
                 ->success()
                 ->send();
             }),
+          SyncVariationsBulkAction::make('sync-variations'),
         ]),
       ]);
   }
