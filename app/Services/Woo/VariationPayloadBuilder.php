@@ -12,14 +12,14 @@ use Illuminate\Support\Facades\Log;
  * VariationPayloadBuilder
  *
  * Baut WooCommerce-konforme Payload-Arrays für Produkt-Varianten
- * (REST: /wp-json/wc/v3/products/{productId}/variations).
+ * (REST: /wp-json/wc/v3/products/{productId}/variations), OHNE Preisfelder.
  *
  * Annahmen/Kontext:
- * - Preise werden im System als Integer (Cents) gespeichert und erst bei der Ausgabe formatiert.
- * - Häufige Varianteneigenschaften sind z.B. size, color, length, certification o.ä.
+ * - Preise werden im Projekt bewusst NICHT synchronisiert.
+ * - Häufige Varianteneigenschaften sind z.B. size, color, length, certification.
  * - Attribut-Namen für Woo lassen sich per config('woo.mapping.variation_attributes') übersteuern.
- * - Fallback-Werte (manage_stock, stock_status etc.) sind hier konservativ gesetzt und können
- *   später im Service/CLI oder via Config justiert werden.
+ * - Fallback-Werte (manage_stock, stock_status etc.) sind konservativ gesetzt und können
+ *   via Config justiert werden.
  *
  * Erweiterbarkeit:
  * - Mapping der Varianten-Felder -> Woo-Felder via $fieldMap (konfigurierbar).
@@ -34,12 +34,11 @@ class VariationPayloadBuilder
    * @var array<string, string> Feld-Mapping von internen Variations-Feldern zu Woo-Feldern
    *
    * Unterstützte Keys auf unserer Seite (Beispiele):
-   * - 'sku', 'ean', 'weight', 'regular_price', 'sale_price', 'stock_quantity'
-   * - beliebige weitere Custom-Felder (werden ignoriert, wenn nicht vorhanden)
+   * - 'sku', 'ean', 'weight', 'stock_quantity'
    *
    * Unterstützte Woo-Felder (Auszug):
-   * - 'sku', 'regular_price', 'sale_price', 'manage_stock', 'stock_quantity',
-   *   'stock_status', 'weight', 'dimensions', 'image', 'attributes', 'meta_data'
+   * - 'sku', 'manage_stock', 'stock_quantity', 'stock_status',
+   *   'weight', 'dimensions', 'image', 'attributes', 'meta_data'
    */
   protected array $fieldMap;
 
@@ -71,12 +70,9 @@ class VariationPayloadBuilder
   {
     $this->fieldMap = config('woo.mapping.variation_field_map', [
       'sku'            => 'sku',
-      // Preise werden als String mit Dezimalpunkt erwartet
-      'regular_price'  => 'regular_price',
-      'sale_price'     => 'sale_price',
       'stock_quantity' => 'stock_quantity',
       'weight'         => 'weight',
-      // 'ean' könnte als meta_data abgebildet werden (siehe buildMetaData)
+      // 'ean' wird als meta_data abgebildet (siehe buildMetaData)
     ]);
 
     $this->attributeMap = config('woo.mapping.variation_attribute_map', [
@@ -88,8 +84,7 @@ class VariationPayloadBuilder
 
     $this->defaults = config('woo.mapping.variation_defaults', [
       'manage_stock' => true,
-      // Wenn stock_quantity null ist: setze "instock" statt "outofstock",
-      // damit initial keine ungewollten Deaktivierungen passieren.
+      // Bei fehlender Menge standardmäßig "instock", um versehentliche Deaktivierungen zu vermeiden.
       'stock_status' => 'instock',
     ]);
   }
@@ -111,7 +106,7 @@ class VariationPayloadBuilder
     }
 
     Log::debug('VariationPayloadBuilder: collection payload built', [
-      'product_id'      => $product->id,
+      'product_id'       => $product->id,
       'variations_count' => is_array($variations) ? count($variations) : $variations->count(),
     ]);
 
@@ -119,7 +114,7 @@ class VariationPayloadBuilder
   }
 
   /**
-   * Baut die Payload für genau eine Variante.
+   * Baut die Payload für genau eine Variante (ohne Preisfelder).
    *
    * @param  Product          $product
    * @param  ProductVariation $variation
@@ -139,12 +134,6 @@ class VariationPayloadBuilder
       $value = $variation->{$internal} ?? null;
 
       if ($value === null) {
-        continue;
-      }
-
-      // Preisfelder: Integer (Cents) -> String "12.34"
-      if (in_array($wooKey, ['regular_price', 'sale_price'], true)) {
-        $payload[$wooKey] = $this->formatPrice($value);
         continue;
       }
 
@@ -171,9 +160,8 @@ class VariationPayloadBuilder
     // 5) optionale Bild-Zuordnung, falls vorhanden (z.B. $variation->image_url)
     if (!empty($variation->image_url)) {
       $payload['image'] = [
-        'src'   => $variation->image_url,
-        'name'  => $this->buildImageName($product, $variation),
-        // 'alt' optional
+        'src'  => $variation->image_url,
+        'name' => $this->buildImageName($product, $variation),
       ];
     }
 
@@ -194,18 +182,6 @@ class VariationPayloadBuilder
   }
 
   /**
-   * Formatiert Integer-Cents zu Woo-Preisstring mit Punkt als Dezimaltrenner.
-   *
-   * @param  int|string $cents
-   * @return string
-   */
-  protected function formatPrice(int|string $cents): string
-  {
-    $cents = (int) $cents;
-    return number_format($cents / 100, 2, '.', '');
-  }
-
-  /**
    * Baut die Attribute-Struktur für Woo aus den internen Variations-Werten.
    *
    * @param  ProductVariation $variation
@@ -216,7 +192,6 @@ class VariationPayloadBuilder
     $result = [];
 
     foreach ($this->attributeMap as $internalKey => $wooName) {
-      // interner Wert (z.B. $variation->size)
       $value = $variation->{$internalKey} ?? null;
 
       if ($value === null || $value === '') {
@@ -249,9 +224,6 @@ class VariationPayloadBuilder
   /**
    * Erzeugt Meta-Daten für Woo (z.B. EAN).
    *
-   * Hinweis: In Woo können Meta-Daten je nach Shop-Setup andre Namen erfordern.
-   *          Per Config kann man hier später Mappings ergänzen.
-   *
    * @param  ProductVariation $variation
    * @return array<int,array{key:string,value:mixed}>
    */
@@ -260,16 +232,8 @@ class VariationPayloadBuilder
     $meta = [];
 
     if (!empty($variation->ean)) {
-      $meta[] = [
-        'key'   => 'ean',
-        'value' => (string) $variation->ean,
-      ];
+      $meta[] = ['key' => 'ean', 'value' => (string) $variation->ean];
     }
-
-    // Beispiel für weitere Meta-Keys:
-    // if (!empty($variation->barcode)) {
-    //     $meta[] = ['key' => 'barcode', 'value' => $variation->barcode];
-    // }
 
     return $meta;
   }
