@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
     \App\Console\Commands\PermissionHealthCheck::class,
     \App\Console\Commands\PermissionFixPlan::class,
     \App\Console\Commands\WooSyncVariationsCommand::class,
+    \App\Console\Commands\WooPingCommand::class,
   ];
 
   /**
