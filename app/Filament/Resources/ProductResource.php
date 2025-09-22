@@ -15,6 +15,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Filament\Resources\ProductResource\FormSchema;
 use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Models\Product;
 use App\Models\Shop;
