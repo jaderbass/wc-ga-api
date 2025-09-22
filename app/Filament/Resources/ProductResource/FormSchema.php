@@ -99,7 +99,7 @@ class FormSchema
 
             // SKU-Feld – kombiniert deine alten Komfort-Features mit der neuen Logik
             TextInput::make('sku')
-              ->label('SKU (nur Parent bei simple)')
+              ->label('SKU (nur bei Einzelprodukt setzen!)')
               ->nullable()
               // Beim Editieren „password-like“: leer anzeigen
               ->formatStateUsing(fn($state, $record, string $context) => $context === 'edit' ? '' : $state)
@@ -114,7 +114,7 @@ class FormSchema
               // Bei variable-Parent deaktivieren (macht die UI eindeutig)
               ->disabled(fn(Get $get) => $get('product_type') === 'variable')
               ->maxLength(255)
-              ->helperText('Bei variablen Produkten bitte die SKU leer lassen. Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
+              ->helperText('Bei variablen Produkten bitte die SKU leer lassen! Beim Bearbeiten von Einzelprodukten leer lassen, um die bestehende SKU zu behalten.')
               ->columnSpan(4),
 
           ]) //Grid

@@ -80,9 +80,9 @@ class ProductResource extends Resource
   public static function form(Form $form): Form
   {
     return $form
-      ->schema([
+      ->schema(
         FormSchema::fields()
-      ])
+      )
       ->columns(12);
   }
 
