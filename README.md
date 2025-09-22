@@ -110,3 +110,72 @@ php artisan migrate --seed
 - Hersteller-spezifische Maps (`app/Support/Woo/ManufacturerMaps/...`) erweitern.  
 - Exporter für vollständigen WooCommerce-Import anpassen.  
 - Weitere Hersteller (Kask, Singing Rock XML) einbinden.  
+
+## 7. 🔌 WooCommerce API-Verbindung testen
+
+Bevor Produkt- oder Varianten-Syncs ausgeführt werden, sollte geprüft
+werden, ob die Laravel-App erfolgreich eine Verbindung zur WooCommerce
+REST API mit den in der `.env` hinterlegten Zugangsdaten herstellen
+kann.
+
+### 1) Environment Setup
+
+In der `.env` folgende Einträge hinzufügen (Domain und API-Keys
+anpassen):
+
+``` env
+WOO_SYNC_ENABLED=true
+WOO_API_BASE_URL=https://testshop.geoalpin.com
+WOO_API_VERSION=wc/v3
+WOO_API_KEY=ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+WOO_API_SECRET=cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Danach den Config-Cache leeren:
+
+``` bash
+php artisan config:clear
+php artisan cache:clear
+```
+
+### 2) Sanity-Check Command ausführen
+
+Mit dem eingebauten Artisan-Command prüfen:
+
+``` bash
+php artisan woo:ping
+```
+
+### 3) Erwartete Ausgabe
+
+- **Erfolgsfall:**
+  - Konsole zeigt `HTTP Status: 200`
+  - Anzahl der Produkte (kann 0 sein, wenn der Shop leer ist)
+  - JSON-Snippet des ersten Produkts (in der Konsole evtl.
+        abgeschnitten)
+- **Fehlerfall:**
+  - Konsole zeigt Fehlermeldung (401 Unauthorized, 403 Forbidden,
+        404 Not Found, etc.)
+  - Fehler wird zusätzlich in `storage/logs/laravel.log`
+        protokolliert
+
+### 4) Troubleshooting
+
+- **401 / 403 Unauthorized** → API-Key/Secret prüfen, Berechtigung
+    *Lesen/Schreiben* setzen.
+- **404 Not Found** → Prüfen, ob `WOO_API_BASE_URL` exakt der Shop-URL
+    entspricht.
+- **Timeout / Verbindung abgelehnt** → Internet/SSL-Setup prüfen.
+- **Leeres Ergebnis** → Shop ist erreichbar, enthält aber keine
+    Produkte.
+
+### 5) Nächste Schritte
+
+Sobald der `woo:ping` Command funktioniert, können gefahrlos Syncs
+gestartet werden:
+
+``` bash
+php artisan woo:sync:variations --id=123
+```
+
+oder in Filament die Bulk Action **„Sync Variations to Woo"** ausführen.
