@@ -46,7 +46,7 @@ class SyncVariationsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Sync Variations to Woo')
+    $this->label('Variationen synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
       ->requiresConfirmation()
       ->action(fn(Collection $records) => $this->handle($records));
