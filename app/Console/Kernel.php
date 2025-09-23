@@ -18,6 +18,7 @@ class Kernel extends ConsoleKernel
     \App\Console\Commands\PermissionFixPlan::class,
     \App\Console\Commands\WooSyncVariationsCommand::class,
     \App\Console\Commands\WooPingCommand::class,
+    \App\Console\Commands\WooLookupSkuCommand::class,
   ];
 
   /**
