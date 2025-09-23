@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Services\Woo\VariationSyncService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  * SyncVariationsBulkAction
  *
  * Filament Bulk Action zum Outbound-Sync von WooCommerce-Varianten.
- * - Zeigt Confirm-Formular mit:
+ * - Confirm-Formular mit:
  *     * Shop-Profil (config('woo.profiles'))
  *     * "Nur geänderte senden"
  *     * Dry-run (nur Vorschau)
@@ -26,17 +27,17 @@ use Illuminate\Support\Facades\Schema;
  *     - skipped, wenn product.updated_at <= woo_var_synced_at
  * - Zusätzlich, wenn Tabelle product_variations eine Spalte 'woo_synced_at' hat:
  *     - skipped, wenn KEINE Variation mit updated_at > woo_var_synced_at existiert
- * - Wenn keine der Spalten existiert → Option wird ignoriert (sicherer Fallback).
+ * - Wenn keine der Spalten existiert → Option wird ignoriert (Fallback).
  *
  * Dry-run:
  * - Es werden keine Requests an Woo gesendet.
- * - Pro Produkt wird eine kompakte Vorschau geloggt (Anzahl Varianten, ohne SKU-Liste).
+ * - Pro Produkt wird eine kompakte Vorschau geloggt.
  *
  * Multi-Profile:
  * - Optional 'woo.profiles' in config/woo.php:
  *   'profiles' => [
  *     'staging' => ['base_url' => 'https://staging.tld', 'key' => 'ck...', 'secret' => 'cs...'],
- *     'production' => ['base_url' => 'https://shop.tld',    'key' => 'ck...', 'secret' => 'cs...'],
+ *     'production' => ['base_url' => 'https://shop.tld', 'key' => 'ck...', 'secret' => 'cs...'],
  *   ]
  *
  * @author  JAderBass
@@ -100,7 +101,7 @@ class SyncVariationsBulkAction extends BulkAction
         continue;
       }
 
-      // „Nur geänderte“: prüfen, ob überhaupt Delta vorliegt
+      // „Nur geänderte“: prüfen, ob Delta vorliegt
       if (!empty($data['only_changed']) && $this->shouldSkipAsUnchanged($product)) {
         $summary['skipped']++;
         Log::info('SyncVariationsBulkAction: skipped (no variant changes since last sync)', [
@@ -146,13 +147,29 @@ class SyncVariationsBulkAction extends BulkAction
       }
     }
 
-    // Notification
+    // ---- Explizite Notification-Ausgabe --------------------------------
+    $title = !empty($data['dry_run']) ? 'Dry-run abgeschlossen' : 'Varianten-Sync abgeschlossen';
+    $body  = sprintf(
+      "Produkte: %d\nErstellt: %d · Aktualisiert: %d · Übersprungen: %d · Fehler: %d",
+      $summary['products'],
+      $summary['created'],
+      $summary['updated'],
+      $summary['skipped'],
+      $summary['errors']
+    );
+
     if ($summary['errors'] > 0) {
-      $this->failureNotificationTitle("Varianten-Sync mit {$summary['errors']} Fehler(n).");
+      Notification::make()
+        ->title($title)
+        ->body($body)
+        ->danger()
+        ->send();
     } else {
-      $this->successNotificationTitle(
-        "Varianten-Sync ok. Created: {$summary['created']} · Updated: {$summary['updated']} · Skipped: {$summary['skipped']}"
-      );
+      Notification::make()
+        ->title($title)
+        ->body($body)
+        ->success()
+        ->send();
     }
 
     Log::info('SyncVariationsBulkAction summary', $summary);
@@ -169,8 +186,7 @@ class SyncVariationsBulkAction extends BulkAction
   {
     $hasProdCol = $this->hasColumn($product->getTable(), 'woo_var_synced_at');
     if (!$hasProdCol) {
-      // keine Delta-Infos → nicht skippen
-      return false;
+      return false; // keine Delta-Infos → nicht skippen
     }
 
     $last = $product->woo_var_synced_at;
@@ -178,14 +194,12 @@ class SyncVariationsBulkAction extends BulkAction
       return false;
     }
 
-    // Wenn Produkt selbst seitdem nicht geändert wurde und keine Variation neuer ist → skip
     $productUnchanged = $product->updated_at && $product->updated_at->lte($last);
 
     $hasVarTable = Schema::hasTable('product_variations');
     $varChanged = false;
 
     if ($hasVarTable) {
-      // Gibt es eine Variation, die frischer ist als woo_var_synced_at?
       $varChanged = $product->variations()
         ->where('updated_at', '>', $last)
         ->exists();
