@@ -20,14 +20,12 @@ use Illuminate\Support\Facades\Schema;
  * - Nutzt ProductExportOrchestrator (SKU-Preflight & Parent-SKU-Regeln)
  * - Sendet explizite Filament-Notifications mit Zählerständen (created/updated/skipped/errors)
  *
- * Profile (optional) in config/woo.php:
- * 'profiles' => [
- *   'staging'    => ['base_url' => 'https://staging.tld', 'key' => 'ck...', 'secret' => 'cs...'],
- *   'production' => ['base_url' => 'https://shop.tld',    'key' => 'ck...', 'secret' => 'cs...'],
- * ]
+ * UI-Fix:
+ * - Select::make('shop') ist jetzt searchable() + native(false) → Tom Select
+ *   Dadurch greift unser Dropdown-Styling (admin-overrides.css) zuverlässig.
  *
  * @author  JAderBass
- * @since   2025-09-23
+ * @since   2025-09-25
  */
 class SyncProductsBulkAction extends BulkAction
 {
@@ -35,9 +33,9 @@ class SyncProductsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Produkte synchronisieren')
+    $this->label('Zu Woo synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
-      ->modalHeading('Produkte synchronisieren')
+      ->modalHeading('Zu Woo synchronisieren')
       ->requiresConfirmation()
       ->form([
         Select::make('shop')
@@ -45,6 +43,10 @@ class SyncProductsBulkAction extends BulkAction
           ->options($this->shopOptions())
           ->default($this->defaultShopKey())
           ->required()
+          // --- UI-Fix: Tom Select aktivieren ---
+          ->searchable()     // macht aus native <select> → Tom Select
+          ->native(false)    // erzwingt JS-Select; unser CSS greift
+          ->preload()        // lädt Optionen sofort (bessere UX)
           ->helperText('Ziel-Profil (definierbar unter woo.profiles in config/woo.php).'),
 
         Toggle::make('only_changed')
@@ -78,7 +80,6 @@ class SyncProductsBulkAction extends BulkAction
     foreach ($records as $product) {
       /** @var Product $product */
 
-      // Delta-Check (optional)
       if (!empty($data['only_changed']) && $this->hasColumn($product, 'woo_synced_at')) {
         $last = $product->woo_synced_at;
         if ($last && $product->updated_at && $product->updated_at->lte($last)) {
@@ -92,7 +93,6 @@ class SyncProductsBulkAction extends BulkAction
         }
       }
 
-      // Dry-run → nur Vorschau
       if (!empty($data['dry_run'])) {
         $type = $product->product_type ?: ($product->variations()->exists() ? 'variable' : 'simple');
         $skuSource = $type === 'variable'
@@ -111,7 +111,6 @@ class SyncProductsBulkAction extends BulkAction
         continue;
       }
 
-      // Echter Sync
       try {
         $res    = $orchestrator->syncSingle($product);
         $action = $res['action'] ?? 'unknown';
@@ -121,7 +120,6 @@ class SyncProductsBulkAction extends BulkAction
         if ($action === 'updated') $summary['updated']++;
         if ($action === 'error')   $summary['errors']++;
 
-        // Zeitstempel setzen, wenn Delta aktiv
         if (!empty($data['only_changed']) && $this->hasColumn($product, 'woo_synced_at')) {
           $product->forceFill(['woo_synced_at' => now()])->saveQuietly();
         }
@@ -135,7 +133,6 @@ class SyncProductsBulkAction extends BulkAction
       }
     }
 
-    // ---- Explizite Notification-Ausgabe --------------------------------
     $title = $data['dry_run'] ? 'Dry-run abgeschlossen' : 'Woo-Sync abgeschlossen';
     $body  = sprintf(
       "Gesamt: %d\nErstellt: %d · Aktualisiert: %d · Übersprungen: %d · Fehler: %d",
@@ -147,23 +144,15 @@ class SyncProductsBulkAction extends BulkAction
     );
 
     if ($summary['errors'] > 0) {
-      Notification::make()
-        ->title($title)
-        ->body($body)
-        ->danger()
-        ->send();
+      Notification::make()->title($title)->body($body)->danger()->send();
     } else {
-      Notification::make()
-        ->title($title)
-        ->body($body)
-        ->success()
-        ->send();
+      Notification::make()->title($title)->body($body)->success()->send();
     }
 
     Log::info('SyncProductsBulkAction summary', $summary);
   }
 
-  // ----------------- Hilfsfunktionen (unverändert) ------------------------
+  // ----------------- Hilfsfunktionen ------------------------
 
   protected function shopOptions(): array
   {
