@@ -22,26 +22,12 @@ use Illuminate\Support\Facades\Schema;
  *     * Dry-run (nur Vorschau)
  * - Nutzt VariationSyncService (create/update per SKU)
  *
- * Delta-Logik ("Nur geänderte"):
- * - Wenn Produkt-Spalte 'woo_var_synced_at' existiert:
- *     - skipped, wenn product.updated_at <= woo_var_synced_at
- * - Zusätzlich, wenn Tabelle product_variations eine Spalte 'woo_synced_at' hat:
- *     - skipped, wenn KEINE Variation mit updated_at > woo_var_synced_at existiert
- * - Wenn keine der Spalten existiert → Option wird ignoriert (Fallback).
- *
- * Dry-run:
- * - Es werden keine Requests an Woo gesendet.
- * - Pro Produkt wird eine kompakte Vorschau geloggt.
- *
- * Multi-Profile:
- * - Optional 'woo.profiles' in config/woo.php:
- *   'profiles' => [
- *     'staging' => ['base_url' => 'https://staging.tld', 'key' => 'ck...', 'secret' => 'cs...'],
- *     'production' => ['base_url' => 'https://shop.tld', 'key' => 'ck...', 'secret' => 'cs...'],
- *   ]
+ * UI-Fix:
+ * - Select::make('shop') ist jetzt searchable() + native(false) → Tom Select,
+ *   damit greifen die Dropdown-Styles aus admin-overrides.css (Light/Dark).
  *
  * @author  JAderBass
- * @since   2025-09-23
+ * @since   2025-09-25
  */
 class SyncVariationsBulkAction extends BulkAction
 {
@@ -49,9 +35,9 @@ class SyncVariationsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Varianten synchronisieren')
+    $this->label('Varianten zu Woo synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
-      ->modalHeading('Varianten synchronisieren')
+      ->modalHeading('Varianten zu Woo synchronisieren')
       ->requiresConfirmation()
       ->form([
         Select::make('shop')
@@ -59,6 +45,10 @@ class SyncVariationsBulkAction extends BulkAction
           ->options($this->shopOptions())
           ->default($this->defaultShopKey())
           ->required()
+          // --- UI-Fix: Tom Select aktivieren ---
+          ->searchable()
+          ->native(false)
+          ->preload()
           ->helperText('Profile definierbar unter woo.profiles in config/woo.php.'),
 
         Toggle::make('only_changed')
@@ -159,17 +149,9 @@ class SyncVariationsBulkAction extends BulkAction
     );
 
     if ($summary['errors'] > 0) {
-      Notification::make()
-        ->title($title)
-        ->body($body)
-        ->danger()
-        ->send();
+      Notification::make()->title($title)->body($body)->danger()->send();
     } else {
-      Notification::make()
-        ->title($title)
-        ->body($body)
-        ->success()
-        ->send();
+      Notification::make()->title($title)->body($body)->success()->send();
     }
 
     Log::info('SyncVariationsBulkAction summary', $summary);
@@ -177,10 +159,6 @@ class SyncVariationsBulkAction extends BulkAction
 
   /**
    * „Nur geänderte senden“ – Heuristik.
-   * - Wenn 'woo_var_synced_at' auf products existiert:
-   *   - skip, wenn product.updated_at <= woo_var_synced_at
-   *   - falls Tabelle 'product_variations' existiert:
-   *       skip, wenn es KEINE Variation mit updated_at > woo_var_synced_at gibt
    */
   protected function shouldSkipAsUnchanged(Product $product): bool
   {
@@ -208,9 +186,6 @@ class SyncVariationsBulkAction extends BulkAction
     return $productUnchanged && !$varChanged;
   }
 
-  /**
-   * Shop-Profile für die aktuelle Laufzeit setzen.
-   */
   protected function applyShopProfile(?string $key): void
   {
     $profiles = (array) config('woo.profiles', []);
@@ -224,11 +199,6 @@ class SyncVariationsBulkAction extends BulkAction
     Log::info('SyncVariationsBulkAction: applied shop profile', ['profile' => $key]);
   }
 
-  /**
-   * Optionen für Shop-Select aus config('woo.profiles').
-   *
-   * @return array<string,string>
-   */
   protected function shopOptions(): array
   {
     $profiles = (array) config('woo.profiles', []);
