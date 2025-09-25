@@ -15,7 +15,12 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
+use App\Filament\Resources\ProductResource\FormSchema;
+use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
+use App\Filament\Resources\ProductResource\Actions\SyncProductsBulkAction;
 use App\Models\Product;
+use App\Models\Shop;
+use App\Services\Woo\WooProductService;
 use App\Support\ImportLog;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
@@ -26,14 +31,21 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Filament\Forms\Components\Placeholder;
+use Illuminate\Support\Collection;
 
 /**
  * Class ProductResource
@@ -69,154 +81,9 @@ class ProductResource extends Resource
   public static function form(Form $form): Form
   {
     return $form
-      ->schema([
-        Section::make('Stammdaten')
-          ->description('Grundlegende Produktinformationen')
-          ->schema([
-            Grid::make(12)->schema([
-              TextInput::make('product_name')
-                ->label('Produktname')
-                ->required()
-                ->maxLength(255)
-                ->columnSpan(8),
-
-              TextInput::make('product_number')
-                ->label('Produktnummer')
-                ->maxLength(64)
-                ->helperText('Interne/Hersteller-Artikelnummer')
-                ->columnSpan(4),
-
-              TextInput::make('ean')
-                ->label('EAN')
-                ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
-                ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
-                ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
-                ->columnSpan(4),
-              Select::make('manufacturer_id')
-                ->required()
-                ->relationship('manufacturer', 'manufacturer')
-                ->columnSpan(4),
-              TextInput::make('sku')
-                ->maxLength(32)
-                ->columnSpan(4),
-            ]) //Grid
-          ]) //schema
-          ->collapsible(),
-
-        Section::make('Beschreibungen')
-          ->description('Weiterführende Produktinformationen')
-          ->schema([
-            Grid::make(12)->schema([
-              Textarea::make('description')
-                ->required()
-                ->columnSpan(6),
-              Textarea::make('shortdescription')
-                ->required()
-                ->columnSpan(6),
-            ]) // Grid
-          ]) //schema
-          ->collapsible(),
-
-        Section::make('Maße')
-          ->description('Produkt- und Verpackungsmaße')
-          ->schema([
-            Grid::make(12)->schema([
-              Checkbox::make('unit')
-                ->label('Unit')
-                ->columnSpanFull(),
-              TextInput::make('width')
-                ->helperText('Width in mm')
-                ->columnSpan(3),
-              TextInput::make('length')
-                ->helperText('Length in mm')
-                ->columnSpan(3),
-              TextInput::make('height')
-                ->helperText('Height in mm')
-                ->columnSpan(3),
-              TextInput::make('weight')
-                ->helperText('Weight in g')
-                ->columnSpan(3),
-              TextInput::make('box_width')
-                ->helperText('Box width in mm')
-                ->columnSpan(3)
-                ->hidden(fn(Get $get): bool => $get('unit')),
-              TextInput::make('box_length')
-                ->helperText('Box length in mm')
-                ->columnSpan(3)
-                ->hidden(fn(Get $get): bool => $get('unit')),
-              TextInput::make('box_height')
-                ->helperText('Box height in mm')
-                ->columnSpan(3)
-                ->hidden(fn(Get $get): bool => $get('unit')),
-              TextInput::make('size')
-                ->label('Größe (frei)')
-                ->maxLength(128)
-                ->columnSpan(3),
-            ]) // Grid
-          ]) // schema
-          ->collapsible(),
-
-        Section::make('Unterlagen')
-          ->description('Gebrauchsanweisung/Zertifizierung/Konformitätserklärung')
-          ->schema([
-            Grid::make(12)->schema([
-
-              TextInput::make('external_url')
-                ->label('Externe URL')
-                ->url()
-                ->maxLength(2048)
-                ->columnSpan(3),
-
-              TextInput::make('declaration_of_compliance')
-                ->label('Konformitätserklärung')
-                ->maxLength(512)
-                ->columnSpan(3),
-
-              TextInput::make('manual_url')
-                ->label('Manual / Handbuch')
-                ->url()
-                ->maxLength(2048)
-                ->columnSpan(3),
-
-
-              TextInput::make('certification')
-                ->label('Zertifizierung')
-                ->maxLength(255)
-                ->columnSpan(3),
-            ]) // Grid
-          ]) //schema
-          ->collapsible(),
-
-        Section::make('Author')
-          ->description('Benutzerdaten von WooCommerce')
-          ->schema([
-            Grid::make(12)->schema([
-
-              TextInput::make('author_firstname')
-                ->label('Vorname')
-                ->maxLength(100)
-                ->columnSpan(3),
-
-              TextInput::make('author_lastname')
-                ->label('Nachname')
-                ->maxLength(100)
-                ->columnSpan(3),
-
-              TextInput::make('author_name')
-                ->label('Benutzername')
-                ->maxLength(200)
-                ->columnSpan(3),
-
-              TextInput::make('author_mail')
-                ->label('E-Mail')
-                ->email()
-                ->maxLength(255)
-                ->columnSpan(3),
-            ]) // Grid
-          ]) //schema
-          ->collapsible(),
-
-      ])
+      ->schema(
+        FormSchema::fields()
+      )
       ->columns(12);
   }
 
@@ -410,8 +277,12 @@ class ProductResource extends Resource
           }),
       ])
       ->bulkActions([
-        Tables\Actions\BulkActionGroup::make([
-          Tables\Actions\DeleteBulkAction::make(),
+        BulkActionGroup::make([
+          DeleteBulkAction::make()->label('Löschen'),
+
+          SyncProductsBulkAction::make('sync-products'),
+
+          SyncVariationsBulkAction::make('sync-variations'),
         ]),
       ]);
   }
