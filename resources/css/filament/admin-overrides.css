@@ -34,4 +34,86 @@
     color: #374151 !important;
     /* Tailwind gray-800: gut lesbar */
   }
+
+  /* Filament Admin Theme Overrides: Select / Dropdown (Tom Select)
+     Ziel: Lesbare Optionen (Text/Hintergrund) im Light- & Dark-Mode
+     Scope: Filament Panel (keine globalen Frontend-Styles überschreiben)
+  */
+
+  /* Dropdown-Container */
+  .fi body .ts-dropdown,
+  .fi .ts-dropdown {
+    /* Hintergrund der Optionsliste */
+    background-color: rgb(255 255 255 / 1);
+    /* light */
+  }
+
+  .dark .fi body .ts-dropdown,
+  .dark .fi .ts-dropdown {
+    background-color: rgb(17 24 39 / 1);
+    /* gray-900 */
+    border-color: rgb(55 65 81 / 1);
+    /* gray-700 */
+  }
+
+  /* Einzelne Optionen */
+  .fi .ts-dropdown .option {
+    color: rgb(17 24 39 / 1);
+    /* gray-900 */
+  }
+
+  .dark .fi .ts-dropdown .option {
+    color: rgb(243 244 246 / 1);
+    /* gray-100 */
+  }
+
+  /* Hover/Active/Selected-States */
+  .fi .ts-dropdown .option.active,
+  .fi .ts-dropdown .option.selected,
+  .fi .ts-dropdown .create.active {
+    background-color: rgb(243 244 246 / 1);
+    /* gray-100 */
+    color: rgb(17 24 39 / 1);
+    /* gray-900 */
+  }
+
+  .dark .fi .ts-dropdown .option.active,
+  .dark .fi .ts-dropdown .option.selected,
+  .dark .fi .ts-dropdown .create.active {
+    background-color: rgb(55 65 81 / 1);
+    /* gray-700 */
+    color: rgb(243 244 246 / 1);
+    /* gray-100 */
+  }
+
+  /* Suchfeld innerhalb des Select-Dropdowns */
+  .fi .ts-dropdown .dropdown-input>input {
+    color: rgb(17 24 39 / 1);
+    /* gray-900 */
+    background-color: transparent;
+  }
+
+  .dark .fi .ts-dropdown .dropdown-input>input {
+    color: rgb(243 244 246 / 1);
+    /* gray-100 */
+  }
+
+  /* Trigger/Input (sichtbares Feld vor dem Öffnen) – dezent anheben */
+  .fi .ts-control {
+    background-color: rgb(255 255 255 / 1);
+    /* light */
+    color: rgb(17 24 39 / 1);
+    /* gray-900 */
+    border-color: rgb(209 213 219 / 1);
+    /* gray-300 */
+  }
+
+  .dark .fi .ts-control {
+    background-color: rgb(31 41 55 / 1);
+    /* gray-800 */
+    color: rgb(243 244 246 / 1);
+    /* gray-100 */
+    border-color: rgb(55 65 81 / 1);
+    /* gray-700 */
+  }
 }
