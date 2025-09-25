@@ -3,330 +3,334 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
-use App\Models\ProductVariation;
-use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\Response;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use function config;
 
 /**
  * VariationSyncService
  *
- * Synchronisiert Produkt-Varianten (Outbound) zu WooCommerce:
- * - Lädt existierende Woo-Varianten eines Produkts (paginiert)
- * - Mappt per SKU auf bestehende Einträge
- * - Erstellt neue Varianten oder aktualisiert bestehende
+ * Synchronisiert Variationen eines gegebenen Woo-Parent-Produkts:
+ * - Baut Payloads via VariationPayloadBuilder (SKU, Attributes, Meta: EAN/GTIN/MPN; ohne Preise).
+ * - Ermittelt, ob eine Variation bereits existiert (Match über SKU),
+ *   und entscheidet dadurch zwischen Create (POST) und Update (PUT).
+ * - Robuste Fehlerbehandlung (insb. 400 product_invalid_sku → sauber loggen, Lauf geht weiter).
+ * - Respektiert einfache Rate-Limits aus config('woo.rate_limit').
  *
- * Endpunkte (Woo REST):
- * - GET  {base}/wp-json/{ver}/products/{productId}/variations
- * - POST {base}/wp-json/{ver}/products/{productId}/variations
- * - PUT  {base}/wp-json/{ver}/products/{productId}/variations/{variationId}
+ * Voraussetzungen:
+ * - $product->woo_product_id ist gesetzt (Woo-Parent existiert).
+ * - $product->variations() liefert die lokalen Varianten (mit Spalten laut config mappings).
  *
- * Konfiguration (siehe config/woo.php):
- * - 'default_api_version' (z.B. 'wc/v3')
- * - 'rate_limit.rpm'      (Requests pro Minute) -> einfache Sleep-Strategie
- * - 'sync.variations.per_page' (optional, Default 100)
- * - 'api.base_url', 'api.key', 'api.secret' (werden im nächsten Schritt ergänzt)
- *
- * Hinweise:
- * - Preise werden NICHT synchronisiert (Projektvorgabe).
- * - Produkt benötigt eine remote ID in products.woo_product_id.
+ * Rückgabestruktur:
+ *  [
+ *    'created' => int,
+ *    'updated' => int,
+ *    'skipped' => int,
+ *    'errors'  => int,
+ *    'details' => array<int, array{
+ *        variation_id?: int|string|null,
+ *        sku?: string|null,
+ *        action: 'created'|'updated'|'skipped'|'error',
+ *        remote_id?: int|null,
+ *        status?: int|null,
+ *        error?: string|null
+ *    }>
+ *  ]
  *
  * @author  JAderBass
- * @since   2025-09-19
+ * @since   2025-09-25
  */
 class VariationSyncService
 {
-  protected VariationPayloadBuilder $builder;
-  protected PendingRequest $http;
-  protected string $baseUrl;
-  protected string $apiVersion;
-  protected int $perPage;
-  protected int $sleepMsPerRequest;
-
-  public function __construct(VariationPayloadBuilder $builder)
-  {
-    $this->builder    = $builder;
-    $this->baseUrl    = rtrim((string) config('woo.api.base_url'), '/');
-    $this->apiVersion = (string) config('woo.default_api_version', 'wc/v3');
-    $this->perPage    = (int) config('woo.sync.variations.per_page', 100);
-
-    $rpm = (int) config('woo.rate_limit.rpm', 100);
-    $this->sleepMsPerRequest = $rpm > 0 ? (int) floor(60000 / $rpm) : 0;
-
-    $this->http = Http::baseUrl($this->baseUrl . '/wp-json/' . $this->apiVersion)
-      ->withBasicAuth(
-        (string) config('woo.api.key'),
-        (string) config('woo.api.secret')
-      )
-      ->acceptJson()
-      ->asJson()
-      ->retry(2, 250);
-  }
+  public function __construct(
+    protected VariationPayloadBuilder $builder
+  ) {}
 
   /**
-   * Synchronisiert alle Varianten eines Produkts.
+   * Synchronisiert alle Variationen für ein Parent-Produkt.
    *
    * @param  Product $product
-   * @param  bool    $failHard  Wenn true, Exceptions bei HTTP-Fehlern.
-   * @return array{created:int,updated:int,skipped:int,errors:int,details:array<int,array<string,mixed>>}
+   * @param  bool    $failHard   Bei HTTP-Fehlern Exception werfen?
+   * @return array<string, mixed>
    */
   public function syncProduct(Product $product, bool $failHard = false): array
   {
-    if (empty($product->woo_product_id)) {
-      Log::warning('VariationSyncService: Produkt ohne woo_product_id, übersprungen', [
-        'product_id' => $product->id,
-      ]);
-      return ['created' => 0, 'updated' => 0, 'skipped' => 1, 'errors' => 0, 'details' => []];
+    $parentId = (int) ($product->getAttribute('woo_product_id') ?? 0);
+    if ($parentId <= 0) {
+      Log::warning('VariationSyncService: cannot sync without woo_product_id', ['product_id' => $product->getKey()]);
+      return ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 1, 'details' => [[
+        'action' => 'error',
+        'error'  => 'Missing woo_product_id on product',
+      ]]];
     }
 
-    $variations = $product->variations()->get();
-    if ($variations->isEmpty()) {
-      Log::info('VariationSyncService: Keine lokalen Varianten vorhanden', [
-        'product_id' => $product->id,
-      ]);
+    $baseUrl = rtrim((string) config('woo.api.base_url'), '/');
+    $version = (string) config('woo.default_api_version', 'wc/v3');
+    $key     = (string) config('woo.api.key');
+    $secret  = (string) config('woo.api.secret');
+
+    $http = Http::baseUrl($baseUrl . '/wp-json/' . $version)
+      ->withBasicAuth($key, $secret)
+      ->acceptJson()
+      ->asJson();
+
+    $rpm   = (int) data_get(config('woo.rate_limit'), 'rpm', 100);
+    $burst = (int) data_get(config('woo.rate_limit'), 'burst', 40);
+    $sleepMicros = $this->calcSleepMicros($rpm, $burst);
+
+    // 1) Payloads bauen
+    $payloads = $this->builder->buildForProduct($product);
+    if (empty($payloads)) {
+      Log::info('VariationSyncService: no payloads built, nothing to sync', ['product_id' => $product->getKey()]);
       return ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
     }
 
-    // Remote-Varianten indexieren (per SKU)
-    $remoteBySku = $this->fetchRemoteVariationsBySku((int) $product->woo_product_id);
+    // 2) Remote-Varianten indizieren (SKU → Variation-ID) für schnelle Entscheidungen
+    $remoteIndex = $this->indexRemoteVariationsBySku($http, $parentId, $sleepMicros);
 
-    $result = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
+    $summary = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
 
-    /** @var ProductVariation $variation */
-    foreach ($variations as $variation) {
-      $payload = $this->builder->buildForVariation($product, $variation);
+    foreach ($payloads as $payload) {
+      $sku = (string) ($payload['sku'] ?? '');
+      $localVar = $this->findLocalVariationBySku($product, $sku); // nur für logging/ids
 
-      $sku = $payload['sku'] ?? null;
-      if (empty($sku)) {
-        Log::warning('VariationSyncService: Variante ohne SKU, übersprungen', [
-          'product_id'   => $product->id,
-          'variation_id' => $variation->id,
-        ]);
-        $result['skipped']++;
-        $result['details'][] = [
-          'variation_id' => $variation->id,
-          'action'       => 'skipped',
-          'reason'       => 'missing-sku',
+      if ($sku === '') {
+        $summary['errors']++;
+        $summary['details'][] = [
+          'variation_id' => $localVar?->getAttribute('id'),
+          'sku'          => null,
+          'action'       => 'error',
+          'error'        => 'Variation SKU missing in payload',
         ];
         continue;
       }
 
       try {
-        if (isset($remoteBySku[$sku])) {
-          $remoteVarId = (int) $remoteBySku[$sku]['id'];
-          $resp = $this->putVariation((int) $product->woo_product_id, $remoteVarId, $payload);
-          $this->rateLimitNap();
-          $result['updated']++;
-          $result['details'][] = [
-            'variation_id' => $variation->id,
-            'sku'          => $sku,
-            'action'       => 'updated',
-            'remote_id'    => $remoteVarId,
-            'status'       => $resp->status(),
-          ];
+        if (isset($remoteIndex[$sku])) {
+          // UPDATE
+          $remoteVarId = (int) $remoteIndex[$sku];
+          $resp = $http->put("/products/{$parentId}/variations/{$remoteVarId}", $payload);
+          if ($sleepMicros > 0) usleep($sleepMicros);
+
+          if ($resp->successful()) {
+            $summary['updated']++;
+            $summary['details'][] = [
+              'variation_id' => $localVar?->getAttribute('id'),
+              'sku'          => $sku,
+              'action'       => 'updated',
+              'remote_id'    => $remoteVarId,
+              'status'       => $resp->status(),
+            ];
+          } else {
+            $this->handleHttpFailure($resp, $summary, $localVar?->getAttribute('id'), $sku, $failHard);
+          }
         } else {
-          $resp = $this->postVariation((int) $product->woo_product_id, $payload);
-          $this->rateLimitNap();
-          $remote = $resp->json();
-          $result['created']++;
-          $result['details'][] = [
-            'variation_id' => $variation->id,
-            'sku'          => $sku,
-            'action'       => 'created',
-            'remote_id'    => $remote['id'] ?? null,
-            'status'       => $resp->status(),
-          ];
+          // CREATE
+          $resp = $http->post("/products/{$parentId}/variations", $payload);
+          if ($sleepMicros > 0) usleep($sleepMicros);
+
+          if ($resp->successful()) {
+            $remote = $resp->json();
+            $remoteId = (int) data_get($remote, 'id');
+            $summary['created']++;
+            $summary['details'][] = [
+              'variation_id' => $localVar?->getAttribute('id'),
+              'sku'          => $sku,
+              'action'       => 'created',
+              'remote_id'    => $remoteId ?: null,
+              'status'       => $resp->status(),
+            ];
+            // Index aktualisieren, damit spätere Duplikate im selben Lauf updaten
+            if ($remoteId > 0) {
+              $remoteIndex[$sku] = $remoteId;
+            }
+          } else {
+            $this->handleHttpFailure($resp, $summary, $localVar?->getAttribute('id'), $sku, $failHard);
+          }
         }
       } catch (\Throwable $e) {
-        Log::error('VariationSyncService: Fehler beim Sync einer Variante', [
-          'product_id'   => $product->id,
-          'variation_id' => $variation->id,
+        Log::error('VariationSyncService: exception during sync', [
+          'product_id'   => $product->getKey(),
+          'parent_id'    => $parentId,
+          'variation_id' => $localVar?->getAttribute('id'),
           'sku'          => $sku,
-          'message'      => $e->getMessage(),
+          'error'        => $e->getMessage(),
         ]);
-        $result['errors']++;
-        $result['details'][] = [
-          'variation_id' => $variation->id,
+        if ($failHard) {
+          throw $e;
+        }
+        $summary['errors']++;
+        $summary['details'][] = [
+          'variation_id' => $localVar?->getAttribute('id'),
           'sku'          => $sku,
           'action'       => 'error',
           'error'        => $e->getMessage(),
         ];
-
-        if ($failHard) {
-          throw $e;
-        }
       }
     }
 
     Log::info('VariationSyncService: Produkt-Varianten synchronisiert', [
-      'product_id'     => $product->id,
-      'woo_product_id' => $product->woo_product_id,
-      'summary'        => $result,
+      'product_id'     => $product->getKey(),
+      'woo_product_id' => $parentId,
+      'summary'        => $summary,
     ]);
-
-    return $result;
-  }
-
-  /**
-   * Synchronisiert Varianten für mehrere Produkte.
-   *
-   * @param  Collection<int,Product>|array<int,Product> $products
-   * @param  bool $failHard
-   * @return array<string,mixed>
-   */
-  public function syncMany(Collection|array $products, bool $failHard = false): array
-  {
-    $summary = [
-      'products' => 0,
-      'created' => 0,
-      'updated' => 0,
-      'skipped' => 0,
-      'errors' => 0,
-      'items' => [],
-    ];
-
-    foreach ($products as $product) {
-      $summary['products']++;
-      $res = $this->syncProduct($product, $failHard);
-      $summary['created'] += $res['created'];
-      $summary['updated'] += $res['updated'];
-      $summary['skipped'] += $res['skipped'];
-      $summary['errors']  += $res['errors'];
-      $summary['items'][]  = [
-        'product_id'     => $product->id,
-        'woo_product_id' => $product->woo_product_id,
-        'result'         => $res,
-      ];
-    }
-
-    Log::info('VariationSyncService: Bulk-Sync abgeschlossen', ['summary' => $summary]);
 
     return $summary;
   }
 
   /**
-   * Lädt alle Remote-Varianten eines Woo-Produkts und indiziert sie per SKU.
+   * Erstellt ein SKU→VariationID-Index aus Woo (paginiert).
+   * Woo erlaubt keinen direkten sku-Filter auf /variations, daher paginieren.
    *
-   * @param  int $wooProductId
-   * @return array<string,array{id:int,sku:string}>
+   * @param  \Illuminate\Http\Client\PendingRequest $http
+   * @param  int $parentId
+   * @param  int $sleepMicros
+   * @return array<string,int>  sku => variation_id
    */
-  protected function fetchRemoteVariationsBySku(int $wooProductId): array
+  protected function indexRemoteVariationsBySku($http, int $parentId, int $sleepMicros): array
   {
+    $index = [];
     $page = 1;
-    $map  = [];
+    $perPage = (int) config('woo.sync.variations.per_page', 100);
 
-    do {
-      $resp = $this->http->get("/products/{$wooProductId}/variations", [
-        'per_page' => $this->perPage,
+    while (true) {
+      $resp = $http->get("/products/{$parentId}/variations", [
+        'per_page' => $perPage,
         'page'     => $page,
       ]);
+      if ($sleepMicros > 0) usleep($sleepMicros);
 
-      $this->throwIfFailed($resp, "GET variations (page {$page})");
+      if ($resp->failed()) {
+        Log::warning('VariationSyncService: failed to list remote variations', [
+          'parent_id' => $parentId,
+          'status'    => $resp->status(),
+          'body'      => Str::limit((string) $resp->body(), 500),
+        ]);
+        break;
+      }
 
       $items = $resp->json() ?? [];
-      foreach ($items as $item) {
-        $sku = $item['sku'] ?? null;
-        if (!empty($sku)) {
-          $map[$sku] = ['id' => $item['id'], 'sku' => $sku];
+      if (empty($items)) {
+        break;
+      }
+
+      foreach ($items as $v) {
+        $sku = (string) data_get($v, 'sku', '');
+        $id  = (int) data_get($v, 'id', 0);
+        if ($sku !== '' && $id > 0) {
+          $index[$sku] = $id;
         }
       }
 
-      $total   = (int) ($resp->header('X-WP-Total') ?? 0);
-      $fetched = $page * $this->perPage;
+      $totalPages = (int) ($resp->header('X-WP-TotalPages') ?? 0);
+      if ($totalPages > 0 && $page >= $totalPages) {
+        break;
+      }
       $page++;
-      $this->rateLimitNap();
-    } while ($fetched < $total);
+    }
 
-    Log::debug('VariationSyncService: Remote-Variationen geladen', [
-      'woo_product_id' => $wooProductId,
-      'count'          => count($map),
-    ]);
-
-    return $map;
+    return $index;
   }
 
   /**
-   * POST: Neue Variante anlegen.
+   * Behandelt fehlgeschlagene HTTP-Antworten (400..).
+   * - Spezieller Fall: 400 product_invalid_sku -> klarere Meldung, nicht den gesamten Lauf abbrechen.
    *
-   * @param  int   $wooProductId
-   * @param  array $payload
-   * @return Response
-   */
-  protected function postVariation(int $wooProductId, array $payload): Response
-  {
-    $url  = "/products/{$wooProductId}/variations";
-    $resp = $this->http->post($url, $payload);
-    $this->throwIfFailed($resp, 'POST variation');
-
-    Log::debug('VariationSyncService: Variante erstellt', [
-      'woo_product_id' => $wooProductId,
-      'sku'            => $payload['sku'] ?? null,
-      'status'         => $resp->status(),
-    ]);
-
-    return $resp;
-  }
-
-  /**
-   * PUT: Variante aktualisieren.
-   *
-   * @param  int   $wooProductId
-   * @param  int   $wooVariationId
-   * @param  array $payload
-   * @return Response
-   */
-  protected function putVariation(int $wooProductId, int $wooVariationId, array $payload): Response
-  {
-    $url  = "/products/{$wooProductId}/variations/{$wooVariationId}";
-    $resp = $this->http->put($url, $payload);
-    $this->throwIfFailed($resp, 'PUT variation');
-
-    Log::debug('VariationSyncService: Variante aktualisiert', [
-      'woo_product_id'  => $wooProductId,
-      'woo_variation_id' => $wooVariationId,
-      'sku'             => $payload['sku'] ?? null,
-      'status'          => $resp->status(),
-    ]);
-
-    return $resp;
-  }
-
-  /**
-   * Wirft bei HTTP-Fehlern eine Exception mit kurzer Kontextinfo.
-   *
-   * @param  Response $resp
-   * @param  string   $action
+   * @param  \Illuminate\Http\Client\Response $resp
+   * @param  array<string,mixed>              $summary (by-ref)
+   * @param  int|string|null                  $localVarId
+   * @param  string                           $sku
+   * @param  bool                             $failHard
    * @return void
    */
-  protected function throwIfFailed(Response $resp, string $action): void
+  protected function handleHttpFailure($resp, array &$summary, $localVarId, string $sku, bool $failHard): void
   {
-    if ($resp->successful()) {
+    $status = $resp->status();
+    $body   = $resp->json();
+    $code   = (string) data_get($body, 'code', '');
+    $msg    = (string) data_get($body, 'message', '');
+    $data   = data_get($body, 'data', []);
+
+    // Spezialfall: doppelte/ungültige SKU
+    if ($status === 400 && $code === 'product_invalid_sku') {
+      $hint = 'Woo reported duplicate/invalid SKU. Use "php artisan woo:lookup:sku ' . $sku . '" to locate collisions (product/variation), remove or rename in Woo, then retry.';
+      Log::warning('VariationSyncService: product_invalid_sku', [
+        'variation_id' => $localVarId,
+        'sku'          => $sku,
+        'status'       => $status,
+        'code'         => $code,
+        'message'      => $msg,
+        'data'         => $data,
+        'hint'         => $hint,
+      ]);
+
+      $summary['errors']++;
+      $summary['details'][] = [
+        'variation_id' => $localVarId,
+        'sku'          => $sku,
+        'action'       => 'error',
+        'status'       => $status,
+        'error'        => "{$code}: {$msg}",
+      ];
+
+      if ($failHard) {
+        throw new \RuntimeException("Woo API error {$status} {$code}: {$msg}");
+      }
       return;
     }
 
-    $body = $resp->json();
-    $msg  = is_array($body) ? json_encode($body) : (string) $resp->body();
-
-    Log::error('VariationSyncService: HTTP-Fehler', [
-      'action' => $action,
-      'status' => $resp->status(),
-      'body'   => $msg,
+    // Generischer Fehler
+    Log::error('VariationSyncService: HTTP failure', [
+      'variation_id' => $localVarId,
+      'sku'          => $sku,
+      'status'       => $status,
+      'body'         => is_scalar($body) ? $body : json_encode($body),
     ]);
 
-    throw new \RuntimeException("Woo API {$action} failed: HTTP {$resp->status()} {$msg}");
+    $summary['errors']++;
+    $summary['details'][] = [
+      'variation_id' => $localVarId,
+      'sku'          => $sku,
+      'action'       => 'error',
+      'status'       => $status,
+      'error'        => is_string($body) ? $body : ($body ? json_encode($body) : 'HTTP error ' . $status),
+    ];
+
+    if ($failHard) {
+      throw new \RuntimeException('Woo API error: ' . (is_string($body) ? $body : json_encode($body)));
+    }
   }
 
   /**
-   * Einfache Sleep-Strategie basierend auf rate_limit.rpm.
+   * Findet eine lokale Variation via $product->variations() anhand SKU (für Logging).
    *
-   * @return void
+   * @param  Product $product
+   * @param  string  $sku
+   * @return \Illuminate\Database\Eloquent\Model|null
    */
-  protected function rateLimitNap(): void
+  protected function findLocalVariationBySku(Product $product, string $sku)
   {
-    if ($this->sleepMsPerRequest > 0) {
-      usleep($this->sleepMsPerRequest * 1000);
+    if (!method_exists($product, 'variations') || $sku === '') {
+      return null;
     }
+    return $product->variations()->where(function ($q) use ($sku) {
+      $col = config('woo.mapping.identifiers.variation.sku', 'sku');
+      $q->where($col, '=', $sku);
+    })->first();
+  }
+
+  /**
+   * Einfache Sleep-Berechnung für Rate-Limits (rpm/burst).
+   * Sehr konservativ: verteilt Requests gleichmäßig.
+   */
+  protected function calcSleepMicros(int $rpm, int $burst): int
+  {
+    // 60s / rpm → Sekunden/Request
+    if ($rpm <= 0) return 0;
+    $secPerReq = 60 / max(1, $rpm);
+    // bei Burst etwas kulanter sein
+    $factor = $burst > 0 ? 0.8 : 1.0;
+    return (int) max(0, $secPerReq * $factor * 1_000_000);
   }
 }
