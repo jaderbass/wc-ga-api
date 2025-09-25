@@ -34,3 +34,4 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+app/Console/Commands/Postman-win64-Setup.exe
