@@ -3,238 +3,171 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
-use App\Models\ProductVariation;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
+use function config;
 
 /**
  * VariationPayloadBuilder
  *
- * Baut WooCommerce-konforme Payload-Arrays für Produkt-Varianten
- * (REST: /wp-json/wc/v3/products/{productId}/variations), OHNE Preisfelder.
+ * Baut Woo-REST-Payloads für Varianten (POST/PUT /products/{productId}/variations)
+ * ohne Preise, mit:
+ *  - SKU aus product_variations.sku (Pflicht)
+ *  - EAN/GTIN/MPN als meta_data auf Variations-Ebene (Keys via config)
+ *  - Attribut-Mapping (size/color/...) gem. config('woo.mapping.variation_attribute_map')
+ *  - Standard-Flags (manage_stock, stock_status) aus config('woo.mapping.variation_defaults')
  *
- * Annahmen/Kontext:
- * - Preise werden im Projekt bewusst NICHT synchronisiert.
- * - Häufige Varianteneigenschaften sind z.B. size, color, length, certification.
- * - Attribut-Namen für Woo lassen sich per config('woo.mapping.variation_attributes') übersteuern.
- * - Fallback-Werte (manage_stock, stock_status etc.) sind konservativ gesetzt und können
- *   via Config justiert werden.
+ * Hinweis zum EAN/GTIN:
+ *  - In Woo-CSV erscheint "Attribute Value (pa_ean)" nur für PRODUKT-Attribute.
+ *    Wir setzen das am Parent bereits über den ProductExportOrchestrator (globales Attribut).
+ *  - Varianten-spezifische EAN/GTIN werden i. d. R. als meta_data auf der Variation geführt.
+ *    (Viele EAN-Plugins in Woo lesen genau diese Meta-Keys aus.)
  *
- * Erweiterbarkeit:
- * - Mapping der Varianten-Felder -> Woo-Felder via $fieldMap (konfigurierbar).
- * - Attribut-Zuordnung via $attributeMap (konfigurierbar).
+ * Konfiguration (Auszug siehe config/woo.php):
+ *  - mapping.identifiers.variation: { sku, mpn, ean, gtin }
+ *  - mapping.meta_keys: { mpn, ean, gtin }
+ *  - mapping.variation_attribute_map: z.B. ['size' => 'Size', 'color' => 'Color']
+ *  - mapping.variation_field_map: Standardfelder z. B. { 'sku' => 'sku', 'stock_quantity' => 'stock_quantity', 'weight' => 'weight' }
+ *  - mapping.variation_defaults: { manage_stock: true, stock_status: 'instock' }
+ *
+ * Erwartete Model-Struktur:
+ *  - $product->variations(): Relation -> jede Variation als Eloquent Model
+ *  - Variationsfelder nach deinen Spalten (siehe Config-Mappings)
  *
  * @author  JAderBass
- * @since   2025-09-19
+ * @since   2025-09-25
  */
 class VariationPayloadBuilder
 {
   /**
-   * @var array<string, string> Feld-Mapping von internen Variations-Feldern zu Woo-Feldern
+   * Baut Payloads für alle Varianten eines Parent-Produkts.
    *
-   * Unterstützte Keys auf unserer Seite (Beispiele):
-   * - 'sku', 'ean', 'weight', 'stock_quantity'
-   *
-   * Unterstützte Woo-Felder (Auszug):
-   * - 'sku', 'manage_stock', 'stock_quantity', 'stock_status',
-   *   'weight', 'dimensions', 'image', 'attributes', 'meta_data'
+   * @param  Product $product
+   * @return array<int, array<string,mixed>>  Liste von Woo-Variations-Payloads
    */
-  protected array $fieldMap;
-
-  /**
-   * @var array<string, string> Attribut-Mapping: internes Attribut -> Woo Attributname
-   *
-   * Beispiel:
-   * [
-   *   'size'  => 'Size',
-   *   'color' => 'Color',
-   *   'length'=> 'Length'
-   * ]
-   */
-  protected array $attributeMap;
-
-  /**
-   * @var array<string, mixed> Defaultwerte für Woo-Felder
-   */
-  protected array $defaults;
-
-  /**
-   * Konstruktor lädt optionale Konfigurationen.
-   *
-   * - woo.mapping.variation_field_map
-   * - woo.mapping.variation_attribute_map
-   * - woo.mapping.variation_defaults
-   */
-  public function __construct()
+  public function buildForProduct(Product $product): array
   {
-    $this->fieldMap = config('woo.mapping.variation_field_map', [
-      'sku'            => 'sku',
-      'stock_quantity' => 'stock_quantity',
-      'weight'         => 'weight',
-      // 'ean' wird als meta_data abgebildet (siehe buildMetaData)
-    ]);
-
-    $this->attributeMap = config('woo.mapping.variation_attribute_map', [
-      'size'          => 'Size',
-      'color'         => 'Color',
-      'length'        => 'Length',
-      'certification' => 'Certification',
-    ]);
-
-    $this->defaults = config('woo.mapping.variation_defaults', [
-      'manage_stock' => true,
-      // Bei fehlender Menge standardmäßig "instock", um versehentliche Deaktivierungen zu vermeiden.
-      'stock_status' => 'instock',
-    ]);
-  }
-
-  /**
-   * Baut die Payload für alle übergebenen Varianten eines Produkts.
-   *
-   * @param  Product               $product
-   * @param  Collection<int,ProductVariation>|array<int,ProductVariation> $variations
-   * @return array<int,array<string,mixed>>
-   */
-  public function buildForCollection(Product $product, Collection|array $variations): array
-  {
-    $payloads = [];
-
-    foreach ($variations as $variation) {
-      $payload = $this->buildForVariation($product, $variation);
-      $payloads[] = $payload;
+    if (!method_exists($product, 'variations')) {
+      Log::warning('VariationPayloadBuilder: product has no variations() relation', ['product_id' => $product->getKey()]);
+      return [];
     }
 
-    Log::debug('VariationPayloadBuilder: collection payload built', [
-      'product_id'       => $product->id,
-      'variations_count' => is_array($variations) ? count($variations) : $variations->count(),
-    ]);
+    $payloads = [];
+    $product->variations()->orderBy('id')->chunk(200, function ($chunk) use (&$payloads) {
+      foreach ($chunk as $variation) {
+        $p = $this->buildForSingleVariation($variation);
+        if ($p !== null) {
+          $payloads[] = $p;
+        }
+      }
+    });
 
     return $payloads;
   }
 
   /**
-   * Baut die Payload für genau eine Variante (ohne Preisfelder).
+   * Baut den Payload für genau eine Variation.
    *
-   * @param  Product          $product
-   * @param  ProductVariation $variation
-   * @return array<string,mixed>
+   * @param  Model $variation
+   * @return array<string,mixed>|null  null, wenn keine SKU gesetzt ist
    */
-  public function buildForVariation(Product $product, ProductVariation $variation): array
+  public function buildForSingleVariation(Model $variation): ?array
   {
-    $payload = [];
+    // ---- Mappings & Defaults -------------------------------------------------
+    $ident      = (array) config('woo.mapping.identifiers.variation', []);
+    $fieldMap   = (array) config('woo.mapping.variation_field_map', []);
+    $attrMap    = (array) config('woo.mapping.variation_attribute_map', []);
+    $metaKeys   = (array) config('woo.mapping.meta_keys', []);
+    $defaults   = (array) config('woo.mapping.variation_defaults', []);
 
-    // 1) Defaults
-    foreach ($this->defaults as $key => $value) {
-      $payload[$key] = $value;
+    $colSku     = $ident['sku']  ?? 'sku';
+    $colMpn     = $ident['mpn']  ?? 'product_number';
+    $colEan     = $ident['ean']  ?? 'ean';
+    $colGtin    = $ident['gtin'] ?? 'gtin';
+
+    $sku        = (string) ($variation->getAttribute($colSku) ?? '');
+    if ($sku === '') {
+      // Ohne SKU keine Variation in Woo
+      Log::warning('VariationPayloadBuilder: variation skipped due to empty SKU', [
+        'variation_id' => $variation->getAttribute('id'),
+      ]);
+      return null;
     }
 
-    // 2) Direkte Feldzuordnung laut $fieldMap
-    foreach ($this->fieldMap as $internal => $wooKey) {
-      $value = $variation->{$internal} ?? null;
+    // ---- Basisfelder (ohne Preis) -------------------------------------------
+    $payload = [
+      'sku' => $sku,
+    ];
 
-      if ($value === null) {
+    // manage_stock / stock_status Defaults
+    if (array_key_exists('manage_stock', $defaults)) {
+      $payload['manage_stock'] = (bool) $defaults['manage_stock'];
+    }
+    if (array_key_exists('stock_status', $defaults)) {
+      $payload['stock_status'] = (string) $defaults['stock_status'];
+    }
+
+    // Mappe optionale Standardfelder aus variation_field_map (falls vorhanden)
+    // z. B. stock_quantity, weight
+    foreach ($fieldMap as $wooKey => $localCol) {
+      // SKU behandeln wir separat (oben), daher hier überspringen
+      if ($wooKey === 'sku') {
         continue;
       }
-
-      // Gewicht als String (Woo erwartet String)
-      if ($wooKey === 'weight') {
-        $payload[$wooKey] = (string) $value;
-        continue;
-      }
-
-      $payload[$wooKey] = $value;
-    }
-
-    // 3) Stock-Status ableiten, wenn manage_stock aktiv ist
-    if (($payload['manage_stock'] ?? false) === true) {
-      $qty = $payload['stock_quantity'] ?? null;
-      if (is_numeric($qty)) {
-        $payload['stock_status'] = ((int) $qty) > 0 ? 'instock' : 'outofstock';
+      $val = $variation->getAttribute($localCol);
+      if (!is_null($val) && $val !== '') {
+        // Gewicht als String liefern (Woo erwartet String)
+        if ($wooKey === 'weight') {
+          $payload[$wooKey] = (string) $val;
+        } else {
+          $payload[$wooKey] = $val;
+        }
       }
     }
 
-    // 4) Attribute (z.B. size/color) -> Woo-Attributstruktur
-    $payload['attributes'] = $this->buildAttributes($variation);
-
-    // 5) optionale Bild-Zuordnung, falls vorhanden (z.B. $variation->image_url)
-    if (!empty($variation->image_url)) {
-      $payload['image'] = [
-        'src'  => $variation->image_url,
-        'name' => $this->buildImageName($product, $variation),
-      ];
+    // Bild (optional): erwartet ['image' => ['src' => 'https://...']]
+    $img = $variation->getAttribute('image_url');
+    if (!empty($img)) {
+      $payload['image'] = ['src' => (string) $img];
     }
 
-    // 6) Meta-Daten (z.B. EAN)
-    $meta = $this->buildMetaData($variation);
+    // ---- Attributes (variation-determining) ---------------------------------
+    // Woo erwartet pro Variation: 'attributes' => [ ['name' => 'Size', 'option' => 'M'], ... ]
+    $attrs = [];
+    foreach ($attrMap as $localCol => $wooName) {
+      $val = $variation->getAttribute($localCol);
+      if (!is_null($val) && $val !== '') {
+        $attrs[] = [
+          'name'   => (string) $wooName,
+          'option' => (string) $val,
+        ];
+      }
+    }
+    if (!empty($attrs)) {
+      $payload['attributes'] = $attrs;
+    }
+
+    // ---- Meta-Daten (EAN/GTIN/MPN) ------------------------------------------
+    // Viele Shops/Plugins (z. B. EAN for Woo) lesen diese Keys direkt an der Variation.
+    $meta = [];
+
+    $mpnKey = $metaKeys['mpn']  ?? 'mpn';
+    $eanKey = $metaKeys['ean']  ?? 'ean';
+    $gtinKey = $metaKeys['gtin'] ?? 'gtin';
+
+    $mpn  = $variation->getAttribute($colMpn);
+    $ean  = $variation->getAttribute($colEan);
+    $gtin = $variation->getAttribute($colGtin);
+
+    if (!empty($mpn))  $meta[] = ['key' => (string) $mpnKey,  'value' => (string) $mpn];
+    if (!empty($ean))  $meta[] = ['key' => (string) $eanKey,  'value' => (string) $ean];
+    if (!empty($gtin)) $meta[] = ['key' => (string) $gtinKey, 'value' => (string) $gtin];
+
     if (!empty($meta)) {
       $payload['meta_data'] = $meta;
     }
 
-    Log::debug('VariationPayloadBuilder: single payload built', [
-      'product_id'   => $product->id,
-      'variation_id' => $variation->id,
-      'sku'          => $payload['sku'] ?? null,
-      'attributes'   => $payload['attributes'] ?? [],
-    ]);
-
+    // ---- Fertig --------------------------------------------------------------
     return $payload;
-  }
-
-  /**
-   * Baut die Attribute-Struktur für Woo aus den internen Variations-Werten.
-   *
-   * @param  ProductVariation $variation
-   * @return array<int,array{name:string,option:string}>
-   */
-  protected function buildAttributes(ProductVariation $variation): array
-  {
-    $result = [];
-
-    foreach ($this->attributeMap as $internalKey => $wooName) {
-      $value = $variation->{$internalKey} ?? null;
-
-      if ($value === null || $value === '') {
-        continue;
-      }
-
-      $result[] = [
-        'name'   => $wooName,
-        'option' => (string) $value,
-      ];
-    }
-
-    return $result;
-  }
-
-  /**
-   * Erzeugt einen (optionalen) Bildnamen für die Variante.
-   *
-   * @param  Product          $product
-   * @param  ProductVariation $variation
-   * @return string
-   */
-  protected function buildImageName(Product $product, ProductVariation $variation): string
-  {
-    $base = $product->slug ?? Str::slug($product->product_name ?? 'product');
-    $sku  = $variation->sku ?? ('var-' . $variation->id);
-    return $base . '-' . $sku;
-  }
-
-  /**
-   * Erzeugt Meta-Daten für Woo (z.B. EAN).
-   *
-   * @param  ProductVariation $variation
-   * @return array<int,array{key:string,value:mixed}>
-   */
-  protected function buildMetaData(ProductVariation $variation): array
-  {
-    $meta = [];
-
-    if (!empty($variation->ean)) {
-      $meta[] = ['key' => 'ean', 'value' => (string) $variation->ean];
-    }
-
-    return $meta;
   }
 }
