@@ -33,9 +33,9 @@ class SyncProductsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Hauptprodukte synchronisieren')
+    $this->label('Produkte synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
-      ->modalHeading('Hauptprodukte synchronisieren')
+      ->modalHeading('Produkte synchronisieren')
       ->requiresConfirmation()
       ->form([
         Select::make('shop')
@@ -43,10 +43,6 @@ class SyncProductsBulkAction extends BulkAction
           ->options($this->shopOptions())
           ->default($this->defaultShopKey())
           ->required()
-          // --- UI-Fix: Tom Select aktivieren ---
-          ->searchable()     // macht aus native <select> → Tom Select
-          ->native(false)    // erzwingt JS-Select; unser CSS greift
-          ->preload()        // lädt Optionen sofort (bessere UX)
           ->helperText('Ziel-Profil (definierbar unter woo.profiles in config/woo.php).'),
 
         Toggle::make('only_changed')
