@@ -2,219 +2,240 @@
 
 namespace App\Services\Woo;
 
-use App\Models\Product;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
-use function config;
 
 /**
- * ProductExportOrchestrator
+ * Class ProductExportOrchestrator
  *
- * Exportiert/aktualisiert Woo-Hauptprodukte mit:
- * - strenger SKU-Regel (variable Parent: KEINE SKU; simple: konfigurierbare Priorität)
- * - globalem Attribut "EAN" (pa_ean) auf Produktebene → landet in Woo-CSV als
- *   "Attribute Value (pa_ean)".
- * - OHNE Preise.
+ * Zweck:
+ * - Zentraler Ablauf zur Erstellung/Aktualisierung von WooCommerce-Produkten und -Varianten.
+ * - Bindet den WooParentResolver ein (SKU-first-Strategie mit Fallbacks nur ohne SKU).
+ * - Entscheidet anhand des Resolve-Ergebnisses zwischen Update und Neuanlage.
  *
- * Konfiguration (config/woo.php, relevante Keys):
+ * Voraussetzungen:
+ * - Ein Repository/Client ($repo) kapselt die konkreten Woo-API-Operationen.
+ *   Erwartete Methoden (Bezeichnungen beispielhaft – ggf. an Dein Projekt anpassen):
+ *     - updateProduct(int $productId, array $payload): array
+ *     - updateVariation(int $parentId, int $variationId, array $payload): array
+ *     - createProduct(array $payload): array                 // Parent/Simple
+ *     - createVariation(int $parentId, array $payload): array
  *
- * 'mapping' => [
- *   'identifiers' => [
- *     'product' => [
- *       'sku'  => 'sku',
- *       'mpn'  => 'product_number',
- *       'ean'  => 'ean',
- *       'gtin' => 'gtin',
- *     ],
- *   ],
- *   'sku_rules' => [
- *     'variable_parent_has_sku'        => false,
- *     'simple_parent_sku_priority'     => ['sku', 'product_number', 'ean', 'gtin'], // Priorität
- *   ],
- *   'attributes' => [
- *     'ean' => [
- *       'enabled'  => true,
- *       'slug'     => 'pa_ean',   // globales Attribut in Woo (muss existieren)
- *       'label'    => 'EAN',      // rein informativ
- *       'source'   => ['ean', 'gtin'], // Reihenfolge der Quellen im Product-Modell
- *       'visible'  => true,
- *       'variation'=> false,
- *     ],
- *   ],
- * ]
+ * Eingabeformat ($candidate):
+ * - [
+ *     'sku'         => 'PETZL-A010EA00-RED-L',   // optional (SKU-first!)
+ *     'ean'         => '3342540833561',          // optional
+ *     'mpn'         => 'A010EA00',               // optional
+ *     'brand'       => 'Petzl',                  // optional
+ *     'attributes'  => ['color' => 'RED', 'size' => 'L'], // optional
+ *     'is_variant'  => true|false,               // optional (Fallback: true, wenn attributes nicht leer)
+ *     'payload'     => [...],                    // vollständiger Woo-Payload (Titel, Preis, Meta etc.)
+ *     'parent_payload' => [...],                 // falls Variante neu angelegt werden muss, Parent-Daten hier
+ *   ]
  *
- * Hinweise:
- * - Für das Attribut 'pa_ean' sollte im Woo-Backend ein globales Produktattribut existieren.
- * - Bei variablen Eltern setzen wir bewusst KEINE SKU.
+ * Rückgabe:
+ * - [
+ *     'action'      => 'update_product'|'update_variation'|'create_product'|'create_variation',
+ *     'product_id'  => int|null,
+ *     'variation_id'=> int|null,
+ *     'matched_by'  => 'sku'|'ean'|'mpn'|'composite'|null,
+ *     'notes'       => string[],
+ *     'result'      => array|null   // API-Antwort
+ *   ]
  *
- * @author  JAderBass
- * @since   2025-09-24
+ * Logging:
+ * - Ausführliche Debug-Logs mit Schrittmarkern.
+ *
+ * @package App\Services\Woo
  */
 class ProductExportOrchestrator
 {
-  public function __construct(
-    protected ProductUpsertService $upsert,
-  ) {}
+  /** @var WooParentResolver */
+  protected WooParentResolver $resolver;
+
+  /** @var object */
+  protected $repo;
 
   /**
-   * Synchronisiert genau ein Hauptprodukt (Create/Update, mit SKU-Preflight).
-   *
-   * @param  Product $product
-   * @param  bool    $failHard
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
+   * @param  WooParentResolver $resolver
+   * @param  object            $repo      Repository/Client mit Woo-spezifischen API-Methoden
    */
-  public function syncSingle(Product $product, bool $failHard = false): array
+  public function __construct(WooParentResolver $resolver, object $repo)
   {
-    // --- Produkttyp bestimmen (robust) ---------------------------------------
-    $hasVariations = method_exists($product, 'variations') ? $product->variations()->exists() : false;
+    $this->resolver = $resolver;
+    $this->repo     = $repo;
+  }
 
-    $type = (string) $product->getAttribute('product_type');
-    if (!in_array($type, ['simple', 'variable'], true)) {
-      $type = $hasVariations ? 'variable' : 'simple';
-    }
+  /**
+   * Führt den Export/Sync eines einzelnen Kandidaten durch.
+   *
+   * Ablauf:
+   * 1) Resolve auf bestehenden Woo-Eintrag (SKU-first).
+   * 2) Je nach Ergebnis Update oder Create (Produkt/Variante).
+   *
+   * @param  array $candidate  Siehe Klassendoku für das erwartete Format.
+   * @return array             Struktur mit Aktion, IDs, Notizen und API-Ergebnis.
+   */
+  public function exportOne(array $candidate): array
+  {
+    $attrs   = (array) Arr::get($candidate, 'attributes', []);
+    $isVar   = (bool) Arr::get($candidate, 'is_variant', !empty($attrs));
+    $payload = (array) Arr::get($candidate, 'payload', []);
 
-    // --- Basis-Payload (OHNE Preise) -----------------------------------------
-    $idForFallback = $product->getKey();
-    $name          = (string) ($product->getAttribute('product_name') ?? $product->getAttribute('name') ?? "Product {$idForFallback}");
-    $slug          = (string) ($product->getAttribute('slug') ?? '');
-    $description   = (string) ($product->getAttribute('description') ?? '');
-    $shortDesc     = (string) ($product->getAttribute('short_description') ?? '');
+    Log::debug('ProductExportOrchestrator: Start', [
+      'has_sku'    => Arr::has($candidate, 'sku'),
+      'is_variant' => $isVar,
+    ]);
 
-    $payload = [
-      'type'              => $type,
-      'name'              => $name,
-      'slug'              => $slug,
-      'status'            => 'publish',
-      'description'       => $description,
-      'short_description' => $shortDesc,
-    ];
+    // 1) Bestehenden Eintrag ermitteln (SKU-first)
+    $resolved = $this->resolver->resolve($candidate);
 
-    // --- SKU-Entscheidung (nur für simple Parents) ---------------------------
-    $sku = $this->decideParentSku($product, $type);
-    if ($sku !== null) {
-      $payload['sku'] = $sku;
-    }
+    Log::debug('ProductExportOrchestrator: Resolve result', [
+      'found'        => $resolved['found'],
+      'type'         => $resolved['type'],
+      'product_id'   => $resolved['product_id'] ?? null,
+      'variation_id' => $resolved['variation_id'] ?? null,
+      'matched_by'   => $resolved['matched_by'] ?? null,
+      'notes'        => $resolved['notes'] ?? [],
+    ]);
 
-    // --- Bilder (optional) ---------------------------------------------------
-    $img = $product->getAttribute('image_url');
-    if (!empty($img)) {
-      $payload['images'] = [
-        ['src' => (string) $img],
+    // 2) Entscheidung
+    if ($resolved['found'] === true) {
+      // 2a) Update-Pfade
+      if ($resolved['type'] === 'variation' && !empty($resolved['variation_id']) && !empty($resolved['product_id'])) {
+        // Variation existiert → Update Variation
+        $result = $this->safeRepo('updateVariation', (int)$resolved['product_id'], (int)$resolved['variation_id'], $payload);
+
+        return [
+          'action'       => 'update_variation',
+          'product_id'   => (int)$resolved['product_id'],
+          'variation_id' => (int)$resolved['variation_id'],
+          'matched_by'   => $resolved['matched_by'],
+          'notes'        => $resolved['notes'],
+          'result'       => $result,
+        ];
+      }
+
+      // Parent/Simple existiert
+      if ($isVar) {
+        // Der Resolver hat keine passende Variation gefunden → Variation unter Parent anlegen
+        $parentId = (int) ($resolved['product_id'] ?? $resolved['variation_id'] ?? 0);
+        if ($parentId <= 0) {
+          // Edge Case: sollte nicht vorkommen, aber zur Sicherheit
+          Log::warning('ProductExportOrchestrator: Parent-ID für Variantenerstellung fehlt – fallback: create_product');
+          $result = $this->safeRepo('createProduct', $payload);
+          return [
+            'action'       => 'create_product',
+            'product_id'   => Arr::get($result, 'id'),
+            'variation_id' => null,
+            'matched_by'   => $resolved['matched_by'],
+            'notes'        => array_merge($resolved['notes'], ['Parent-ID fehlte, Produkt neu angelegt.']),
+            'result'       => $result,
+          ];
+        }
+
+        $result = $this->safeRepo('createVariation', $parentId, $payload);
+
+        return [
+          'action'       => 'create_variation',
+          'product_id'   => $parentId,
+          'variation_id' => Arr::get($result, 'id'),
+          'matched_by'   => $resolved['matched_by'],
+          'notes'        => array_merge($resolved['notes'], ['Variation neu angelegt (unter vorhandenem Parent).']),
+          'result'       => $result,
+        ];
+      }
+
+      // Kein Variantenszenario → Update Parent/Simple
+      $targetId = (int) ($resolved['product_id'] ?? $resolved['variation_id'] ?? 0);
+      $result   = $this->safeRepo('updateProduct', $targetId, $payload);
+
+      return [
+        'action'       => 'update_product',
+        'product_id'   => $targetId,
+        'variation_id' => null,
+        'matched_by'   => $resolved['matched_by'],
+        'notes'        => $resolved['notes'],
+        'result'       => $result,
       ];
     }
 
-    // --- Globales Attribut EAN (pa_ean) --------------------------------------
-    $eanAttr = $this->buildEanAttributeForProduct($product);
-    if ($eanAttr !== null) {
-      $payload['attributes'] = array_values(array_filter([
-        ...($payload['attributes'] ?? []),
-        $eanAttr,
-      ]));
-    }
+    // 2b) Create-Pfade (kein bestehender Eintrag gefunden)
+    if ($isVar) {
+      // Variante ohne vorhandenen Parent: zuerst Parent erzeugen (falls parent_payload vorhanden), dann Variation
+      $parentPayload = (array) Arr::get($candidate, 'parent_payload', []);
+      $parentId      = null;
 
-    // --- Logging --------------------------------------------------------------
-    Log::info('ProductExportOrchestrator: upserting product', [
-      'product_id'         => $idForFallback,
-      'woo_product_id'     => $product->getAttribute('woo_product_id'),
-      'type'               => $type,
-      'parent_sku_chosen'  => $sku,
-      'has_ean_attribute'  => $eanAttr !== null,
-      'ean_attribute_value' => $eanAttr['options'][0] ?? null,
-    ]);
-
-    // --- Upsert (Create/Update mit Preflight) --------------------------------
-    $result = $this->upsert->upsertProduct($product, $payload, $failHard);
-
-    Log::info('ProductExportOrchestrator: upsert result', [
-      'product_id' => $idForFallback,
-      'result'     => $result,
-    ]);
-
-    return $result;
-  }
-
-  /**
-   * Wählt die Parent-SKU gemäß Regeln aus.
-   * - variable: niemals eine SKU (gemäß config)
-   * - simple: Priorität aus config('woo.mapping.sku_rules.simple_parent_sku_priority')
-   */
-  protected function decideParentSku(Product $product, string $type): ?string
-  {
-    $rules = (array) config('woo.mapping.sku_rules', []);
-    $ident = (array) config('woo.mapping.identifiers.product', []);
-
-    $map = [
-      'sku'            => $ident['sku']  ?? 'sku',
-      'product_number' => $ident['mpn']  ?? 'product_number',
-      'ean'            => $ident['ean']  ?? 'ean',
-      'gtin'           => $ident['gtin'] ?? 'gtin',
-    ];
-
-    if ($type === 'variable') {
-      $allow = (bool) ($rules['variable_parent_has_sku'] ?? false);
-      if (!$allow) {
-        return null;
+      if (!empty($parentPayload)) {
+        Log::debug('ProductExportOrchestrator: Parent nicht gefunden – lege Parent neu an (parent_payload vorhanden).');
+        $parent = $this->safeRepo('createProduct', $parentPayload);
+        $parentId = (int) Arr::get($parent, 'id');
       }
-      // Wenn doch erlaubt, fällt es unten in die gleiche Prioritätslogik.
-    }
 
-    $priority = (array) ($rules['simple_parent_sku_priority'] ?? ['sku', 'product_number', 'ean', 'gtin']);
-    foreach ($priority as $key) {
-      $col = $map[$key] ?? null;
-      $val = $col ? $product->getAttribute($col) : null;
-      if (!empty($val)) {
-        return (string) $val;
+      if ($parentId) {
+        $variation = $this->safeRepo('createVariation', $parentId, $payload);
+
+        return [
+          'action'       => 'create_variation',
+          'product_id'   => $parentId,
+          'variation_id' => Arr::get($variation, 'id'),
+          'matched_by'   => null,
+          'notes'        => array_merge($resolved['notes'], ['Parent neu angelegt, anschließend Variation erstellt.']),
+          'result'       => $variation,
+        ];
       }
+
+      // Fallback: kein parent_payload → Variante als eigenes (Simple/Parent) Produkt anlegen
+      Log::warning('ProductExportOrchestrator: Kein parent_payload vorhanden – lege Produkt als Simple/Parent an.');
+      $result = $this->safeRepo('createProduct', $payload);
+
+      return [
+        'action'       => 'create_product',
+        'product_id'   => Arr::get($result, 'id'),
+        'variation_id' => null,
+        'matched_by'   => null,
+        'notes'        => array_merge($resolved['notes'], ['Variation ohne Parent-Payload – Produkt als Simple/Parent angelegt.']),
+        'result'       => $result,
+      ];
     }
 
-    return null;
-  }
+    // Simple/Parent neu anlegen
+    $result = $this->safeRepo('createProduct', $payload);
 
-  /**
-   * Baut das globale Attribut "EAN" (pa_ean) für das Hauptprodukt,
-   * wenn in der Konfiguration aktiviert und ein Wert vorhanden ist.
-   *
-   * Rückgabe: Woo-Attribut-Array oder null.
-   */
-  protected function buildEanAttributeForProduct(Product $product): ?array
-  {
-    $cfg = (array) config('woo.mapping.attributes.ean', []);
-    if (empty($cfg['enabled'])) {
-      return null;
-    }
-
-    $slug     = (string) ($cfg['slug']  ?? 'pa_ean'); // globaler Attribut-Slug
-    $visible  = (bool)   ($cfg['visible'] ?? true);
-    $isVarDef = (bool)   ($cfg['variation'] ?? false);
-
-    // Quellen für den EAN-Wert (z. B. ['ean','gtin'])
-    $ident     = (array) config('woo.mapping.identifiers.product', []);
-    $sourceKeys = (array) ($cfg['source'] ?? ['ean', 'gtin']);
-    $srcMap = [
-      'ean'  => $ident['ean']  ?? 'ean',
-      'gtin' => $ident['gtin'] ?? 'gtin',
-    ];
-
-    $value = null;
-    foreach ($sourceKeys as $key) {
-      $col = $srcMap[$key] ?? null;
-      $val = $col ? $product->getAttribute($col) : null;
-      if (!empty($val)) {
-        $value = (string) $val;
-        break;
-      }
-    }
-
-    if ($value === null) {
-      return null;
-    }
-
-    // Für globale Attribute sollte 'name' der Slug 'pa_*' sein,
-    // damit Woo es dem globalen Attribut zuordnen kann.
     return [
-      'name'      => $slug,       // z. B. 'pa_ean'
-      'visible'   => $visible,
-      'variation' => $isVarDef,   // EAN ist normalerweise kein variationsbestimmendes Attribut
-      'options'   => [$value],
+      'action'       => 'create_product',
+      'product_id'   => Arr::get($result, 'id'),
+      'variation_id' => null,
+      'matched_by'   => null,
+      'notes'        => $resolved['notes'],
+      'result'       => $result,
     ];
+  }
+
+  /**
+   * Kapselt Repo-Aufrufe mit Logging bei fehlender Methode/Exceptions.
+   *
+   * @param  string $method
+   * @param  mixed  ...$args
+   * @return array|null
+   */
+  protected function safeRepo(string $method, ...$args): ?array
+  {
+    if (!method_exists($this->repo, $method)) {
+      Log::warning('ProductExportOrchestrator: Repository-Methode fehlt', ['method' => $method]);
+      return null;
+    }
+
+    try {
+      $res = $this->repo->{$method}(...$args);
+      Log::debug('ProductExportOrchestrator: Repo call ok', ['method' => $method]);
+      return is_array($res) ? $res : (is_object($res) ? (array) $res : ['value' => $res]);
+    } catch (\Throwable $e) {
+      Log::warning('ProductExportOrchestrator: Repository-Aufruf fehlgeschlagen', [
+        'method'  => $method,
+        'message' => $e->getMessage(),
+      ]);
+      return null;
+    }
   }
 }
