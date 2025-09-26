@@ -36,6 +36,7 @@ class SyncProductsBulkAction extends BulkAction
       ->icon('heroicon-o-arrow-up-on-square')
       ->modalHeading('Produkte synchronisieren')
       ->requiresConfirmation()
+      ->color('success')
       ->form([
         Select::make('shop')
           ->label('Shop')
