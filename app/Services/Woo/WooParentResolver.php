@@ -4,73 +4,60 @@ namespace App\Services\Woo;
 
 use App\Support\IdentityNormalizer;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Class WooParentResolver
  *
  * Zweck:
- * - Ermittelt für ein zu exportierendes Produkt (Parent oder Variante), ob in WooCommerce
- *   bereits ein passender Datensatz existiert – gemäß Kunden-Setup ist die SKU der primäre Match-Key.
- * - Nutzt Fallbacks (EAN → MPN → Composite-SKU) nur, wenn keine SKU vorhanden ist.
- * - Liefert eine strukturierte Resolve-Antwort (Parent-/Variation-IDs, matchedBy, normalisierte Keys).
+ * - Ermittelt für ein zu exportierendes Produkt/Variante, ob in WooCommerce bereits
+ *   ein passender Datensatz existiert.
+ * - **SKU ist primärer Match-Key (99,98% Eindeutigkeit laut Kunde).**
+ * - EAN/MPN/Composite-SKU werden nur genutzt, wenn **keine SKU** vorhanden ist.
+ * - Liefert strukturierte Resolve-Antwort (Parent-/Variation-IDs, matchedBy, normalisierte Keys).
  *
- * Wichtige Annahmen:
- * - Die SKU ist in 99,98% der Fälle eindeutig und hat Priorität.
- * - Bei vorhandener SKU wird ausschließlich nach SKU gematcht (keine parallelen Fallbacks).
- * - Fallbacks werden nur genutzt, wenn SKU fehlt.
+ * Erwartete Repository-Methoden (bereitgestellt durch WooApiRepository):
+ * - findBySku(string $sku): ?array
+ * - findByEan(string $ean): ?array
+ * - findByMpn(string $mpn): ?array
+ * - findVariantUnderParentByAttributes(int $parentId, array $attributes): ?int
+ * - getParentId(array $item): ?int
+ * - getItemId(array $item): int
+ * - getItemType(array $item): 'parent'|'simple'|'variation'
  *
- * Abhängigkeiten:
- * - $repo: Ein Repository/Service, der Woo-spezifische Lookups bereitstellt.
- *   Erwartete Methoden (Bezeichnungen beispielhaft, bitte an dein Projekt anpassen):
- *     - findBySku(string $sku): array|null                      // Produkt oder Variante (mit Parent-Bezug)
- *     - findByEan(string $ean): array|null                      // Produkt oder Variante (mit Parent-Bezug)
- *     - findByMpn(string $mpn): array|null                      // Produkt oder Variante (mit Parent-Bezug)
- *     - findVariantUnderParentByAttributes(int $parentId, array $attributes): ?int // Variation-ID
- *     - getParentId(array $wooItem): ?int                       // Parent-ID für Variation oder null für Simple/Parent
- *     - getItemId(array $wooItem): int                          // ID des gefundenen Items (Parent oder Variation)
- *     - getItemType(array $wooItem): string                     // 'parent' | 'variation' | 'simple'
+ * Übergabeformat $candidate (Beispiel):
+ * [
+ *   'sku'        => 'PETZL-A010EA00-RED-L', // optional
+ *   'ean'        => '3342540833561',        // optional
+ *   'mpn'        => 'A010EA00',             // optional
+ *   'brand'      => 'Petzl',                // optional (für Composite-SKU)
+ *   'attributes' => ['color' => 'RED', 'size' => 'L'], // optional
+ *   'is_variant' => true|false              // optional (Fallback: true, wenn attributes nicht leer)
+ * ]
  *
- * Übergabe-Format $candidate (Beispiele – bitte an deinen Importer angleichen):
- * - [
- *     'sku'        => 'PETZL-A010EA00-RED-L', // optional
- *     'ean'        => '3342540833561',        // optional
- *     'mpn'        => 'A010EA00',             // optional
- *     'brand'      => 'Petzl',                // optional (für Composite-SKU)
- *     'attributes' => [                       // für Varianten-Auflösung unter einem Parent
- *         'color' => 'RED',
- *         'size'  => 'L'
- *     ],
- *     'is_variant' => true|false              // optional: Hinweis aus deinem Datenmodell
- *   ]
- *
- * Resolve-Rückgabe:
- * - [
- *     'found'        => bool,
- *     'type'         => 'parent'|'variation'|'simple'|'none',
- *     'product_id'   => int|null,             // Parent- oder Simple-ID (wenn vorhanden)
- *     'variation_id' => int|null,             // Variation-ID (wenn vorhanden)
- *     'matched_by'   => 'sku'|'ean'|'mpn'|'composite'|null,
- *     'normalized'   => [
- *        'sku' => ?string, 'ean' => ?string, 'mpn' => ?string, 'composite' => ?string
- *     ],
- *     'notes'        => string[]              // Diagnose/Debug-Hinweise
- *   ]
+ * Rückgabe:
+ * [
+ *   'found'        => bool,
+ *   'type'         => 'parent'|'variation'|'simple'|'none',
+ *   'product_id'   => int|null,
+ *   'variation_id' => int|null,
+ *   'matched_by'   => 'sku'|'ean'|'mpn'|'composite'|null,
+ *   'normalized'   => ['sku'=>?string,'ean'=>?string,'mpn'=>?string,'composite'=>?string],
+ *   'notes'        => string[]
+ * ]
  *
  * Logging:
- * - Debug-Logs für jeden Matching-Schritt (Thema, normalisierter Wert, Ergebnis).
- * - Keine Backslashes vor Log:: (Kompatibilität mit Intelephense).
+ * - Ausführliche Debug-Logs pro Matching-Schritt. Keine Backslashes vor Log::.
  *
  * @package App\Services\Woo
  */
 class WooParentResolver
 {
-  /** @var object */
+  /** @var object Repository mit den oben beschriebenen Methoden (typischerweise WooApiRepository) */
   protected $repo;
 
   /**
-   * @param  object  $repo  Siehe erwartete Methoden in der Klassendoku.
+   * @param  object  $repo  Repository (WooApiRepository), welches die erwarteten Methoden anbietet.
    */
   public function __construct(object $repo)
   {
@@ -78,15 +65,15 @@ class WooParentResolver
   }
 
   /**
-   * Führt die Auflösung für ein Produkt/Variante durch.
+   * Führt die Auflösung für ein Produkt/Variante durch (SKU-first).
    *
-   * Matching-Strategie:
-   * 1) Wenn SKU vorhanden: ausschließlich SKU-Match (kein Fallback!).
-   * 2) Wenn keine SKU: EAN → MPN → Composite-SKU (falls generierbar).
-   * 3) Bei Variantentyp: Versuche – falls Parent gefunden – passende Variation anhand Attribute zu bestimmen.
+   * Strategie:
+   * 1) Wenn SKU vorhanden: ausschließlich SKU-Match (kein Fallback).
+   * 2) Wenn keine SKU: EAN → MPN → Composite-SKU.
+   * 3) Bei Varianten: Falls Parent gefunden, versuche Variation anhand Attribute.
    *
-   * @param  array $candidate  Siehe Klassendoku für das erwartete Format.
-   * @return array             Resolve-Struktur (siehe Klassendoku).
+   * @param  array $candidate
+   * @return array
    */
   public function resolve(array $candidate): array
   {
@@ -111,7 +98,7 @@ class WooParentResolver
       'composite' => $composite,
     ];
 
-    Log::debug('WooParentResolver: Start resolve', [
+    Log::debug('WooParentResolver: start', [
       'candidate_has_sku' => (bool)$normSku,
       'normalized'        => $normalized,
       'is_variant'        => $isVar,
@@ -128,12 +115,12 @@ class WooParentResolver
       }
       $notes[] = "SKU nicht gefunden: {$normSku}";
       Log::debug('WooParentResolver: no match by SKU', ['sku' => $normSku]);
-      // Bei vorhandener SKU KEIN Fallback → Neuanlage
+
+      // Wichtig: Bei vorhandener SKU **kein** Fallback (Kundenregel)
       return $this->notFound($normalized, $notes);
     }
 
     // 2) Fallbacks nur wenn SKU fehlt
-    // 2a) EAN
     if ($normEan && IdentityNormalizer::isLikelyValidEan($normEan)) {
       $found = $this->safeCall('findByEan', $normEan);
       if ($found) {
@@ -146,7 +133,6 @@ class WooParentResolver
       Log::debug('WooParentResolver: no match by EAN', ['ean' => $normEan]);
     }
 
-    // 2b) MPN
     if ($normMpn) {
       $found = $this->safeCall('findByMpn', $normMpn);
       if ($found) {
@@ -159,7 +145,6 @@ class WooParentResolver
       Log::debug('WooParentResolver: no match by MPN', ['mpn' => $normMpn]);
     }
 
-    // 2c) Composite-SKU (wenn generierbar)
     if ($composite) {
       $found = $this->safeCall('findBySku', $composite);
       if ($found) {
@@ -179,11 +164,11 @@ class WooParentResolver
   /**
    * Finalisiert das Resolve-Ergebnis und versucht – falls nötig – die Variation unterhalb des Parents zu ermitteln.
    *
-   * @param  array       $found     Vom Repo geliefertes Woo-Item (Parent/Variation/Simple)
-   * @param  string      $matchedBy 'sku'|'ean'|'mpn'|'composite'
-   * @param  array       $attrs     Attributwerte für Variantenauflösung
-   * @param  bool        $isVar     Ob Kandidat als Variante betrachtet wird
-   * @param  array       $notes     Referenz auf Notizen (wird erweitert)
+   * @param  array  $found
+   * @param  string $matchedBy   'sku'|'ean'|'mpn'|'composite'
+   * @param  array  $attrs
+   * @param  bool   $isVar
+   * @param  array  $notes
    * @return array
    */
   protected function finalizeResolve(array $found, string $matchedBy, array $attrs, bool $isVar, array &$notes): array
@@ -194,9 +179,7 @@ class WooParentResolver
 
     $notes[] = "Match via {$matchedBy} ({$itemType}, id={$itemId}, parent=" . ($parentId ?? 'null') . ")";
 
-    // Wenn es sich um eine Variante handelt und wir nur den Parent kennen, versuche die Variation via Attribute:
     if ($isVar) {
-      // Falls der gefundene Datensatz bereits eine Variation ist, sind wir fertig
       if ($itemType === 'variation') {
         return [
           'found'        => true,
@@ -204,12 +187,11 @@ class WooParentResolver
           'product_id'   => $parentId ?: null,
           'variation_id' => $itemId,
           'matched_by'   => $matchedBy,
-          'normalized'   => [], // wird vom Aufrufer gesetzt
+          'normalized'   => [],
           'notes'        => $notes,
         ];
       }
 
-      // Wenn Parent/Simple gefunden → versuche Variant unter Parent mit Attributen
       $pid = $itemType === 'parent' ? $itemId : ($parentId ?: $itemId);
       $vid = $this->safeCall('findVariantUnderParentByAttributes', $pid, $attrs);
 
@@ -219,9 +201,9 @@ class WooParentResolver
           'found'        => true,
           'type'         => 'variation',
           'product_id'   => $pid,
-          'variation_id' => (int)$vid,
+          'variation_id' => (int) $vid,
           'matched_by'   => $matchedBy,
-          'normalized'   => [], // wird vom Aufrufer gesetzt
+          'normalized'   => [],
           'notes'        => $notes,
         ];
       }
@@ -233,29 +215,24 @@ class WooParentResolver
         'product_id'   => $pid,
         'variation_id' => null,
         'matched_by'   => $matchedBy,
-        'normalized'   => [], // wird vom Aufrufer gesetzt
+        'normalized'   => [],
         'notes'        => $notes,
       ];
     }
 
-    // Kein Variantenszenario → Parent/Simple genügt
     return [
       'found'        => true,
       'type'         => $itemType === 'variation' ? 'variation' : ($itemType === 'parent' ? 'parent' : 'simple'),
       'product_id'   => $itemType === 'variation' ? ($parentId ?: null) : $itemId,
       'variation_id' => $itemType === 'variation' ? $itemId : null,
       'matched_by'   => $matchedBy,
-      'normalized'   => [], // wird vom Aufrufer gesetzt
+      'normalized'   => [],
       'notes'        => $notes,
     ];
   }
 
   /**
    * Standardisierte "nicht gefunden"-Antwort.
-   *
-   * @param  array $normalized
-   * @param  array $notes
-   * @return array
    */
   protected function notFound(array $normalized, array $notes): array
   {
