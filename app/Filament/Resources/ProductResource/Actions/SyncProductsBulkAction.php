@@ -3,10 +3,9 @@
 namespace App\Filament\Resources\ProductResource\Actions;
 
 use App\Models\Product;
-use App\Services\Woo\ProductExportOrchestrator;
+use App\Models\Shop;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
-use Filament\Notifications\Notification;
 use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
@@ -40,8 +39,11 @@ class SyncProductsBulkAction extends BulkAction
       ->form([
         Select::make('shop')
           ->label('Shop')
-          ->options($this->shopOptions())
-          ->default($this->defaultShopKey())
+          ->options(
+            // key = id, value = name → Anzeige "Staging", Wert ist ID
+            fn() => Shop::query()->orderBy('name')->pluck('name', 'id')->all()
+          )
+          ->default(fn() => Shop::query()->orderBy('name')->value('id')) // erster Shop als Default
           ->required()
           // --- UI-Fix: Tom Select aktivieren ---
           ->searchable()     // macht aus native <select> → Tom Select
@@ -74,10 +76,7 @@ class SyncProductsBulkAction extends BulkAction
 
     // Shop auflösen (ID oder Slug)
     /** @var \App\Models\Shop|null $shop */
-    $shop = \App\Models\Shop::query()
-      ->when(is_numeric($data['shop'] ?? null), fn($q) => $q->whereKey($data['shop']))
-      ->when(!is_numeric($data['shop'] ?? null), fn($q) => $q->where('slug', (string) $data['shop']))
-      ->first();
+    $shop = \App\Models\Shop::find((int) ($data['shop'] ?? 0));
 
     if (!$shop) {
       Log::error('SyncProductsBulkAction: Shop konnte nicht aufgelöst werden.', ['shop_arg' => $data['shop'] ?? null]);
