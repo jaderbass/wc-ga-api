@@ -33,9 +33,9 @@ class SyncProductsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Produkte synchronisieren')
+    $this->label('Zu Woo synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
-      ->modalHeading('Produkte synchronisieren')
+      ->modalHeading('Zu Woo synchronisieren')
       ->requiresConfirmation()
       ->form([
         Select::make('shop')
@@ -43,6 +43,10 @@ class SyncProductsBulkAction extends BulkAction
           ->options($this->shopOptions())
           ->default($this->defaultShopKey())
           ->required()
+          // --- UI-Fix: Tom Select aktivieren ---
+          ->searchable()     // macht aus native <select> → Tom Select
+          ->native(false)    // erzwingt JS-Select; unser CSS greift
+          ->preload()        // lädt Optionen sofort (bessere UX)
           ->helperText('Ziel-Profil (definierbar unter woo.profiles in config/woo.php).'),
 
         Toggle::make('only_changed')
@@ -68,13 +72,27 @@ class SyncProductsBulkAction extends BulkAction
   {
     $this->applyShopProfile($data['shop'] ?? null);
 
-    /** @var ProductExportOrchestrator $orchestrator */
-    $orchestrator = app(ProductExportOrchestrator::class);
+    // Shop auflösen (ID oder Slug)
+    /** @var \App\Models\Shop|null $shop */
+    $shop = \App\Models\Shop::query()
+      ->when(is_numeric($data['shop'] ?? null), fn($q) => $q->whereKey($data['shop']))
+      ->when(!is_numeric($data['shop'] ?? null), fn($q) => $q->where('slug', (string) $data['shop']))
+      ->first();
+
+    if (!$shop) {
+      Log::error('SyncProductsBulkAction: Shop konnte nicht aufgelöst werden.', ['shop_arg' => $data['shop'] ?? null]);
+      \Filament\Notifications\Notification::make()
+        ->title('Woo-Sync abgebrochen')
+        ->body('Shop konnte nicht aufgelöst werden. Bitte Auswahl prüfen.')
+        ->danger()
+        ->send();
+      return;
+    }
 
     $summary = ['products' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0];
 
     foreach ($records as $product) {
-      /** @var Product $product */
+      /** @var \App\Models\Product $product */
 
       if (!empty($data['only_changed']) && $this->hasColumn($product, 'woo_synced_at')) {
         $last = $product->woo_synced_at;
@@ -108,13 +126,36 @@ class SyncProductsBulkAction extends BulkAction
       }
 
       try {
-        $res    = $orchestrator->syncSingle($product);
+        /** @var \App\Services\Woo\ProductUpsertService $upsert */
+        $upsert = app(\App\Services\Woo\ProductUpsertService::class);
+
+        $candidate = [
+          'sku'        => $product->sku ?? null,
+          'ean'        => $product->ean ?? null,
+          'mpn'        => $product->mpn ?? null,
+          'brand'      => $product->brand->name ?? $product->brand ?? null,
+          'attributes' => array_filter([
+            'color' => $product->color ?? ($product->variation->color ?? null),
+            'size'  => $product->size  ?? ($product->variation->size  ?? null),
+          ], fn($v) => $v !== null && $v !== ''),
+          // optional, wird sonst aus attributes abgeleitet
+          'is_variant' => !empty(($product->color ?? null) || ($product->size ?? null) || ($product->variation ?? null)),
+
+          // Nutze hier deine bestehenden Builder:
+          'payload'        => $this->buildProductPayload($product),
+          'parent_payload' => $this->buildParentPayloadIfNeeded($product),
+        ];
+
+        $res    = $upsert->upsert($shop, $candidate);
         $action = $res['action'] ?? 'unknown';
 
+        // Neue Action-Namen sauber auf Summary mappen
         $summary['products']++;
-        if ($action === 'created') $summary['created']++;
-        if ($action === 'updated') $summary['updated']++;
-        if ($action === 'error')   $summary['errors']++;
+        if (in_array($action, ['create_product', 'create_variation'], true)) {
+          $summary['created']++;
+        } elseif (in_array($action, ['update_product', 'update_variation'], true)) {
+          $summary['updated']++;
+        }
 
         if (!empty($data['only_changed']) && $this->hasColumn($product, 'woo_synced_at')) {
           $product->forceFill(['woo_synced_at' => now()])->saveQuietly();
@@ -140,13 +181,14 @@ class SyncProductsBulkAction extends BulkAction
     );
 
     if ($summary['errors'] > 0) {
-      Notification::make()->title($title)->body($body)->danger()->send();
+      \Filament\Notifications\Notification::make()->title($title)->body($body)->danger()->send();
     } else {
-      Notification::make()->title($title)->body($body)->success()->send();
+      \Filament\Notifications\Notification::make()->title($title)->body($body)->success()->send();
     }
 
     Log::info('SyncProductsBulkAction summary', $summary);
   }
+
 
   // ----------------- Hilfsfunktionen ------------------------
 
