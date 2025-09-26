@@ -50,13 +50,22 @@ return [
             // 'ean' wird als meta_data gesendet (siehe Builder)
         ],
 
-        // Interne Attribut-Keys -> Woo-Attributnamen
+        // Für UI/Labels (optional, Anzeigezwecke)
         'variation_attribute_map' => [
             'size'          => 'Size',
             'color'         => 'Color',
             'length'        => 'Length',
             'certification' => 'Certification',
         ],
+
+        // Für Technik/Matching (entscheidend!)
+        'variation_attribute_taxonomies' => [
+            'color' => 'pa_color', // Beispiel, falls dein Shop deutschsprachige Slugs nutzt
+            'size'  => 'pa_size',
+            // ggf. weitere: 'length' => 'pa_length', 'certification' => 'pa_certification'
+        ],
+
+
 
         // Defaultwerte für Varianten
         'variation_defaults' => [
