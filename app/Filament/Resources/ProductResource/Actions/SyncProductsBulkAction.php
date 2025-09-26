@@ -32,9 +32,9 @@ class SyncProductsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    $this->label('Zu Woo synchronisieren')
+    $this->label('Produkte synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
-      ->modalHeading('Zu Woo synchronisieren')
+      ->modalHeading('Produkte synchronisieren')
       ->requiresConfirmation()
       ->form([
         Select::make('shop')
