@@ -14,58 +14,35 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Class SyncVariationsBulkAction
- *
- * Zweck:
- * - Synchronisiert ausgewählte Varianten mit WooCommerce (SKU-first-Strategie).
- * - Verwendet ProductUpsertService (intern: WooParentResolver + Orchestrator).
- *
- * Formular:
- * - Shop-Auswahl zeigt den Shop-Namen an, übergibt aber die Shop-ID.
- * - Optional: Nur geänderte Datensätze / Dry-Run.
- *
- * Logging:
- * - Ausführliche Logs auf DEBUG/INFO/ERROR.
- */
 class SyncVariationsBulkAction extends BulkAction
 {
-  /**
-   * Setzt Label, Icon, Formular und die Action-Logik.
-   *
-   * @return void
-   */
   protected function setUp(): void
   {
     parent::setUp();
 
-    $this->label('Varianten synchronisieren')
-      ->icon('heroicon-o-arrows-right-left')
-      ->modalHeading('Varianten synchronisieren')
+    $this->label('Variante synchronisieren')
+      ->modalHeading('Variante synchronisieren')
       ->requiresConfirmation()
-      ->color('primary')
+      ->icon('heroicon-o-arrows-right-left')
+      ->color('primary') // Alternativen je nach Theme: 'secondary','success','warning','danger','gray'
       ->form([
         Select::make('shop')
           ->label('Shop')
-          ->options(
-            // key = id, value = name → Anzeige "Staging", Wert ist ID
-            fn() => Shop::query()->orderBy('name')->pluck('name', 'id')->all()
-          )
-          ->default(fn() => Shop::query()->orderBy('name')->value('id')) // erster Shop als Default
+          ->options(fn() => Shop::query()->orderBy('name')->pluck('name', 'id')->all())
+          ->default(fn() => Shop::query()->orderBy('name')->value('id'))
           ->required()
-          // --- UI-Fix: Tom Select aktivieren ---
-          ->searchable()     // macht aus native <select> → Tom Select
-          ->native(false)    // erzwingt JS-Select; unser CSS greift
-          ->preload()        // lädt Optionen sofort (bessere UX)
-          ->helperText('Ziel-Profil (definierbar unter woo.profiles in config/woo.php).'),
+          ->searchable()
+          ->native(false)
+          ->preload()
+          ->helperText('Ziel-Shop auswählen (Anzeige = Name).'),
         Toggle::make('only_changed')
           ->label('Nur geänderte synchronisieren')
           ->default(true)
-          ->helperText('Überspringt Varianten ohne Änderungen seit letztem Sync (benötigt Spalte woo_synced_at).'),
+          ->helperText('Überspringt Datensätze ohne Änderungen seit letztem Sync (benötigt Spalte woo_synced_at).'),
         Toggle::make('dry_run')
           ->label('Dry-Run (ohne Schreiben)')
           ->default(false)
-        ->helperText('Kein Versand an Woo; nur Vorschau im Log.'),
+          ->helperText('Kein Versand an Woo; nur Vorschau im Log.'),
       ])
       ->action(function (Collection $records, array $data): void {
         $this->handle($records, $data);
@@ -73,44 +50,46 @@ class SyncVariationsBulkAction extends BulkAction
   }
 
   /**
-   * Hauptlogik der Action inkl. Notification-Ausgabe.
-   *
-   * @param  Collection<int,ProductVariation|Product> $records
+   * @param  Collection<int,Product|ProductVariation>  $records
    * @param  array{shop:int,only_changed?:bool,dry_run?:bool} $data
-   * @return void
    */
   protected function handle(Collection $records, array $data): void
   {
-    // Falls du eine Profil-Umschaltung nutzt, hier optional anwenden:
     if (method_exists($this, 'applyShopProfile')) {
       $this->applyShopProfile($data['shop'] ?? null);
     }
 
     /** @var Shop|null $shop */
     $shop = Shop::find((int) ($data['shop'] ?? 0));
-
     if (!$shop) {
       Log::error('SyncVariationsBulkAction: Shop konnte nicht aufgelöst werden.', ['shop_arg' => $data['shop'] ?? null]);
       Notification::make()->title('Woo-Sync abgebrochen')->body('Shop konnte nicht aufgelöst werden. Bitte Auswahl prüfen.')->danger()->send();
       return;
     }
 
+    // Produkte/Varianten → immer zu Varianten expandieren
+    $variations = $this->expandRecordsToVariations($records);
+    Log::info('SyncVariationsBulkAction: expanded selection', [
+      'input_count'     => $records->count(),
+      'variation_count' => $variations->count(),
+    ]);
+
+    if ($variations->isEmpty()) {
+      Notification::make()
+        ->title('Keine Varianten gefunden')
+        ->body('Für die gewählten Produkte wurden keine Varianten ermittelt.')
+        ->warning()
+        ->send();
+      Log::info('SyncVariationsBulkAction: no variations after expand');
+      return;
+    }
+
     $summary = ['variations' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0];
 
-    foreach ($records as $record) {
-      /** @var ProductVariation|Product $record */
-      $variation = $record instanceof ProductVariation ? $record : ($record->variation ?? null);
+    foreach ($variations as $variation) {
+      /** @var ProductVariation $variation */
 
-      if (!$variation) {
-        $summary['skipped']++;
-        Log::info('SyncVariationsBulkAction: skipped (no variation resolvable)', [
-          'record_id'   => $record->id ?? null,
-          'record_type' => $record instanceof ProductVariation ? 'ProductVariation' : 'Product',
-        ]);
-        continue;
-      }
-
-      // Nur geänderte?
+      // Optional: nur geänderte synchronisieren
       if (!empty($data['only_changed'])) {
         $last = $variation->woo_synced_at ?? null;
         if ($last && $variation->updated_at && $variation->updated_at->lte($last)) {
@@ -142,6 +121,7 @@ class SyncVariationsBulkAction extends BulkAction
         /** @var Product|null $product */
         $product = $variation->product ?? null;
 
+        // Kandidat: immer mit parent_payload (erzwingt Parent+Variation statt Simple)
         $candidate = [
           'sku'   => $variation->sku ?? ($product?->sku ?? $product?->product_number ?? null),
           'ean'   => $variation->ean ?? $product?->ean ?? null,
@@ -153,9 +133,9 @@ class SyncVariationsBulkAction extends BulkAction
             'size'  => $variation->size ?? null,
           ], fn($v) => $v !== null && $v !== ''),
 
-          'is_variant'    => true,
+          'is_variant'     => true,
           'payload'        => $this->buildVariationPayload($variation, $product),
-          'parent_payload' => $this->buildParentPayloadIfNeeded($product),
+          'parent_payload' => $this->buildParentPayloadAlways($product), // <— immer Parent liefern!
         ];
 
         $res    = $upsert->upsert($shop, $candidate);
@@ -168,8 +148,7 @@ class SyncVariationsBulkAction extends BulkAction
           $summary['updated']++;
         }
 
-        // Timestamp nach erfolgreichem Sync
-        if (property_exists($variation, 'woo_synced_at') || Schema::hasColumn($variation->getTable(), 'woo_synced_at')) {
+        if (Schema::hasColumn($variation->getTable(), 'woo_synced_at')) {
           $variation->forceFill(['woo_synced_at' => now()])->saveQuietly();
         }
       } catch (\Throwable $e) {
@@ -202,11 +181,51 @@ class SyncVariationsBulkAction extends BulkAction
   }
 
   /**
-   * Baut den Payload für eine Variation (kein 'type'-Feld).
-   *
-   * @param  ProductVariation $variation
-   * @param  Product|null     $product
-   * @return array
+   * Auswahl (Product/Variation) → eindeutige Liste von Variationen.
+   */
+  protected function expandRecordsToVariations(Collection $records): Collection
+  {
+    $list = collect();
+
+    foreach ($records as $record) {
+      if ($record instanceof ProductVariation) {
+        $list->push($record);
+        continue;
+      }
+
+      if ($record instanceof Product) {
+        $relation = null;
+        foreach (['variations', 'productVariations', 'variants'] as $candidate) {
+          if (method_exists($record, $candidate)) {
+            $relation = $candidate;
+            break;
+          }
+        }
+
+        if (!$relation) {
+          Log::warning('SyncVariationsBulkAction: Produkt hat keine erkennbare Varianten-Relation', [
+            'product_id' => $record->id,
+          ]);
+          continue;
+        }
+
+        $record->loadMissing($relation);
+        foreach ($record->{$relation} as $var) {
+          if ($var instanceof ProductVariation) {
+            $list->push($var);
+          }
+        }
+      }
+    }
+
+    return $list
+      ->filter()
+      ->unique(fn(ProductVariation $v) => $v->id)
+      ->values();
+  }
+
+  /**
+   * Variation-Payload (kein 'type').
    */
   protected function buildVariationPayload(ProductVariation $variation, ?Product $product): array
   {
@@ -245,28 +264,19 @@ class SyncVariationsBulkAction extends BulkAction
   }
 
   /**
-   * Parent-Payload nur, wenn Parent noch fehlt und ein variables Produkt angelegt werden soll.
-   *
-   * @param  Product|null $product
-   * @return array|null
+   * Parent-Payload: **immer** liefern, damit der Orchestrator bei „nicht gefunden“
+   * ein variables Parent-Produkt erzeugt und danach die Variation.
    */
-  protected function buildParentPayloadIfNeeded(?Product $product): ?array
+  protected function buildParentPayloadAlways(?Product $product): array
   {
-    if (!$product) {
-      return null;
-    }
-
-    $isVariable = $product->product_type === 'variable' || $product->variations()->exists();
-    if (!$isVariable) {
-      return null;
-    }
-
-    $name    = $product->product_name ?? $product->name ?? ('Product #' . $product->id);
+    // Falls kein Product ermittelbar, lege einen generischen Parent an.
+    $name = $product?->product_name ?? $product?->name ?? 'Variable Product';
 
     $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
     $wooSize  = $attrMap['size']  ?? 'Size';
     $wooColor = $attrMap['color'] ?? 'Color';
 
+    // Definiere die Varianten-Attribute (ohne Optionen; Woo verknüpft automatisch)
     $attributes = array_values(array_filter([
       ['name' => $wooColor, 'visible' => true, 'variation' => true, 'options' => []],
       ['name' => $wooSize,  'visible' => true, 'variation' => true, 'options' => []],
@@ -276,10 +286,11 @@ class SyncVariationsBulkAction extends BulkAction
       'name'       => $name,
       'type'       => 'variable',
       'attributes' => $attributes,
+      // i. d. R. keine SKU auf dem Parent setzen → Eindeutigkeit bleibt auf Variantenebene
     ];
 
-    Log::debug('SyncVariationsBulkAction: built parent payload', [
-      'product_id' => $product->id,
+    Log::debug('SyncVariationsBulkAction: built parent payload (forced)', [
+      'product_id' => $product->id ?? null,
       'attributes' => array_column($attributes, 'name'),
     ]);
 
