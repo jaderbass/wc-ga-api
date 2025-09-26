@@ -6,34 +6,86 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Shop;
 use App\Services\Woo\ProductUpsertService;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
+use Filament\Tables\Actions\BulkAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Class SyncVariationsBulkAction
  *
  * Zweck:
  * - Synchronisiert ausgewählte Varianten mit WooCommerce (SKU-first-Strategie).
- * - Nutzt ProductUpsertService (intern: WooParentResolver + Orchestrator).
+ * - Verwendet ProductUpsertService (intern: WooParentResolver + Orchestrator).
  *
- * Formular-Hinweis:
- * - Das Shop-Select liefert die Shop-ID (Anzeige = Shop-Name).
+ * Formular:
+ * - Shop-Auswahl zeigt den Shop-Namen an, übergibt aber die Shop-ID.
+ * - Optional: Nur geänderte Datensätze / Dry-Run.
  *
  * Logging:
  * - Ausführliche Logs auf DEBUG/INFO/ERROR.
  */
-class SyncVariationsBulkAction
+class SyncVariationsBulkAction extends BulkAction
 {
+  /**
+   * Setzt Label, Icon, Formular und die Action-Logik.
+   *
+   * @return void
+   */
+  protected function setUp(): void
+  {
+    parent::setUp();
+
+    $this->label('Varianten synchronisieren')
+      ->icon('heroicon-o-arrows-right-left')
+      ->modalHeading('Varianten synchronisieren')
+      ->requiresConfirmation()
+      ->color('primary')
+      ->form([
+        Select::make('shop')
+          ->label('Shop')
+          ->options(
+            // key = id, value = name → Anzeige "Staging", Wert ist ID
+            fn() => Shop::query()->orderBy('name')->pluck('name', 'id')->all()
+          )
+          ->default(fn() => Shop::query()->orderBy('name')->value('id')) // erster Shop als Default
+          ->required()
+          // --- UI-Fix: Tom Select aktivieren ---
+          ->searchable()     // macht aus native <select> → Tom Select
+          ->native(false)    // erzwingt JS-Select; unser CSS greift
+          ->preload()        // lädt Optionen sofort (bessere UX)
+          ->helperText('Ziel-Profil (definierbar unter woo.profiles in config/woo.php).'),
+        Toggle::make('only_changed')
+          ->label('Nur geänderte synchronisieren')
+          ->default(true)
+          ->helperText('Überspringt Varianten ohne Änderungen seit letztem Sync (benötigt Spalte woo_synced_at).'),
+        Toggle::make('dry_run')
+          ->label('Dry-Run (ohne Schreiben)')
+          ->default(false)
+        ->helperText('Kein Versand an Woo; nur Vorschau im Log.'),
+      ])
+      ->action(function (Collection $records, array $data): void {
+        $this->handle($records, $data);
+      });
+  }
+
   /**
    * Hauptlogik der Action inkl. Notification-Ausgabe.
    *
    * @param  Collection<int,ProductVariation|Product> $records
    * @param  array{shop:int,only_changed?:bool,dry_run?:bool} $data
+   * @return void
    */
   protected function handle(Collection $records, array $data): void
   {
-    // Shop ermitteln (Form gibt eine ID zurück)
+    // Falls du eine Profil-Umschaltung nutzt, hier optional anwenden:
+    if (method_exists($this, 'applyShopProfile')) {
+      $this->applyShopProfile($data['shop'] ?? null);
+    }
+
     /** @var Shop|null $shop */
     $shop = Shop::find((int) ($data['shop'] ?? 0));
 
@@ -46,21 +98,19 @@ class SyncVariationsBulkAction
     $summary = ['variations' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'errors' => 0];
 
     foreach ($records as $record) {
-      // $record kann je nach Selektion ProductVariation ODER Product sein.
       /** @var ProductVariation|Product $record */
-
       $variation = $record instanceof ProductVariation ? $record : ($record->variation ?? null);
+
       if (!$variation) {
-        // Keine Variation ableitbar → überspringen
         $summary['skipped']++;
         Log::info('SyncVariationsBulkAction: skipped (no variation resolvable)', [
-          'record_id' => $record->id ?? null,
+          'record_id'   => $record->id ?? null,
           'record_type' => $record instanceof ProductVariation ? 'ProductVariation' : 'Product',
         ]);
         continue;
       }
 
-      // Optional: nur geänderte synchronisieren (wenn Zeitstempel vorhanden)
+      // Nur geänderte?
       if (!empty($data['only_changed'])) {
         $last = $variation->woo_synced_at ?? null;
         if ($last && $variation->updated_at && $variation->updated_at->lte($last)) {
@@ -89,27 +139,21 @@ class SyncVariationsBulkAction
         /** @var ProductUpsertService $upsert */
         $upsert = app(ProductUpsertService::class);
 
-        // Stamm-Produkt bestimmen (für Parent-Payload & Marke)
         /** @var Product|null $product */
-        $product = $variation->product ?? ($record instanceof Product ? $record : null);
+        $product = $variation->product ?? null;
 
         $candidate = [
-          // SKU-First: Variante hat i.d.R. eigene SKU; sonst auf Produkt/ArtNr. ausweichen
           'sku'   => $variation->sku ?? ($product?->sku ?? $product?->product_number ?? null),
           'ean'   => $variation->ean ?? $product?->ean ?? null,
           'mpn'   => $variation->mpn ?? $product?->mpn ?? null,
           'brand' => $product?->brand->name ?? $product?->brand ?? null,
 
-          // Varianten-Attribute
           'attributes' => array_filter([
             'color' => $variation->color ?? null,
             'size'  => $variation->size ?? null,
           ], fn($v) => $v !== null && $v !== ''),
 
-          // Explizit als Variante kennzeichnen
-          'is_variant' => true,
-
-          // Payloads:
+          'is_variant'    => true,
           'payload'        => $this->buildVariationPayload($variation, $product),
           'parent_payload' => $this->buildParentPayloadIfNeeded($product),
         ];
@@ -124,8 +168,8 @@ class SyncVariationsBulkAction
           $summary['updated']++;
         }
 
-        // Timestamp setzen, wenn Feld existiert
-        if (property_exists($variation, 'woo_synced_at') || \Schema::hasColumn($variation->getTable(), 'woo_synced_at')) {
+        // Timestamp nach erfolgreichem Sync
+        if (property_exists($variation, 'woo_synced_at') || Schema::hasColumn($variation->getTable(), 'woo_synced_at')) {
           $variation->forceFill(['woo_synced_at' => now()])->saveQuietly();
         }
       } catch (\Throwable $e) {
@@ -158,15 +202,14 @@ class SyncVariationsBulkAction
   }
 
   /**
-   * Baut den Payload für eine Variation (kein 'type' Feld!).
+   * Baut den Payload für eine Variation (kein 'type'-Feld).
    *
-   * @param  ProductVariation               $variation
-   * @param  Product|null                   $product
+   * @param  ProductVariation $variation
+   * @param  Product|null     $product
    * @return array
    */
   protected function buildVariationPayload(ProductVariation $variation, ?Product $product): array
   {
-    // Preis: Integer Cents oder Float abdecken
     $price = null;
     if (isset($variation->price) && $variation->price !== null) {
       $price = is_numeric($variation->price) ? number_format((float) $variation->price, 2, '.', '') : null;
@@ -182,7 +225,7 @@ class SyncVariationsBulkAction
     $mpnKey = (string) config('woo.mapping.meta_keys.mpn', 'mpn');
 
     $payload = [
-      'sku'           => $variation->sku ?: ($product?->sku ?? $product?->product_number ?? null), // wenn Var-SKU fehlt, notfalls Parent
+      'sku'           => $variation->sku ?: ($product?->sku ?? $product?->product_number ?? null),
       'regular_price' => $price,
       'meta_data'     => array_values(array_filter([
         ($variation->ean ?? $product?->ean ?? null) ? ['key' => $eanKey, 'value' => (string) ($variation->ean ?? $product?->ean)] : null,
@@ -194,7 +237,10 @@ class SyncVariationsBulkAction
       ])),
     ];
 
-    // Null/Leere sauber entfernen
+    Log::debug('SyncVariationsBulkAction: built variation payload', [
+      'variation_id' => $variation->id,
+    ]);
+
     return array_filter($payload, fn($v) => $v !== null && $v !== []);
   }
 
@@ -216,6 +262,7 @@ class SyncVariationsBulkAction
     }
 
     $name    = $product->product_name ?? $product->name ?? ('Product #' . $product->id);
+
     $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
     $wooSize  = $attrMap['size']  ?? 'Size';
     $wooColor = $attrMap['color'] ?? 'Color';
@@ -225,10 +272,17 @@ class SyncVariationsBulkAction
       ['name' => $wooSize,  'visible' => true, 'variation' => true, 'options' => []],
     ], fn($a) => !empty($a['name'])));
 
-    return [
+    $parent = [
       'name'       => $name,
       'type'       => 'variable',
       'attributes' => $attributes,
     ];
+
+    Log::debug('SyncVariationsBulkAction: built parent payload', [
+      'product_id' => $product->id,
+      'attributes' => array_column($attributes, 'name'),
+    ]);
+
+    return $parent;
   }
 }
