@@ -13,54 +13,25 @@ use Illuminate\Support\Facades\Log;
  * - Bindet den WooParentResolver ein (SKU-first-Strategie mit Fallbacks nur ohne SKU).
  * - Entscheidet anhand des Resolve-Ergebnisses zwischen Update und Neuanlage.
  *
- * Voraussetzungen:
- * - Ein Repository/Client ($repo) kapselt die konkreten Woo-API-Operationen.
- *   Erwartete Methoden (Bezeichnungen beispielhaft – ggf. an Dein Projekt anpassen):
- *     - updateProduct(int $productId, array $payload): array
- *     - updateVariation(int $parentId, int $variationId, array $payload): array
- *     - createProduct(array $payload): array                 // Parent/Simple
- *     - createVariation(int $parentId, array $payload): array
+ * WICHTIG (Strenger Variations-Flow):
+ * - Für Varianten wird NIE auf "create_product" (Simple) fallbacked.
+ * - Entweder wird eine Variation unter bestehendem/neu erzeugtem Parent erstellt/aktualisiert,
+ *   oder der Vorgang endet mit action="error".
  *
- * Eingabeformat ($candidate):
- * - [
- *     'sku'         => 'PETZL-A010EA00-RED-L',   // optional (SKU-first!)
- *     'ean'         => '3342540833561',          // optional
- *     'mpn'         => 'A010EA00',               // optional
- *     'brand'       => 'Petzl',                  // optional
- *     'attributes'  => ['color' => 'RED', 'size' => 'L'], // optional
- *     'is_variant'  => true|false,               // optional (Fallback: true, wenn attributes nicht leer)
- *     'payload'     => [...],                    // vollständiger Woo-Payload (Titel, Preis, Meta etc.)
- *     'parent_payload' => [...],                 // falls Variante neu angelegt werden muss, Parent-Daten hier
- *   ]
- *
- * Rückgabe:
- * - [
- *     'action'      => 'update_product'|'update_variation'|'create_product'|'create_variation',
- *     'product_id'  => int|null,
- *     'variation_id'=> int|null,
- *     'matched_by'  => 'sku'|'ean'|'mpn'|'composite'|null,
- *     'notes'       => string[],
- *     'result'      => array|null   // API-Antwort
- *   ]
- *
- * Logging:
- * - Ausführliche Debug-Logs mit Schrittmarkern.
+ * Erwartete Repo-Methoden:
+ *   - updateProduct(int $productId, array $payload): array|null
+ *   - updateVariation(int $parentId, int $variationId, array $payload): array|null
+ *   - createProduct(array $payload): array|null
+ *   - createVariation(int $parentId, array $payload): array|null
  *
  * @package App\Services\Woo
  */
 class ProductExportOrchestrator
 {
-  /** @var WooParentResolver */
   protected WooParentResolver $resolver;
+  protected WooRepositoryInterface $repo;
 
-  /** @var object */
-  protected $repo;
-
-  /**
-   * @param  WooParentResolver $resolver
-   * @param  object            $repo      Repository/Client mit Woo-spezifischen API-Methoden
-   */
-  public function __construct(WooParentResolver $resolver, object $repo)
+  public function __construct(WooParentResolver $resolver, WooRepositoryInterface $repo)
   {
     $this->resolver = $resolver;
     $this->repo     = $repo;
@@ -69,12 +40,8 @@ class ProductExportOrchestrator
   /**
    * Führt den Export/Sync eines einzelnen Kandidaten durch.
    *
-   * Ablauf:
-   * 1) Resolve auf bestehenden Woo-Eintrag (SKU-first).
-   * 2) Je nach Ergebnis Update oder Create (Produkt/Variante).
-   *
-   * @param  array $candidate  Siehe Klassendoku für das erwartete Format.
-   * @return array             Struktur mit Aktion, IDs, Notizen und API-Ergebnis.
+   * @param  array $candidate
+   * @return array
    */
   public function exportOne(array $candidate): array
   {
@@ -99,11 +66,10 @@ class ProductExportOrchestrator
       'notes'        => $resolved['notes'] ?? [],
     ]);
 
-    // 2) Entscheidung
+    // 2) GEFUNDEN → Update oder angepasste Create-Pfade
     if ($resolved['found'] === true) {
-      // 2a) Update-Pfade
+      // 2a) Existierende Variation → Update Variation
       if ($resolved['type'] === 'variation' && !empty($resolved['variation_id']) && !empty($resolved['product_id'])) {
-        // Variation existiert → Update Variation
         $result = $this->safeRepo('updateVariation', (int)$resolved['product_id'], (int)$resolved['variation_id'], $payload);
 
         return [
@@ -116,24 +82,29 @@ class ProductExportOrchestrator
         ];
       }
 
-      // Parent/Simple existiert
+      // 2b) Parent/Simple existiert
       if ($isVar) {
-        // Der Resolver hat keine passende Variation gefunden → Variation unter Parent anlegen
+        // Keine passende Variation gefunden → Variation unter Parent anlegen
         $parentId = (int) ($resolved['product_id'] ?? $resolved['variation_id'] ?? 0);
+
         if ($parentId <= 0) {
-          // Edge Case: sollte nicht vorkommen, aber zur Sicherheit
-          Log::warning('ProductExportOrchestrator: Parent-ID für Variantenerstellung fehlt – fallback: create_product');
-          $result = $this->safeRepo('createProduct', $payload);
+          // Strenger: Kein Parent → kein Simple-Fallback!
+          Log::error('ProductExportOrchestrator: Parent-ID für Variation fehlt, breche ab (kein Simple-Fallback).', [
+            'resolved' => $resolved,
+          ]);
           return [
-            'action'       => 'create_product',
-            'product_id'   => Arr::get($result, 'id'),
+            'action'       => 'error',
+            'product_id'   => null,
             'variation_id' => null,
-            'matched_by'   => $resolved['matched_by'],
-            'notes'        => array_merge($resolved['notes'], ['Parent-ID fehlte, Produkt neu angelegt.']),
-            'result'       => $result,
+            'matched_by'   => $resolved['matched_by'] ?? null,
+            'notes'        => array_merge($resolved['notes'] ?? [], [
+              'Parent-ID fehlte bei is_variant=true – Vorgang abgebrochen, um Simple-Doppelanlage zu vermeiden.',
+            ]),
+            'result'       => null,
           ];
         }
 
+        Log::debug('ProductExportOrchestrator: createVariation unter vorhandenem Parent', ['parent_id' => $parentId]);
         $result = $this->safeRepo('createVariation', $parentId, $payload);
 
         return [
@@ -146,7 +117,7 @@ class ProductExportOrchestrator
         ];
       }
 
-      // Kein Variantenszenario → Update Parent/Simple
+      // 2c) Kein Variantenszenario → Update Parent/Simple
       $targetId = (int) ($resolved['product_id'] ?? $resolved['variation_id'] ?? 0);
       $result   = $this->safeRepo('updateProduct', $targetId, $payload);
 
@@ -160,46 +131,66 @@ class ProductExportOrchestrator
       ];
     }
 
-    // 2b) Create-Pfade (kein bestehender Eintrag gefunden)
+    // 3) NICHT GEFUNDEN → Create-Pfade
     if ($isVar) {
-      // Variante ohne vorhandenen Parent: zuerst Parent erzeugen (falls parent_payload vorhanden), dann Variation
+      // Variante ohne vorhandenen Parent: Parent aus parent_payload erzwingen
       $parentPayload = (array) Arr::get($candidate, 'parent_payload', []);
-      $parentId      = null;
 
-      if (!empty($parentPayload)) {
-        Log::debug('ProductExportOrchestrator: Parent nicht gefunden – lege Parent neu an (parent_payload vorhanden).');
-        $parent = $this->safeRepo('createProduct', $parentPayload);
-        $parentId = (int) Arr::get($parent, 'id');
-      }
-
-      if ($parentId) {
-        $variation = $this->safeRepo('createVariation', $parentId, $payload);
-
+      if (empty($parentPayload)) {
+        Log::error('ProductExportOrchestrator: parent_payload fehlt bei is_variant=true – breche ab (kein Simple-Fallback).');
         return [
-          'action'       => 'create_variation',
-          'product_id'   => $parentId,
-          'variation_id' => Arr::get($variation, 'id'),
+          'action'       => 'error',
+          'product_id'   => null,
+          'variation_id' => null,
           'matched_by'   => null,
-          'notes'        => array_merge($resolved['notes'], ['Parent neu angelegt, anschließend Variation erstellt.']),
-          'result'       => $variation,
+          'notes'        => array_merge($resolved['notes'] ?? [], [
+            'Für Varianten ist parent_payload zwingend – simple Produktanlage wurde verhindert.',
+          ]),
+          'result'       => null,
         ];
       }
 
-      // Fallback: kein parent_payload → Variante als eigenes (Simple/Parent) Produkt anlegen
-      Log::warning('ProductExportOrchestrator: Kein parent_payload vorhanden – lege Produkt als Simple/Parent an.');
-      $result = $this->safeRepo('createProduct', $payload);
+      Log::debug('ProductExportOrchestrator: Parent nicht gefunden – lege Parent neu an (type=variable erwartet).', [
+        'parent_payload_keys' => array_keys($parentPayload),
+      ]);
+      $parent = $this->safeRepo('createProduct', $parentPayload);
+      $parentId = (int) Arr::get($parent, 'id', 0);
+
+      Log::debug('ProductExportOrchestrator: Ergebnis createProduct (Parent)', [
+        'response_has_id' => $parentId > 0,
+        'parent_id'       => $parentId,
+      ]);
+
+      if ($parentId <= 0) {
+        Log::error('ProductExportOrchestrator: Parent konnte nicht angelegt werden – breche ab (kein Simple-Fallback).', [
+          'parent_response' => $parent,
+        ]);
+        return [
+          'action'       => 'error',
+          'product_id'   => null,
+          'variation_id' => null,
+          'matched_by'   => null,
+          'notes'        => array_merge($resolved['notes'] ?? [], [
+            'Parent konnte nicht angelegt werden – Vorgang abgebrochen, um Simple-Doppelanlage zu vermeiden.',
+          ]),
+          'result'       => $parent,
+        ];
+      }
+
+      Log::debug('ProductExportOrchestrator: lege Variation unter neuem Parent an', ['parent_id' => $parentId]);
+      $variation = $this->safeRepo('createVariation', $parentId, $payload);
 
       return [
-        'action'       => 'create_product',
-        'product_id'   => Arr::get($result, 'id'),
-        'variation_id' => null,
+        'action'       => 'create_variation',
+        'product_id'   => $parentId,
+        'variation_id' => Arr::get($variation, 'id'),
         'matched_by'   => null,
-        'notes'        => array_merge($resolved['notes'], ['Variation ohne Parent-Payload – Produkt als Simple/Parent angelegt.']),
-        'result'       => $result,
+        'notes'        => array_merge($resolved['notes'] ?? [], ['Parent neu angelegt, anschließend Variation erstellt.']),
+        'result'       => $variation,
       ];
     }
 
-    // Simple/Parent neu anlegen
+    // 3b) Simple/Parent neu anlegen (nur wenn kein Variantenszenario)
     $result = $this->safeRepo('createProduct', $payload);
 
     return [
@@ -207,7 +198,7 @@ class ProductExportOrchestrator
       'product_id'   => Arr::get($result, 'id'),
       'variation_id' => null,
       'matched_by'   => null,
-      'notes'        => $resolved['notes'],
+      'notes'        => $resolved['notes'] ?? [],
       'result'       => $result,
     ];
   }
