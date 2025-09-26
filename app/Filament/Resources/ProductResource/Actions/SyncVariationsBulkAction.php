@@ -24,7 +24,7 @@ class SyncVariationsBulkAction extends BulkAction
       ->modalHeading('Variante synchronisieren')
       ->requiresConfirmation()
       ->icon('heroicon-o-arrows-right-left')
-      ->color('primary') // Alternativen je nach Theme: 'secondary','success','warning','danger','gray'
+      ->color('primary') // Alternativen: secondary|success|warning|danger|gray
       ->form([
         Select::make('shop')
           ->label('Shop')
@@ -67,7 +67,6 @@ class SyncVariationsBulkAction extends BulkAction
       return;
     }
 
-    // Produkte/Varianten → immer zu Varianten expandieren
     $variations = $this->expandRecordsToVariations($records);
     Log::info('SyncVariationsBulkAction: expanded selection', [
       'input_count'     => $records->count(),
@@ -75,11 +74,7 @@ class SyncVariationsBulkAction extends BulkAction
     ]);
 
     if ($variations->isEmpty()) {
-      Notification::make()
-        ->title('Keine Varianten gefunden')
-        ->body('Für die gewählten Produkte wurden keine Varianten ermittelt.')
-        ->warning()
-        ->send();
+      Notification::make()->title('Keine Varianten gefunden')->body('Für die gewählten Produkte wurden keine Varianten ermittelt.')->warning()->send();
       Log::info('SyncVariationsBulkAction: no variations after expand');
       return;
     }
@@ -89,7 +84,6 @@ class SyncVariationsBulkAction extends BulkAction
     foreach ($variations as $variation) {
       /** @var ProductVariation $variation */
 
-      // Optional: nur geänderte synchronisieren
       if (!empty($data['only_changed'])) {
         $last = $variation->woo_synced_at ?? null;
         if ($last && $variation->updated_at && $variation->updated_at->lte($last)) {
@@ -121,21 +115,29 @@ class SyncVariationsBulkAction extends BulkAction
         /** @var Product|null $product */
         $product = $variation->product ?? null;
 
-        // Kandidat: immer mit parent_payload (erzwingt Parent+Variation statt Simple)
+        // Einheitliche Taxonomie-Slugs (konfigurierbar)
+        $tax = (array) config('woo.mapping.variation_attribute_taxonomies', [
+          'color' => 'pa_color',
+          'size'  => 'pa_size',
+        ]);
+        $taxColor = $tax['color'] ?? 'pa_color';
+        $taxSize  = $tax['size']  ?? 'pa_size';
+
         $candidate = [
           'sku'   => $variation->sku ?? ($product?->sku ?? $product?->product_number ?? null),
           'ean'   => $variation->ean ?? $product?->ean ?? null,
           'mpn'   => $variation->mpn ?? $product?->mpn ?? null,
           'brand' => $product?->brand->name ?? $product?->brand ?? null,
 
-          'attributes' => array_filter([
-            'color' => $variation->color ?? null,
-            'size'  => $variation->size ?? null,
-          ], fn($v) => $v !== null && $v !== ''),
+          // Variation-Attribute → exakt dieselben Namen wie am Parent (Taxonomie-Slugs!)
+          'attributes' => array_values(array_filter([
+            ($variation->color ?? null) ? ['name' => $taxColor, 'option' => (string) $variation->color] : null,
+            ($variation->size  ?? null) ? ['name' => $taxSize,  'option' => (string) $variation->size] : null,
+          ])),
 
           'is_variant'     => true,
-          'payload'        => $this->buildVariationPayload($variation, $product),
-          'parent_payload' => $this->buildParentPayloadAlways($product), // <— immer Parent liefern!
+          'payload'        => $this->buildVariationPayload($variation, $product, $taxColor, $taxSize),
+          'parent_payload' => $this->buildParentPayloadWithTaxonomies($product, $taxColor, $taxSize),
         ];
 
         $res    = $upsert->upsert($shop, $candidate);
@@ -181,7 +183,7 @@ class SyncVariationsBulkAction extends BulkAction
   }
 
   /**
-   * Auswahl (Product/Variation) → eindeutige Liste von Variationen.
+   * Produkte/Varianten → eindeutige Liste von Variationen
    */
   protected function expandRecordsToVariations(Collection $records): Collection
   {
@@ -203,9 +205,7 @@ class SyncVariationsBulkAction extends BulkAction
         }
 
         if (!$relation) {
-          Log::warning('SyncVariationsBulkAction: Produkt hat keine erkennbare Varianten-Relation', [
-            'product_id' => $record->id,
-          ]);
+          Log::warning('SyncVariationsBulkAction: Produkt hat keine erkennbare Varianten-Relation', ['product_id' => $record->id]);
           continue;
         }
 
@@ -218,16 +218,13 @@ class SyncVariationsBulkAction extends BulkAction
       }
     }
 
-    return $list
-      ->filter()
-      ->unique(fn(ProductVariation $v) => $v->id)
-      ->values();
+    return $list->filter()->unique(fn(ProductVariation $v) => $v->id)->values();
   }
 
   /**
-   * Variation-Payload (kein 'type').
+   * Variation-Payload: setzt Attribute-Namen auf die Taxonomie-Slugs (z. B. pa_color, pa_size)
    */
-  protected function buildVariationPayload(ProductVariation $variation, ?Product $product): array
+  protected function buildVariationPayload(ProductVariation $variation, ?Product $product, string $taxColor, string $taxSize): array
   {
     $price = null;
     if (isset($variation->price) && $variation->price !== null) {
@@ -235,10 +232,6 @@ class SyncVariationsBulkAction extends BulkAction
     } elseif (isset($variation->price_cents) && $variation->price_cents !== null) {
       $price = number_format(((int) $variation->price_cents) / 100, 2, '.', '');
     }
-
-    $attrMap  = (array) config('woo.mapping.variation_attribute_map', []);
-    $wooSize  = $attrMap['size']  ?? 'Size';
-    $wooColor = $attrMap['color'] ?? 'Color';
 
     $eanKey = (string) config('woo.mapping.meta_keys.ean', 'ean');
     $mpnKey = (string) config('woo.mapping.meta_keys.mpn', 'mpn');
@@ -251,45 +244,36 @@ class SyncVariationsBulkAction extends BulkAction
         ($variation->mpn ?? $product?->mpn ?? null) ? ['key' => $mpnKey, 'value' => (string) ($variation->mpn ?? $product?->mpn)] : null,
       ])),
       'attributes'    => array_values(array_filter([
-        ($variation->color ?? null) ? ['name' => $wooColor, 'option' => (string) $variation->color] : null,
-        ($variation->size  ?? null) ? ['name' => $wooSize,  'option' => (string) $variation->size] : null,
+        ($variation->color ?? null) ? ['name' => $taxColor, 'option' => (string) $variation->color] : null,
+        ($variation->size  ?? null) ? ['name' => $taxSize,  'option' => (string) $variation->size] : null,
       ])),
     ];
 
-    Log::debug('SyncVariationsBulkAction: built variation payload', [
-      'variation_id' => $variation->id,
-    ]);
+    Log::debug('SyncVariationsBulkAction: built variation payload', ['variation_id' => $variation->id]);
 
     return array_filter($payload, fn($v) => $v !== null && $v !== []);
   }
 
   /**
-   * Parent-Payload: **immer** liefern, damit der Orchestrator bei „nicht gefunden“
-   * ein variables Parent-Produkt erzeugt und danach die Variation.
+   * Parent-Payload: legt variable Attribute mit denselben Taxonomie-Slugs an,
+   * damit Variations-Attribute exakt passen.
    */
-  protected function buildParentPayloadAlways(?Product $product): array
+  protected function buildParentPayloadWithTaxonomies(?Product $product, string $taxColor, string $taxSize): array
   {
-    // Falls kein Product ermittelbar, lege einen generischen Parent an.
     $name = $product?->product_name ?? $product?->name ?? 'Variable Product';
 
-    $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
-    $wooSize  = $attrMap['size']  ?? 'Size';
-    $wooColor = $attrMap['color'] ?? 'Color';
-
-    // Definiere die Varianten-Attribute (ohne Optionen; Woo verknüpft automatisch)
     $attributes = array_values(array_filter([
-      ['name' => $wooColor, 'visible' => true, 'variation' => true, 'options' => []],
-      ['name' => $wooSize,  'visible' => true, 'variation' => true, 'options' => []],
+      ['name' => $taxColor, 'visible' => true, 'variation' => true, 'options' => []],
+      ['name' => $taxSize,  'visible' => true, 'variation' => true, 'options' => []],
     ], fn($a) => !empty($a['name'])));
 
     $parent = [
       'name'       => $name,
       'type'       => 'variable',
       'attributes' => $attributes,
-      // i. d. R. keine SKU auf dem Parent setzen → Eindeutigkeit bleibt auf Variantenebene
     ];
 
-    Log::debug('SyncVariationsBulkAction: built parent payload (forced)', [
+    Log::debug('SyncVariationsBulkAction: built parent payload (taxonomy)', [
       'product_id' => $product->id ?? null,
       'attributes' => array_column($attributes, 'name'),
     ]);
