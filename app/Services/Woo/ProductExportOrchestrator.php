@@ -13,18 +13,13 @@ use Illuminate\Support\Facades\Log;
  * - Bindet den WooParentResolver ein (SKU-first-Strategie mit Fallbacks nur ohne SKU).
  * - Entscheidet anhand des Resolve-Ergebnisses zwischen Update und Neuanlage.
  *
- * WICHTIG (Strenger Variations-Flow):
+ * Strenger Variations-Flow:
  * - Für Varianten wird NIE auf "create_product" (Simple) fallbacked.
- * - Entweder wird eine Variation unter bestehendem/neu erzeugtem Parent erstellt/aktualisiert,
- *   oder der Vorgang endet mit action="error".
+ * - Entweder Variation unter bestehendem/neu erzeugtem Parent – oder action="error".
  *
- * Erwartete Repo-Methoden:
- *   - updateProduct(int $productId, array $payload): array|null
- *   - updateVariation(int $parentId, int $variationId, array $payload): array|null
- *   - createProduct(array $payload): array|null
- *   - createVariation(int $parentId, array $payload): array|null
- *
- * @package App\Services\Woo
+ * Zusätzliche Logik:
+ * - Vor dem Anlegen eines Parents werden dessen Attribute auf **Taxonomie-IDs** umgestellt
+ *   und die Options aus den tatsächlichen Variantenwerten befüllt (z. B. ["Rot","Blau"]).
  */
 class ProductExportOrchestrator
 {
@@ -66,7 +61,7 @@ class ProductExportOrchestrator
       'notes'        => $resolved['notes'] ?? [],
     ]);
 
-    // 2) GEFUNDEN → Update oder angepasste Create-Pfade
+    // 2) GEFUNDEN → Update/Creates
     if ($resolved['found'] === true) {
       // 2a) Existierende Variation → Update Variation
       if ($resolved['type'] === 'variation' && !empty($resolved['variation_id']) && !empty($resolved['product_id'])) {
@@ -88,7 +83,7 @@ class ProductExportOrchestrator
         $parentId = (int) ($resolved['product_id'] ?? $resolved['variation_id'] ?? 0);
 
         if ($parentId <= 0) {
-          // Strenger: Kein Parent → kein Simple-Fallback!
+          // Streng: Kein Parent → kein Simple-Fallback!
           Log::error('ProductExportOrchestrator: Parent-ID für Variation fehlt, breche ab (kein Simple-Fallback).', [
             'resolved' => $resolved,
           ]);
@@ -133,8 +128,11 @@ class ProductExportOrchestrator
 
     // 3) NICHT GEFUNDEN → Create-Pfade
     if ($isVar) {
-      // Variante ohne vorhandenen Parent: Parent aus parent_payload erzwingen
-      $parentPayload = (array) Arr::get($candidate, 'parent_payload', []);
+      // Parent-Anlage ist zwingend – vorher Attribute normalisieren (Taxonomie-IDs + Options aus Variationswerten)
+      $parentPayload = $this->normalizeParentPayloadAttributes(
+        (array) Arr::get($candidate, 'parent_payload', []),
+        (array) Arr::get($candidate, 'attributes', [])
+      );
 
       if (empty($parentPayload)) {
         Log::error('ProductExportOrchestrator: parent_payload fehlt bei is_variant=true – breche ab (kein Simple-Fallback).');
@@ -150,10 +148,10 @@ class ProductExportOrchestrator
         ];
       }
 
-      Log::debug('ProductExportOrchestrator: Parent nicht gefunden – lege Parent neu an (type=variable erwartet).', [
+      Log::debug('ProductExportOrchestrator: Parent nicht gefunden – lege Parent neu an (variable, Taxonomie-Attribute).', [
         'parent_payload_keys' => array_keys($parentPayload),
       ]);
-      $parent = $this->safeRepo('createProduct', $parentPayload);
+      $parent   = $this->safeRepo('createProduct', $parentPayload);
       $parentId = (int) Arr::get($parent, 'id', 0);
 
       Log::debug('ProductExportOrchestrator: Ergebnis createProduct (Parent)', [
@@ -185,7 +183,7 @@ class ProductExportOrchestrator
         'product_id'   => $parentId,
         'variation_id' => Arr::get($variation, 'id'),
         'matched_by'   => null,
-        'notes'        => array_merge($resolved['notes'] ?? [], ['Parent neu angelegt, anschließend Variation erstellt.']),
+        'notes'        => array_merge($resolved['notes'] ?? [], ['Parent (variable) neu angelegt, anschließend Variation erstellt.']),
         'result'       => $variation,
       ];
     }
@@ -201,6 +199,99 @@ class ProductExportOrchestrator
       'notes'        => $resolved['notes'] ?? [],
       'result'       => $result,
     ];
+  }
+
+  /**
+   * Wandelt parent_payload['attributes'] auf Taxonomie-IDs um und füllt die Options
+   * aus den tatsächlichen Variationswerten.
+   *
+   * Erwartete Config:
+   *   config('woo.mapping.variation_attribute_taxonomies') => ['color' => 'pa_color', 'size' => 'pa_size', ...]
+   *
+   * Erwartete Repo-Erweiterung (optional, wird geprüft):
+   *   getAttributeIdBySlug(string $slug): ?int
+   *
+   * @param  array $parentPayload
+   * @param  array $variationAttributes  z. B. ['color' => 'Red', 'size' => 'L']
+   * @return array
+   */
+  protected function normalizeParentPayloadAttributes(array $parentPayload, array $variationAttributes): array
+  {
+    $slugs = (array) config('woo.mapping.variation_attribute_taxonomies', [
+      'color' => 'pa_color',
+      'size'  => 'pa_size',
+    ]);
+
+    // Map lokale Keys → Slugs (nur vorhandene Variations-Keys berücksichtigen)
+    $wanted = [];
+    foreach ($variationAttributes as $k => $val) {
+      if ($val === null || $val === '') {
+        continue;
+      }
+      $slug = $slugs[$k] ?? null;
+      if ($slug) {
+        $wanted[$slug][] = (string) $val;
+      }
+    }
+
+    if (empty($wanted)) {
+      // Nichts zu tun
+      return $parentPayload;
+    }
+
+    $normalized = [];
+    foreach ($wanted as $slug => $values) {
+      $id = $this->getAttributeIdBySlugIfPossible($slug); // null, wenn Repo es nicht anbietet
+      $options = array_values(array_unique(array_map('strval', $values)));
+
+      if ($id) {
+        // Taxonomie-Attribut per ID
+        $normalized[] = [
+          'id'        => $id,
+          'visible'   => true,
+          'variation' => true,
+          'options'   => $options, // Term-Namen; Woo mappt sie auf bestehende oder legt an
+        ];
+      } else {
+        // Fallback: per Name (kann als Custom-Attribut enden – weniger ideal)
+        $normalized[] = [
+          'name'      => $slug,
+          'visible'   => true,
+          'variation' => true,
+          'options'   => $options,
+        ];
+      }
+    }
+
+    $parentPayload['type']       = 'variable';
+    $parentPayload['attributes'] = $normalized;
+
+    Log::debug('ProductExportOrchestrator: normalized parent attributes', [
+      'attrs' => $normalized,
+    ]);
+
+    return $parentPayload;
+  }
+
+  /**
+   * Holt die Attribut-ID zu einem Taxonomie-Slug, falls das Repo das kann.
+   */
+  protected function getAttributeIdBySlugIfPossible(string $slug): ?int
+  {
+    if (method_exists($this->repo, 'getAttributeIdBySlug')) {
+      try {
+        $id = $this->repo->getAttributeIdBySlug($slug);
+        return $id ? (int) $id : null;
+      } catch (\Throwable $e) {
+        Log::warning('ProductExportOrchestrator: getAttributeIdBySlug failed', [
+          'slug'    => $slug,
+          'message' => $e->getMessage(),
+        ]);
+      }
+    } else {
+      Log::debug('ProductExportOrchestrator: repo has no getAttributeIdBySlug, using name fallback', ['slug' => $slug]);
+    }
+    return null;
   }
 
   /**
