@@ -5,6 +5,7 @@ namespace App\Services\Woo;
 use App\Support\IdentityNormalizer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
+use App\Services\Woo\WooRepositoryInterface;
 
 /**
  * Class WooParentResolver
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  * - EAN/MPN/Composite-SKU werden nur genutzt, wenn **keine SKU** vorhanden ist.
  * - Liefert strukturierte Resolve-Antwort (Parent-/Variation-IDs, matchedBy, normalisierte Keys).
  *
- * Erwartete Repository-Methoden (bereitgestellt durch WooApiRepository):
+ * Erwartete Repository-Methoden (bereitgestellt durch WooApiRepository via WooRepositoryInterface):
  * - findBySku(string $sku): ?array
  * - findByEan(string $ean): ?array
  * - findByMpn(string $mpn): ?array
@@ -25,52 +26,23 @@ use Illuminate\Support\Facades\Log;
  * - getItemId(array $item): int
  * - getItemType(array $item): 'parent'|'simple'|'variation'
  *
- * Übergabeformat $candidate (Beispiel):
- * [
- *   'sku'        => 'PETZL-A010EA00-RED-L', // optional
- *   'ean'        => '3342540833561',        // optional
- *   'mpn'        => 'A010EA00',             // optional
- *   'brand'      => 'Petzl',                // optional (für Composite-SKU)
- *   'attributes' => ['color' => 'RED', 'size' => 'L'], // optional
- *   'is_variant' => true|false              // optional (Fallback: true, wenn attributes nicht leer)
- * ]
- *
- * Rückgabe:
- * [
- *   'found'        => bool,
- *   'type'         => 'parent'|'variation'|'simple'|'none',
- *   'product_id'   => int|null,
- *   'variation_id' => int|null,
- *   'matched_by'   => 'sku'|'ean'|'mpn'|'composite'|null,
- *   'normalized'   => ['sku'=>?string,'ean'=>?string,'mpn'=>?string,'composite'=>?string],
- *   'notes'        => string[]
- * ]
- *
- * Logging:
- * - Ausführliche Debug-Logs pro Matching-Schritt. Keine Backslashes vor Log::.
- *
  * @package App\Services\Woo
  */
 class WooParentResolver
 {
-  /** @var object Repository mit den oben beschriebenen Methoden (typischerweise WooApiRepository) */
-  protected $repo;
+  /** @var WooRepositoryInterface */
+  protected WooRepositoryInterface $repo;
 
   /**
-   * @param  object  $repo  Repository (WooApiRepository), welches die erwarteten Methoden anbietet.
+   * @param  WooRepositoryInterface  $repo  Repository (z. B. WooApiRepository)
    */
-  public function __construct(object $repo)
+  public function __construct(WooRepositoryInterface $repo)
   {
     $this->repo = $repo;
   }
 
   /**
    * Führt die Auflösung für ein Produkt/Variante durch (SKU-first).
-   *
-   * Strategie:
-   * 1) Wenn SKU vorhanden: ausschließlich SKU-Match (kein Fallback).
-   * 2) Wenn keine SKU: EAN → MPN → Composite-SKU.
-   * 3) Bei Varianten: Falls Parent gefunden, versuche Variation anhand Attribute.
    *
    * @param  array $candidate
    * @return array
@@ -116,7 +88,7 @@ class WooParentResolver
       $notes[] = "SKU nicht gefunden: {$normSku}";
       Log::debug('WooParentResolver: no match by SKU', ['sku' => $normSku]);
 
-      // Wichtig: Bei vorhandener SKU **kein** Fallback (Kundenregel)
+      // Bei vorhandener SKU KEIN Fallback (Kundenregel)
       return $this->notFound($normalized, $notes);
     }
 
@@ -231,9 +203,6 @@ class WooParentResolver
     ];
   }
 
-  /**
-   * Standardisierte "nicht gefunden"-Antwort.
-   */
   protected function notFound(array $normalized, array $notes): array
   {
     $notes[] = 'Kein bestehender Woo-Eintrag gefunden – Neuanlage erforderlich.';
@@ -252,10 +221,6 @@ class WooParentResolver
 
   /**
    * Sichere Repo-Aufrufe mit Log-Ausgabe bei fehlender Methode/Fehlern.
-   *
-   * @param  string $method
-   * @param  mixed  ...$args
-   * @return mixed|null
    */
   protected function safeCall(string $method, ...$args)
   {
