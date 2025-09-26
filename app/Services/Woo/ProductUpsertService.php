@@ -7,248 +7,88 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\Shop;
+use Illuminate\Support\Arr;
+
 
 /**
- * ProductUpsertService
+ * Class ProductUpsertService
  *
- * Führt ein robustes Upsert (Create/Update) von WooCommerce-Hauptprodukten durch
- * und nutzt dabei einen SKU-Preflight (per WooProductLookupService), um
- * Duplicate-SKU-Fehler beim POST zu vermeiden.
+ * Zweck:
+ * - Orchestriert das Anlegen/Aktualisieren einzelner Produkte oder Varianten in WooCommerce.
+ * - Bindet den WooParentResolver (SKU-first) vor der eigentlichen Create/Update-Operation ein,
+ *   damit bestehende Einträge erkannt und korrekt aktualisiert werden.
  *
- * Wichtige Punkte:
- * - Für variable Produkte ist es Best Practice, **am Parent keine SKU** zu setzen.
- *   (Variante besitzt die SKU). Falls dennoch eine SKU im Payload übergeben wird,
- *   nutzt der Preflight diese zur Update-Erkennung.
- * - Preise werden in diesem Projekt bewusst NICHT synchronisiert.
- * - Nach erfolgreichem Create (POST) wird die Remote-ID in products.woo_product_id gespeichert.
+ * Verwendung (Beispiel):
+ *   $result = app(ProductUpsertService::class)->upsert($shop, [
+ *       'sku'        => 'PETZL-A010EA00-RED-L',
+ *       'ean'        => '3342540833561',
+ *       'mpn'        => 'A010EA00',
+ *       'brand'      => 'Petzl',
+ *       'attributes' => ['color' => 'RED', 'size' => 'L'], // für Varianten
+ *       'payload'    => [...],                              // Woo-Payload für Produkt/Variation
+ *       'parent_payload' => [...],                          // optional: Parent-Payload, falls Variante ohne bestehenden Parent
+ *   ]);
  *
- * Konfiguration:
- * - Base URL, Version, Credentials: config('woo.api.*'), config('woo.default_api_version')
+ * Rückgabe (vereinfacht):
+ * - [
+ *     'action'       => 'update_product'|'update_variation'|'create_product'|'create_variation',
+ *     'product_id'   => int|null,
+ *     'variation_id' => int|null,
+ *     'matched_by'   => 'sku'|'ean'|'mpn'|'composite'|null,
+ *     'notes'        => string[],
+ *     'result'       => array|null   // API-Antwort des Woo-Clients
+ *   ]
  *
- * Integration:
- * - Aus deinem bestehenden Produkt-Exporter/Service statt direktem POST/PUT:
- *     app(ProductUpsertService::class)->upsertProduct($product, $payload);
+ * Hinweise:
+ * - SKU ist laut Kunden-Setup der primäre Match-Key (99,98 % Eindeutigkeit).
+ * - Fallbacks (EAN/MPN/Composite-SKU) greifen nur, wenn am Kandidaten keine SKU vorhanden ist.
+ * - Logging erfolgt auf DEBUG-Level. Setze LOG_LEVEL=debug für detaillierte Ausgabe.
  *
- * Payload-Erwartung (Auszug, Woo-REST /products):
- * - Titel/Name, Beschreibung, Typ (simple|variable), Bilder, Attribute etc.
- * - SKU optional (für variable Eltern i. d. R. leer lassen)
- *
- * @author  JAderBass
- * @since   2025-09-23
+ * @package App\Services\Woo
  */
 class ProductUpsertService
 {
-  protected PendingRequest $http;
-  protected string $base;
-  protected string $ver;
+  /** @var WooRepositoryFactory */
+  protected WooRepositoryFactory $repoFactory;
 
-  public function __construct(
-    protected WooProductLookupService $lookup
-  ) {
-    $this->base = rtrim((string) config('woo.api.base_url'), '/');
-    $this->ver  = (string) config('woo.default_api_version', 'wc/v3');
-
-    $this->http = Http::baseUrl($this->base . '/wp-json/' . $this->ver)
-      ->withBasicAuth(
-        (string) config('woo.api.key'),
-        (string) config('woo.api.secret')
-      )
-      ->acceptJson()
-      ->asJson()
-      ->retry(2, 250);
+  /**
+   * @param WooRepositoryFactory $repoFactory  Erzeugt Repo pro Shop (WooClient + WooApiRepository).
+   */
+  public function __construct(WooRepositoryFactory $repoFactory)
+  {
+    $this->repoFactory = $repoFactory;
   }
 
   /**
-   * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
+   * Legt ein Produkt/Variante neu an oder aktualisiert es – mit vorheriger Parent/Variation-Auflösung.
    *
-   * Ablauf:
-   * 1) Wenn $product->woo_product_id gesetzt → PUT.
-   * 2) Sonst: Wenn $payload['sku'] vorhanden → SKU-Preflight:
-   *      - existiert Produkt? → ID setzen, PUT
-   *      - sonst POST
-   * 3) Nach POST: remote ID speichern in products.woo_product_id
-   *
-   * @param  Product               $product  Lokales Produktmodell (enthält woo_product_id|null)
-   * @param  array<string,mixed>   $payload  Woo-/products-Payload (ohne Preisfelder)
-   * @param  bool                  $failHard Exceptions bei HTTP-Fehlern werfen?
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
+   * @param  Shop  $shop       Ziel-Shop (enthält base_url, api_version, consumer_key, consumer_secret)
+   * @param  array $candidate  Siehe Klassendoku für das erwartete Format.
+   * @return array             Struktur mit Aktion, IDs, Notizen und Woo-API-Ergebnis.
    */
-  public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
+  public function upsert(Shop $shop, array $candidate): array
   {
-    // 0) Safety: Base-Konfig prüfen
-    if (empty(config('woo.api.base_url')) || empty(config('woo.api.key')) || empty(config('woo.api.secret'))) {
-      $msg = 'Missing Woo API config (base_url, key, secret).';
-      Log::error('ProductUpsertService: ' . $msg, ['product_id' => $product->id]);
-      if ($failHard) {
-        throw new \RuntimeException($msg);
-      }
-      return ['action' => 'skipped', 'status' => 0, 'remote_id' => null, 'body' => null];
-    }
+    // 1) Repo + Resolver + Orchestrator für diesen Shop aufbauen
+    $repo      = $this->repoFactory->make($shop);
+    $resolver  = new WooParentResolver($repo);
+    $orchestrator = new ProductExportOrchestrator($resolver, $repo);
 
-    // 1) Falls lokale Remote-ID schon da → Update
-    if (!empty($product->woo_product_id)) {
-      return $this->updateExisting((int) $product->woo_product_id, $product, $payload, $failHard);
-    }
+    Log::debug('ProductUpsertService: begin upsert', [
+      'shop_id' => $shop->id ?? null,
+      'has_sku' => Arr::has($candidate, 'sku'),
+    ]);
 
-    // 2) Kein woo_product_id: per SKU prüfen (falls im Payload vorhanden)
-    $sku = $payload['sku'] ?? null;
-    if (!empty($sku)) {
-      $existingId = $this->lookup->findProductIdBySku($sku);
-      if ($existingId !== null) {
-        // ID lokal persistieren, damit künftige Syncs immer PUT nutzen
-        $product->woo_product_id = $existingId;
-        $product->save();
+    // 2) Export/Sync (inkl. Resolve inside Orchestrator)
+    $result = $orchestrator->exportOne($candidate);
 
-        Log::info('ProductUpsertService: Preflight hit, switching to UPDATE', [
-          'product_id' => $product->id,
-          'woo_product_id' => $existingId,
-          'sku' => $sku,
-        ]);
+    Log::debug('ProductUpsertService: finished upsert', [
+      'action'       => $result['action'] ?? null,
+      'product_id'   => $result['product_id'] ?? null,
+      'variation_id' => $result['variation_id'] ?? null,
+      'matched_by'   => $result['matched_by'] ?? null,
+    ]);
 
-        return $this->updateExisting($existingId, $product, $payload, $failHard);
-      }
-    }
-
-    // 3) Create (POST)
-    return $this->createNew($product, $payload, $failHard);
-  }
-
-  /**
-   * PUT /products/{id}
-   *
-   * @param  int                  $wooProductId
-   * @param  Product              $product
-   * @param  array<string,mixed>  $payload
-   * @param  bool                 $failHard
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
-   */
-  protected function updateExisting(int $wooProductId, Product $product, array $payload, bool $failHard): array
-  {
-    $url = "/products/{$wooProductId}";
-
-    try {
-      $resp = $this->http->put($url, $payload);
-      if ($resp->failed()) {
-        $this->logHttpError('PUT product', $resp, ['product_id' => $product->id, 'woo_product_id' => $wooProductId]);
-        if ($failHard) {
-          $this->throwHttp('PUT product', $resp);
-        }
-      } else {
-        Log::info('ProductUpsertService: product updated', [
-          'product_id' => $product->id,
-          'woo_product_id' => $wooProductId,
-          'status' => $resp->status(),
-        ]);
-      }
-
-      return [
-        'action'    => 'updated',
-        'status'    => $resp->status(),
-        'remote_id' => $wooProductId,
-        'body'      => $resp->json(),
-      ];
-    } catch (\Throwable $e) {
-      Log::error('ProductUpsertService: exception on update', [
-        'product_id' => $product->id,
-        'woo_product_id' => $wooProductId,
-        'error' => $e->getMessage(),
-      ]);
-      if ($failHard) {
-        throw $e;
-      }
-      return ['action' => 'error', 'status' => 0, 'remote_id' => $wooProductId, 'body' => null];
-    }
-  }
-
-  /**
-   * POST /products
-   *
-   * @param  Product              $product
-   * @param  array<string,mixed>  $payload
-   * @param  bool                 $failHard
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
-   */
-  protected function createNew(Product $product, array $payload, bool $failHard): array
-  {
-    $url = "/products";
-
-    try {
-      $resp = $this->http->post($url, $payload);
-
-      if ($resp->failed()) {
-        $this->logHttpError('POST product', $resp, ['product_id' => $product->id]);
-        if ($failHard) {
-          $this->throwHttp('POST product', $resp);
-        }
-
-        return [
-          'action'    => 'error',
-          'status'    => $resp->status(),
-          'remote_id' => null,
-          'body'      => $resp->json(),
-        ];
-      }
-
-      $data = $resp->json();
-      $remoteId = is_array($data) ? ($data['id'] ?? null) : null;
-
-      if (!empty($remoteId)) {
-        $product->woo_product_id = (int) $remoteId;
-        $product->save();
-      }
-
-      Log::info('ProductUpsertService: product created', [
-        'product_id' => $product->id,
-        'woo_product_id' => $remoteId,
-        'status' => $resp->status(),
-      ]);
-
-      return [
-        'action'    => 'created',
-        'status'    => $resp->status(),
-        'remote_id' => $remoteId ? (int) $remoteId : null,
-        'body'      => $data,
-      ];
-    } catch (\Throwable $e) {
-      Log::error('ProductUpsertService: exception on create', [
-        'product_id' => $product->id,
-        'error' => $e->getMessage(),
-      ]);
-      if ($failHard) {
-        throw $e;
-      }
-      return ['action' => 'error', 'status' => 0, 'remote_id' => null, 'body' => null];
-    }
-  }
-
-  /**
-   * Hilfs-Logging für HTTP-Fehler.
-   *
-   * @param  string   $action
-   * @param  Response $resp
-   * @param  array<string,mixed> $ctx
-   * @return void
-   */
-  protected function logHttpError(string $action, Response $resp, array $ctx = []): void
-  {
-    $body = $resp->json();
-    Log::error("ProductUpsertService: {$action} failed", array_merge($ctx, [
-      'status' => $resp->status(),
-      'body'   => is_array($body) ? $body : $resp->body(),
-    ]));
-  }
-
-  /**
-   * Wirft eine Exception mit Response-Details.
-   *
-   * @param  string   $action
-   * @param  Response $resp
-   * @return never
-   */
-  protected function throwHttp(string $action, Response $resp)
-  {
-    $body = $resp->json();
-    $msg  = is_array($body) ? json_encode($body) : (string) $resp->body();
-    throw new \RuntimeException("Woo API {$action} failed: HTTP {$resp->status()} {$msg}");
+    return $result;
   }
 }
