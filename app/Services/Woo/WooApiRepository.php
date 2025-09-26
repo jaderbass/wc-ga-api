@@ -8,48 +8,28 @@ use Illuminate\Support\Facades\Log;
 /**
  * Class WooApiRepository
  *
- * Zweck:
- * - Implementiert die vom WooParentResolver erwarteten Lookup-/Hilfs-Methoden
- *   mithilfe des vorhandenen WooClient (Low-Level HTTP).
- * - SKU ist Primärschlüssel für Matches; EAN/MPN nur Fallback, falls keine SKU am Kandidaten vorhanden.
+ * Implementiert die vom WooParentResolver und ProductExportOrchestrator
+ * erwarteten Lookup-/Mutations-Methoden auf Basis von WooClient.
  *
- * Annahmen / Hinweise:
- * - Woo REST-Suche:
- *   - /products?sku=... findet nur Simple/Parent, aber nicht direkt Variationen.
- *   - Variationen müssen unterhalb eines Parents paginiert abgefragt werden:
- *     /products/{parentId}/variations?page=...&per_page=...
- * - EAN/MPN liegen in deinem Shop wahrscheinlich als meta_data (Key konfigurierbar) oder als Attribut.
- *   Wir prüfen zuerst Produkte (incl. Parent), danach deren Variationen.
- *
- * Konfiguration (empfohlen in config/woo.php):
- *   'mapping' => [
- *     'meta_keys' => [
- *       'ean' => '_ean',          // Beispiel! an deinen Shop anpassen
- *       'gtin' => '_gtin',
- *       'mpn' => '_mpn',
- *     ],
- *     'variation_attribute_map' => [
- *       // lokale Attribut-Schlüssel => Woo-Attribut-Namen (z. B. ['size' => 'Size', 'color' => 'Color'])
- *     ],
- *   ],
+ * Wichtige Punkte:
+ * - SKU-first Matching (gemäß Kunden-Vorgabe).
+ * - EAN/MPN nur als Fallback, wenn am Kandidaten keine SKU vorhanden ist.
+ * - Variationssuche erfolgt parentbasiert (Woo REST listet Variationen nicht global nach SKU).
  *
  * @package App\Services\Woo
  */
-class WooApiRepository
+class WooApiRepository implements WooRepositoryInterface
 {
   public function __construct(
     protected WooClient $client
   ) {}
 
   // ---------------------------------------------------------
-  //  Lookup-Methoden (vom Resolver erwartet)
+  //  Lookup-Methoden
   // ---------------------------------------------------------
 
   /**
-   * Sucht Produkt ODER Variation per exakter SKU.
-   *
-   * @param  string $sku
-   * @return array|null  Roher Woo-API-Datensatz (Product oder Variation)
+   * {@inheritdoc}
    */
   public function findBySku(string $sku): ?array
   {
@@ -61,8 +41,7 @@ class WooApiRepository
       return $item;
     }
 
-    // 2) Variationen (nur via Parent-Iteration) – Heuristik:
-    //    Suche potentielle Parents via search=..., danach Variationen listen und exakte SKU matchen.
+    // 2) Variationen (via Parents)
     $parents = $this->client->get('products', ['search' => $sku, 'per_page' => 50]);
     foreach ((array) $parents as $parent) {
       $type = $this->getItemType($parent);
@@ -84,19 +63,12 @@ class WooApiRepository
   }
 
   /**
-   * Sucht Produkt ODER Variation per EAN (Fallback, wenn SKU fehlt).
-   * Hinweis: Woo bietet kein generisches "meta query" in REST, daher:
-   *  - Kandidaten via /products?search=... holen, dann meta_data prüfen.
-   *  - Variationen des Parents durchgehen und deren meta_data prüfen.
-   *
-   * @param  string $ean
-   * @return array|null
+   * {@inheritdoc}
    */
   public function findByEan(string $ean): ?array
   {
     $eanKey = (string) config('woo.mapping.meta_keys.ean', 'ean');
 
-    // 1) Produkte prüfen
     $candidates = $this->client->get('products', ['search' => $ean, 'per_page' => 50]);
     foreach ((array) $candidates as $p) {
       if ($this->metaEquals($p, $eanKey, $ean) || $this->attrEquals($p, $ean)) {
@@ -112,7 +84,7 @@ class WooApiRepository
       }
     }
 
-    // 2) Fallback: breiter suchen (nur selten, Performance!)
+    // Optionaler breiter Fallback (kann bei großen Katalogen teuer sein)
     $parents = $this->client->get('products', ['per_page' => 50]);
     foreach ((array) $parents as $p) {
       if ($this->getItemType($p) === 'parent') {
@@ -127,10 +99,7 @@ class WooApiRepository
   }
 
   /**
-   * Sucht Produkt ODER Variation per MPN (Fallback, wenn SKU fehlt).
-   *
-   * @param  string $mpn
-   * @return array|null
+   * {@inheritdoc}
    */
   public function findByMpn(string $mpn): ?array
   {
@@ -155,7 +124,7 @@ class WooApiRepository
   }
 
   /**
-   * Liefert 'parent' | 'simple' | 'variation' für ein Woo-Item.
+   * {@inheritdoc}
    */
   public function getItemType(array $item): string
   {
@@ -164,14 +133,13 @@ class WooApiRepository
       return 'parent';
     }
     if (array_key_exists('parent_id', $item)) {
-      // Variation-Objekte haben parent_id in der API
       return 'variation';
     }
     return 'simple';
   }
 
   /**
-   * Liefert die ID eines Items (Product/Variation).
+   * {@inheritdoc}
    */
   public function getItemId(array $item): int
   {
@@ -179,7 +147,7 @@ class WooApiRepository
   }
 
   /**
-   * Liefert die Parent-ID, wenn Variation – sonst null.
+   * {@inheritdoc}
    */
   public function getParentId(array $item): ?int
   {
@@ -188,11 +156,7 @@ class WooApiRepository
   }
 
   /**
-   * Sucht unterhalb eines Parent-Produkts eine Variation, deren Attribute exakt passen.
-   *
-   * @param  int   $parentId
-   * @param  array $attributes  ['size' => 'L', 'color' => 'RED', ...]
-   * @return int|null           Variation-ID
+   * {@inheritdoc}
    */
   public function findVariantUnderParentByAttributes(int $parentId, array $attributes): ?int
   {
@@ -200,7 +164,6 @@ class WooApiRepository
       return null;
     }
 
-    // Map lokale Attribute → erwartete Woo-Namen (z. B. 'Size', 'Color')
     $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
     $expected = [];
     foreach ($attributes as $localKey => $val) {
@@ -210,7 +173,6 @@ class WooApiRepository
       }
     }
 
-    // Variationen seitenweise laden und vergleichen
     $page = 1;
     $per  = (int) config('woo.sync.variations.per_page', 100);
     while (true) {
@@ -231,26 +193,36 @@ class WooApiRepository
   }
 
   // ---------------------------------------------------------
-  //  Mutations (vom Orchestrator genutzt)
-  //  → hier nur als Platzhalter, falls du sie zentralisieren willst.
-  //  Dein ProductUpsertService/VariationSyncService deckt Create/Update bereits ab.
+  //  Mutations
   // ---------------------------------------------------------
 
+  /**
+   * {@inheritdoc}
+   */
   public function updateProduct(int $productId, array $payload): ?array
   {
     return $this->client->put("products/{$productId}", $payload);
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function updateVariation(int $parentId, int $variationId, array $payload): ?array
   {
     return $this->client->put("products/{$parentId}/variations/{$variationId}", $payload);
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function createProduct(array $payload): ?array
   {
     return $this->client->post('products', $payload);
   }
 
+  /**
+   * {@inheritdoc}
+   */
   public function createVariation(int $parentId, array $payload): ?array
   {
     return $this->client->post("products/{$parentId}/variations", $payload);
@@ -260,9 +232,6 @@ class WooApiRepository
   //  Hilfsfunktionen
   // ---------------------------------------------------------
 
-  /**
-   * Findet Variation per exakter SKU unter einem Parent.
-   */
   protected function findVariationBySkuUnderParent(int $parentId, string $sku): ?array
   {
     $page = 1;
@@ -282,9 +251,6 @@ class WooApiRepository
     return null;
   }
 
-  /**
-   * Findet Variation per meta_data-Key/Wert unter einem Parent.
-   */
   protected function findVariationByMetaUnderParent(int $parentId, string $key, string $value): ?array
   {
     $page = 1;
@@ -304,9 +270,6 @@ class WooApiRepository
     return null;
   }
 
-  /**
-   * Vergleicht meta_data eines Items mit Key/Wert (exakter String-Vergleich).
-   */
   protected function metaEquals(array $item, string $key, string $value): bool
   {
     $meta = (array) ($item['meta_data'] ?? []);
@@ -320,10 +283,6 @@ class WooApiRepository
     return false;
   }
 
-  /**
-   * Prüft, ob eines der Produkt-Attribute (Global Attribute) dem gesuchten Wert entspricht.
-   * (z. B. wenn EAN/MPN als globales Attribut gepflegt wurde)
-   */
   protected function attrEquals(array $product, string $needle): bool
   {
     $attrs = (array) ($product['attributes'] ?? []);
@@ -338,12 +297,8 @@ class WooApiRepository
     return false;
   }
 
-  /**
-   * Vergleicht Variation-Attribute: ['name' => 'Size', 'option' => 'M'] usw.
-   */
   protected function attributesMatch(array $have, array $expected): bool
   {
-    // Normalisiere in Maps: name=>option
     $mapHave = [];
     foreach ($have as $h) {
       $n = (string) (Arr::get($h, 'name') ?? '');
