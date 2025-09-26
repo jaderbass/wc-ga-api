@@ -164,13 +164,21 @@ class WooApiRepository implements WooRepositoryInterface
       return null;
     }
 
-    $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
+    // WICHTIG: Für Varianten immer Taxonomie-Slugs benutzen (z. B. pa_color, pa_size).
+    // Falls nicht gesetzt, auf sinnvolle Defaults fallen.
+    $tax = (array) config('woo.mapping.variation_attribute_taxonomies', [
+      'color' => 'pa_color',
+      'size'  => 'pa_size',
+    ]);
+
     $expected = [];
     foreach ($attributes as $localKey => $val) {
-      $wooName = $attrMap[$localKey] ?? $localKey;
-      if ($val !== null && $val !== '') {
-        $expected[] = ['name' => (string) $wooName, 'option' => (string) $val];
+      if ($val === null || $val === '') {
+        continue;
       }
+      // Name = Taxonomie-Slug (z. B. pa_color); Option = konkreter Wert (z. B. "Red" oder "L")
+      $attrName = $tax[$localKey] ?? $localKey; // Fallback auf localKey, falls nicht gemappt
+      $expected[] = ['name' => (string) $attrName, 'option' => (string) $val];
     }
 
     $page = 1;
@@ -191,6 +199,7 @@ class WooApiRepository implements WooRepositoryInterface
 
     return null;
   }
+
 
   // ---------------------------------------------------------
   //  Mutations
