@@ -8,13 +8,19 @@ use Illuminate\Support\Facades\Log;
 /**
  * Class WooApiRepository
  *
- * Implementiert die vom WooParentResolver und ProductExportOrchestrator
- * erwarteten Lookup-/Mutations-Methoden auf Basis von WooClient.
+ * Implementiert die vom Woo-Export (Resolver/Orchestrator) erwarteten
+ * Lookup- und Mutations-Methoden auf Basis von WooClient.
  *
  * Wichtige Punkte:
  * - SKU-first Matching (gemäß Kunden-Vorgabe).
  * - EAN/MPN nur als Fallback, wenn am Kandidaten keine SKU vorhanden ist.
- * - Variationssuche erfolgt parentbasiert (Woo REST listet Variationen nicht global nach SKU).
+ * - Variationssuche erfolgt parentbasiert (REST listet Variationen nicht global nach SKU).
+ * - Für Variationsattribute werden **Taxonomie-Slugs** (z. B. pa_color, pa_size) verwendet.
+ *
+ * Erweiterungen:
+ * - getAttributeIdBySlug(string $slug): ?int
+ *   → Ermittelt die Woo-Attribut-ID zur Taxonomie (z. B. pa_color) via /products/attributes
+ *     (wird vom Orchestrator benutzt, um Parents mit echten Attribut-IDs zu erstellen).
  *
  * @package App\Services\Woo
  */
@@ -84,7 +90,7 @@ class WooApiRepository implements WooRepositoryInterface
       }
     }
 
-    // Optionaler breiter Fallback (kann bei großen Katalogen teuer sein)
+    // Optional breiter Fallback (kann teuer sein)
     $parents = $this->client->get('products', ['per_page' => 50]);
     foreach ((array) $parents as $p) {
       if ($this->getItemType($p) === 'parent') {
@@ -157,6 +163,9 @@ class WooApiRepository implements WooRepositoryInterface
 
   /**
    * {@inheritdoc}
+   *
+   * WICHTIG: Für Varianten immer **Taxonomie-Slugs** verwenden (z. B. pa_color, pa_size).
+   * Dadurch matchen wir korrekt gegen das, was Woo in Variation-Responses als 'name' liefert.
    */
   public function findVariantUnderParentByAttributes(int $parentId, array $attributes): ?int
   {
@@ -164,8 +173,6 @@ class WooApiRepository implements WooRepositoryInterface
       return null;
     }
 
-    // WICHTIG: Für Varianten immer Taxonomie-Slugs benutzen (z. B. pa_color, pa_size).
-    // Falls nicht gesetzt, auf sinnvolle Defaults fallen.
     $tax = (array) config('woo.mapping.variation_attribute_taxonomies', [
       'color' => 'pa_color',
       'size'  => 'pa_size',
@@ -176,8 +183,7 @@ class WooApiRepository implements WooRepositoryInterface
       if ($val === null || $val === '') {
         continue;
       }
-      // Name = Taxonomie-Slug (z. B. pa_color); Option = konkreter Wert (z. B. "Red" oder "L")
-      $attrName = $tax[$localKey] ?? $localKey; // Fallback auf localKey, falls nicht gemappt
+      $attrName  = $tax[$localKey] ?? $localKey; // Fallback auf localKey
       $expected[] = ['name' => (string) $attrName, 'option' => (string) $val];
     }
 
@@ -199,7 +205,6 @@ class WooApiRepository implements WooRepositoryInterface
 
     return null;
   }
-
 
   // ---------------------------------------------------------
   //  Mutations
@@ -235,6 +240,76 @@ class WooApiRepository implements WooRepositoryInterface
   public function createVariation(int $parentId, array $payload): ?array
   {
     return $this->client->post("products/{$parentId}/variations", $payload);
+  }
+
+  // ---------------------------------------------------------
+  //  Attribute / Taxonomies
+  // ---------------------------------------------------------
+
+  /**
+   * Liefert die **Attribut-ID** zu einem Taxonomie-Slug (z. B. "pa_color").
+   *
+   * Verwendet die Woo-Route: GET /wp-json/wc/v3/products/attributes
+   * und cached die Ergebnisse pro Request, um API-Calls zu minimieren.
+   *
+   * @param  string $slug  Taxonomie-Slug (z. B. "pa_color", "pa_size")
+   * @return int|null      Attribut-ID oder null, wenn nicht gefunden
+   */
+  public function getAttributeIdBySlug(string $slug): ?int
+  {
+    static $cache = null;
+
+    $needle = strtolower(trim($slug));
+    if ($needle === '') {
+      return null;
+    }
+
+    // Cache bereits geladen?
+    if (!is_array($cache)) {
+      $cache = [];
+
+      $page = 1;
+      $per  = 100;
+
+      while (true) {
+        $items = $this->client->get('products/attributes', ['per_page' => $per, 'page' => $page]);
+        if (empty($items) || !is_array($items)) {
+          break;
+        }
+
+        foreach ($items as $attr) {
+          $id   = (int) ($attr['id'] ?? 0);
+          $slugVal = strtolower((string) ($attr['slug'] ?? ''));
+          if ($id > 0 && $slugVal !== '') {
+            $cache[$slugVal] = $id;
+          }
+        }
+
+        if (count($items) < $per) {
+          break;
+        }
+        $page++;
+      }
+
+      Log::debug('WooApiRepository: loaded product attribute slugs', ['count' => count($cache)]);
+    }
+
+    // Direkter Treffer?
+    if (array_key_exists($needle, $cache)) {
+      return (int) $cache[$needle];
+    }
+
+    // Evtl. wurde ein Name statt Slug übergeben – pragmatischer Fallback:
+    // (Woo legt Slugs i. d. R. mit "pa_" an; wenn der Caller "color" schickt, probiere "pa_color".)
+    if (!str_starts_with($needle, 'pa_')) {
+      $prefixed = 'pa_' . $needle;
+      if (array_key_exists($prefixed, $cache)) {
+        return (int) $cache[$prefixed];
+      }
+    }
+
+    Log::warning('WooApiRepository: attribute slug not found', ['slug' => $slug]);
+    return null;
   }
 
   // ---------------------------------------------------------
@@ -306,6 +381,10 @@ class WooApiRepository implements WooRepositoryInterface
     return false;
   }
 
+  /**
+   * Vergleicht Variation-Attribute (aus Woo-Response) mit erwarteten Paaren
+   * bestehend aus ['name' => <Taxonomie-Slug>, 'option' => <Wert>].
+   */
   protected function attributesMatch(array $have, array $expected): bool
   {
     $mapHave = [];
