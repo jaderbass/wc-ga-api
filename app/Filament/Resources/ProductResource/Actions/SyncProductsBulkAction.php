@@ -188,6 +188,122 @@ class SyncProductsBulkAction extends BulkAction
     Log::info('SyncProductsBulkAction summary', $summary);
   }
 
+  /**
+   * Baut den Woo-Payload für (Simple/Parent/Variation) aus dem lokalen Produkt.
+   *
+   * @param  \App\Models\Product $product
+   * @return array
+   */
+  protected function buildProductPayload($product): array
+  {
+    // Preis: du speicherst Zahlen oft als Integer (Cents). Beides abdecken:
+    $price = null;
+    if (isset($product->price) && $product->price !== null) {
+      $price = is_numeric($product->price) ? number_format((float)$product->price, 2, '.', '') : null;
+    } elseif (isset($product->price_cents) && $product->price_cents !== null) {
+      $price = number_format(((int)$product->price_cents) / 100, 2, '.', '');
+    }
+
+    // Variante? (aus denselben Kriterien wie im candidate)
+    $isVariant = !empty(($product->color ?? null) || ($product->size ?? null) || ($product->variation ?? null));
+
+    // Attribut-Mapping für Woo (Name-Anzeige in Woo muss stimmen)
+    $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
+    $wooSize  = $attrMap['size']  ?? 'Size';
+    $wooColor = $attrMap['color'] ?? 'Color';
+
+    // Grundfelder (Titel/Typ)
+    $name = $product->product_name ?? $product->name ?? ('Product #' . $product->id);
+    $type = $product->product_type ?: ($product->variations()->exists() ? 'variable' : 'simple');
+
+    // Meta-Key-Mapping für EAN/MPN
+    $eanKey = (string) config('woo.mapping.meta_keys.ean', 'ean');
+    $mpnKey = (string) config('woo.mapping.meta_keys.mpn', 'mpn');
+
+    // Basispayload
+    $payload = [
+      'name'      => $name,
+      'type'      => $isVariant ? null : $type,       // Variations-Payload bekommt keinen 'type'
+      'regular_price' => $price,
+      'meta_data' => array_values(array_filter([
+        ($product->ean ?? null) ? ['key' => $eanKey, 'value' => (string)$product->ean] : null,
+        ($product->mpn ?? null) ? ['key' => $mpnKey, 'value' => (string)$product->mpn] : null,
+      ])),
+    ];
+
+    // SKU nur setzen, wenn es KEIN Parent-Product eines variables Produktes ist
+    // (Woo erlaubt bei variablem Parent meist keine SKU auf dem Parent; Varianten bekommen ihre eigene SKU)
+    if (!$isVariant && $type !== 'variable') {
+      $payload['sku'] = $product->sku ?: ($product->product_number ?? null);
+    }
+
+    // Varianten-Attribute (werden sowohl bei Variation-Create als auch Update gebraucht)
+    $color = $product->color ?? ($product->variation->color ?? null);
+    $size  = $product->size  ?? ($product->variation->size  ?? null);
+
+    $varAttrs = array_values(array_filter([
+      $color ? ['name' => $wooColor, 'option' => (string)$color] : null,
+      $size  ? ['name' => $wooSize,  'option' => (string)$size] : null,
+    ]));
+
+    if (!empty($varAttrs)) {
+      // Für Variations-Payload:
+      $payload['attributes'] = $varAttrs;
+    }
+
+    Log::debug('SyncProductsBulkAction: built product payload', [
+      'product_id' => $product->id,
+      'is_variant' => $isVariant,
+      'type'       => $type,
+    ]);
+
+    // Entferne null-Felder sauber
+    return array_filter($payload, fn($v) => $v !== null && $v !== []);
+  }
+
+  /**
+   * Optionaler Parent-Payload, falls eine Variante angelegt werden soll,
+   * der Parent in Woo aber noch fehlt.
+   *
+   * @param  \App\Models\Product $product
+   * @return array|null
+   */
+  protected function buildParentPayloadIfNeeded($product): ?array
+  {
+    // Nur sinnvoll, wenn es sich um ein variables Produkt handeln soll:
+    $isVariable = $product->product_type === 'variable' || $product->variations()->exists();
+    if (!$isVariable) {
+      return null;
+    }
+
+    $name = $product->product_name ?? $product->name ?? ('Product #' . $product->id);
+
+    // Attribut-Definitionen am Parent (global), Optionen optional leer – Woo legt die Terms an/zu
+    $attrMap = (array) config('woo.mapping.variation_attribute_map', []);
+    $wooSize  = $attrMap['size']  ?? 'Size';
+    $wooColor = $attrMap['color'] ?? 'Color';
+
+    $attributes = array_values(array_filter([
+      ['name' => $wooColor, 'visible' => true, 'variation' => true, 'options' => []],
+      ['name' => $wooSize,  'visible' => true, 'variation' => true, 'options' => []],
+    ], fn($a) => !empty($a['name'])));
+
+    $parent = [
+      'name'       => $name,
+      'type'       => 'variable',
+      'attributes' => $attributes,
+      // Parent-SKU in vielen Setups leer lassen, um Eindeutigkeit auf Variantenebene zu behalten
+    ];
+
+    Log::debug('SyncProductsBulkAction: built parent payload', [
+      'product_id' => $product->id,
+      'attributes' => array_column($attributes, 'name'),
+    ]);
+
+    return $parent;
+  }
+
+
 
   // ----------------- Hilfsfunktionen ------------------------
 
