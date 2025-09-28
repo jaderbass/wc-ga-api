@@ -125,16 +125,12 @@ return [
 
     'providers' => [
 
-        /*
-    |--------------------------------------------------------------------------
-    | Laravel Framework Service Providers
-    |--------------------------------------------------------------------------
-    */
+        // — Laravel Core —
         Illuminate\Auth\AuthServiceProvider::class,
         Illuminate\Broadcasting\BroadcastServiceProvider::class,
         Illuminate\Bus\BusServiceProvider::class,
         Illuminate\Cache\CacheServiceProvider::class,
-        Illuminate\Foundation\Providers\ConsoleSupportServiceProvider::class, // ← stellt u.a. package:discover bereit
+        Illuminate\Foundation\Providers\ConsoleSupportServiceProvider::class, // artisan commands (incl. package:discover)
         Illuminate\Cookie\CookieServiceProvider::class,
         Illuminate\Database\DatabaseServiceProvider::class,
         Illuminate\Encryption\EncryptionServiceProvider::class,
@@ -145,28 +141,19 @@ return [
         Illuminate\Notifications\NotificationServiceProvider::class,
         Illuminate\Pagination\PaginationServiceProvider::class,
         Illuminate\Session\SessionServiceProvider::class,
-        Illuminate\View\ViewServiceProvider::class, // ← registriert blade.compiler
-        Illuminate\Translation\TranslationServiceProvider::class,
+        Illuminate\View\ViewServiceProvider::class,            // provides blade.compiler
+        Illuminate\Translation\TranslationServiceProvider::class, // provides translator
+        Illuminate\Validation\ValidationServiceProvider::class,   // provides validator
 
-        /*
-    |--------------------------------------------------------------------------
-    | Package Service Providers
-    |--------------------------------------------------------------------------
-    */
-        // BladeUI\Icons\BladeIconsServiceProvider::class, // ggf. aktivieren, wenn ihr das Paket nutzt
+        // — Packages (nur falls ihr sie verwendet) —
+        // BladeUI\Icons\BladeIconsServiceProvider::class,
 
-        /*
-    |--------------------------------------------------------------------------
-    | Application Service Providers
-    |--------------------------------------------------------------------------
-    */
+        // — Application —
         App\Providers\AppServiceProvider::class,
         App\Providers\AuthServiceProvider::class,
-        // App\Providers\BroadcastServiceProvider::class, // nur falls benötigt
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
-        App\Providers\WooServiceProvider::class, // ← dein hinzugefügter Provider
+        App\Providers\WooServiceProvider::class,
     ],
-
 
 ];
