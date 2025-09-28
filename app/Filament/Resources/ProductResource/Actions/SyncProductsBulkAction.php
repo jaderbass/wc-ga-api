@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProductResource\Actions;
 
 use App\Models\Product;
 use App\Models\Shop;
+use App\Services\Woo\ProductExportOrchestrator;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Tables\Actions\BulkAction;
@@ -28,6 +29,11 @@ use Illuminate\Support\Facades\Schema;
  */
 class SyncProductsBulkAction extends BulkAction
 {
+  public function __construct(
+    private readonly ProductExportOrchestrator $orchestrator,
+    // falls bisher $upsert injiziert war, kannst du ihn entfernen
+  ) {}
+
   protected function setUp(): void
   {
     parent::setUp();
@@ -126,9 +132,12 @@ class SyncProductsBulkAction extends BulkAction
       }
 
       try {
+        /** @var \App\Services\Woo\WooParentResolver $resolver */
+        $resolver = app(\App\Services\Woo\WooParentResolver::class);
         /** @var \App\Services\Woo\ProductUpsertService $upsert */
-        $upsert = app(\App\Services\Woo\ProductUpsertService::class);
+        $upsert   = app(\App\Services\Woo\ProductUpsertService::class);
 
+        // Kandidat zusammenbauen
         $candidate = [
           'sku'        => $product->sku ?? null,
           'ean'        => $product->ean ?? null,
@@ -138,18 +147,49 @@ class SyncProductsBulkAction extends BulkAction
             'color' => $product->color ?? ($product->variation->color ?? null),
             'size'  => $product->size  ?? ($product->variation->size  ?? null),
           ], fn($v) => $v !== null && $v !== ''),
-          // optional, wird sonst aus attributes abgeleitet
+
+          // Falls gesetzt: nutzt dein bestehendes Flag
           'is_variant' => !empty(($product->color ?? null) || ($product->size ?? null) || ($product->variation ?? null)),
 
-          // Nutze hier deine bestehenden Builder:
+          // Bestehende Builder weiterverwenden
           'payload'        => $this->buildProductPayload($product),
           'parent_payload' => $this->buildParentPayloadIfNeeded($product),
         ];
 
-        $res    = $upsert->upsert($shop, $candidate);
-        $action = $res['action'] ?? 'unknown';
+        // 1) Resolve Ziel-IDs in Woo
+        $resolved = $resolver->resolve($shop, $candidate);
+        if (is_array($resolved)) {
+          // Falls eine ältere Resolver-Version ein Array liefert
+          $resolved = \App\Services\Woo\ResolvedTarget::fromArray($resolved);
+        }
 
-        // Neue Action-Namen sauber auf Summary mappen
+        // 2) Upsert aufrufen (ACHTUNG: int $shopId erwartet)
+        $upsert->upsert(
+          $shop->id,
+          $candidate,
+          $resolved->woo_product_id,
+          $resolved->woo_variation_id
+        );
+
+        // 3) Action für Summary ableiten
+        $isVariant = (bool)($candidate['is_variant'] ?? false);
+        $action = 'unknown';
+
+        if ($isVariant) {
+          $action = $resolved->woo_variation_id ? 'update_variation' : 'create_variation';
+        } else {
+          // Wenn „variable“ Eltern (Hauptprodukte) als solche markiert sind, ggf. anhand deines Payloads entscheiden:
+          // Wir nehmen hier an: parent_payload != null => Parent (variable)
+          $isParent = !empty($candidate['parent_payload']);
+          if ($isParent) {
+            $action = $resolved->woo_product_id ? 'update_product' : 'create_product';
+          } else {
+            // einfacher Artikel
+            $action = $resolved->woo_product_id ? 'update_product' : 'create_product';
+          }
+        }
+
+        // 4) Summary hochzählen
         $summary['products']++;
         if (in_array($action, ['create_product', 'create_variation'], true)) {
           $summary['created']++;
@@ -157,6 +197,7 @@ class SyncProductsBulkAction extends BulkAction
           $summary['updated']++;
         }
 
+        // 5) optionales Touch-Feld
         if (!empty($data['only_changed']) && $this->hasColumn($product, 'woo_synced_at')) {
           $product->forceFill(['woo_synced_at' => now()])->saveQuietly();
         }
