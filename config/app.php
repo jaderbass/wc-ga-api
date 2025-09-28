@@ -146,6 +146,7 @@ return [
         Illuminate\Pagination\PaginationServiceProvider::class,
         Illuminate\Session\SessionServiceProvider::class,
         Illuminate\View\ViewServiceProvider::class, // ← registriert blade.compiler
+        Illuminate\Translation\TranslationServiceProvider::class,
 
         /*
     |--------------------------------------------------------------------------
