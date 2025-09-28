@@ -412,4 +412,20 @@ class WooApiRepository implements WooRepositoryInterface
 
     return true;
   }
+
+  /**
+   * Optionaler Meta-Lookup (EAN/MPN) – wird aktuell nur aufgerufen,
+   * wenn method_exists(self::class, 'findByMeta') true ist.
+   *
+   * @param int    $shopId
+   * @param string $type   'EAN'|'MPN' (oder anderer Metaschlüssel)
+   * @param string $value
+   * @return array|object|null  Ergebnis-Shape wie bei findBySku() oder null
+   */
+  public function findByMeta(int $shopId, string $type, string $value)
+  {
+    // Noch nicht implementiert – Resolver prüft method_exists bzw. wertet null = not found.
+    // TODO: Bei Bedarf per Woo REST/API auf Metafeldsuche erweitern.
+    return null;
+  }
 }
