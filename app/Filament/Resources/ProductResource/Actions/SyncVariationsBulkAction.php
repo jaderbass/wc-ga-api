@@ -140,7 +140,7 @@ class SyncVariationsBulkAction extends BulkAction
           'parent_payload' => $this->buildParentPayloadWithTaxonomies($product, $taxColor, $taxSize),
         ];
 
-        $res    = $upsert->upsert($shop, $candidate);
+        $res    = $upsert->upsert($shop->id, $candidate);
         $action = $res['action'] ?? 'unknown';
 
         $summary['variations']++;
