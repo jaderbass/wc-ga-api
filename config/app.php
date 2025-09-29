@@ -144,6 +144,7 @@ return [
         Illuminate\View\ViewServiceProvider::class,            // provides blade.compiler
         Illuminate\Translation\TranslationServiceProvider::class, // provides translator
         Illuminate\Validation\ValidationServiceProvider::class,   // provides validator
+        Illuminate\Queue\QueueServiceProvider::class,
 
         // — Packages (nur falls ihr sie verwendet) —
         // BladeUI\Icons\BladeIconsServiceProvider::class,
