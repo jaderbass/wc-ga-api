@@ -21,7 +21,7 @@ class ProductUpsertService
    * @param int|null   $targetVariationId
    * @return void
    */
-  public function upsert(int $shopId, array $product, ?int $targetProductId, ?int $targetVariationId): void
+  public function upsert(int $shopId, array $product, ?int $targetProductId = null, ?int $targetVariationId = null): void
   {
     Log::info('Upsert called', [
       'shopId'           => $shopId,
