@@ -42,7 +42,7 @@ class SyncProductsBulkAction extends BulkAction
     parent::setUp();
 
     $this
-      ->label('Sync to Woo')
+      ->label('Produkte synchronisieren')
       ->icon('heroicon-m-arrow-path')
       ->requiresConfirmation()
       ->action(function (Collection $records): void {
