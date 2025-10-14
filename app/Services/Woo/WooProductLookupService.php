@@ -50,9 +50,25 @@ class WooProductLookupService
   {
     $url = "{$this->baseUrl}/wp-json/{$this->apiVersion}/products";
     try {
-      $resp = Http::withBasicAuth($this->key, $this->secret)
+      $resp = Http::withOptions([
+        'curl' => [
+          CURLOPT_IPRESOLVE         => CURL_IPRESOLVE_V4,
+          CURLOPT_DNS_CACHE_TIMEOUT => 60,
+        ],
+      ])
+        ->withBasicAuth($this->key, $this->secret)
         ->acceptJson()
-        ->get($url, ['sku' => $sku, 'per_page' => 1]);
+        ->asJson()
+        ->retry(4, 200)
+        ->get($url, [
+          'sku'      => $sku,
+          'status'   => 'any', // wichtig: findet auch Papierkorb-Einträge
+          'per_page' => 10,
+        ])
+        ->throw();
+
+      $items = $resp->json();
+
 
       if ($resp->failed()) {
         Log::warning('WooProductLookupService: request failed', [
