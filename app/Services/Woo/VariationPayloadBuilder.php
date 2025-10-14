@@ -191,21 +191,41 @@ class VariationPayloadBuilder
   {
     $result = [];
 
+    // Shop holen für Resolver (einmal pro Request ok)
+    $shop = \App\Models\Shop::query()->first();
+    $resolver = new \App\Services\Woo\WooAttributeResolver($shop);
+
     foreach ($this->attributeMap as $internalKey => $wooName) {
       $value = $variation->{$internalKey} ?? null;
+      if ($value === null || $value === '') continue;
 
-      if ($value === null || $value === '') {
-        continue;
+      // Lokalen Key → Woo-Attribut ermitteln (per ID)
+      $res = $resolver->resolve($internalKey);
+      if ($res) {
+        // Globale (Taxonomie-)Attribute: per ID + option (Term-Name)
+        $result[] = [
+          'id'     => $res['id'],
+          'option' => (string)$value,   // Muss exakt zum Term-Namen passen!
+        ];
+      } else {
+        // Fallback: freies Attribut (nicht ideal für Varianten, aber besser als leer)
+        $result[] = [
+          'name'   => $wooName,
+          'option' => (string)$value,
+        ];
       }
+    }
 
-      $result[] = [
-        'name'   => $wooName,
-        'option' => (string) $value,
-      ];
+    if (empty($result)) {
+      Log::warning('VariationPayloadBuilder: no attributes for variation', [
+        'variation_id' => $variation->id,
+        'present' => array_filter($variation->toArray(), fn($v) => $v !== null && $v !== ''),
+      ]);
     }
 
     return $result;
   }
+
 
   /**
    * Erzeugt einen (optionalen) Bildnamen für die Variante.

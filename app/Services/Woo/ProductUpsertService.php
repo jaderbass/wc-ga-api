@@ -53,9 +53,15 @@ class ProductUpsertService
         (string) config('woo.api.key'),
         (string) config('woo.api.secret')
       )
+      ->withOptions([
+        'curl' => [
+          CURLOPT_IPRESOLVE         => CURL_IPRESOLVE_V4,
+          CURLOPT_DNS_CACHE_TIMEOUT => 60,
+        ],
+      ])
       ->acceptJson()
       ->asJson()
-      ->retry(2, 250);
+      ->retry(4, 200);
   }
 
   /**
@@ -126,6 +132,18 @@ class ProductUpsertService
   {
     $url = "/products/{$wooProductId}";
 
+    // BEVOR $woo->post(...) oder $woo->put(...):
+
+    $source = app()->runningInConsole() ? 'cli' : 'dashboard';
+
+    Log::debug('ProductUpsertService: upsert payload', [
+      'source'   => $source,
+      'action'   => isset($wooProductId) ? 'update' : 'create',
+      'product_id' => $product->id ?? null,
+      'payload'  => $payload,
+    ]);
+
+
     try {
       $resp = $this->http->put($url, $payload);
       if ($resp->failed()) {
@@ -171,6 +189,18 @@ class ProductUpsertService
   protected function createNew(Product $product, array $payload, bool $failHard): array
   {
     $url = "/products";
+
+    // BEVOR $woo->post(...) oder $woo->put(...):
+
+    $source = app()->runningInConsole() ? 'cli' : 'dashboard';
+
+    Log::debug('ProductUpsertService: upsert payload', [
+      'source'   => $source,
+      'action'   => isset($wooProductId) ? 'update' : 'create',
+      'product_id' => $product->id ?? null,
+      'payload'  => $payload,
+    ]);
+
 
     try {
       $resp = $this->http->post($url, $payload);
