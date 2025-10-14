@@ -60,9 +60,15 @@ class VariationSyncService
         (string) config('woo.api.key'),
         (string) config('woo.api.secret')
       )
+      ->withOptions([
+        'curl' => [
+          CURLOPT_IPRESOLVE         => CURL_IPRESOLVE_V4,
+          CURLOPT_DNS_CACHE_TIMEOUT => 60,
+        ],
+      ])
       ->acceptJson()
       ->asJson()
-      ->retry(2, 250);
+      ->retry(4, 200);
   }
 
   /**
