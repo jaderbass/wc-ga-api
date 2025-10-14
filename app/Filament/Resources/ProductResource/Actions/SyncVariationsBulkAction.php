@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProductResource\Actions;
 
 use App\Models\Product;
+use App\Services\Woo\ProductExportOrchestrator;
 use App\Services\Woo\VariationSyncService;
 use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Collection;
@@ -60,6 +61,7 @@ class SyncVariationsBulkAction extends BulkAction
    */
   protected function handle(Collection $records): void
   {
+    $orch    = app(ProductExportOrchestrator::class);
     $service = app(VariationSyncService::class);
 
     $summary = [
@@ -73,14 +75,25 @@ class SyncVariationsBulkAction extends BulkAction
     foreach ($records as $product) {
       /** @var Product $product */
       if (empty($product->woo_product_id)) {
-        // Kein Erfolg/Fehler-Toast pro Item; nur finaler Status unten.
+        /* // Kein Erfolg/Fehler-Toast pro Item; nur finaler Status unten.
         Log::warning('SyncVariationsBulkAction: skipped product without woo_product_id', [
           'product_id' => $product->id,
         ]);
         $summary['skipped']++;
-        continue;
+        continue; */
+        // Neu: zuerst Parent sauber anlegen/aktualisieren (setzt type/attributes)
+        $orch->syncSingle($product, failHard: false);
+        $product->refresh(); // falls woo_product_id gesetzt wurde
+        if (empty($product->woo_product_id)) {
+          Log::warning('SyncVariationsBulkAction: still no woo_product_id after parent upsert', [
+            'product_id' => $product->id,
+          ]);
+          $summary['skipped']++;
+          continue;
+        }
       }
 
+      // Jetzt Variationen syncen (Parent ist variable + hat Attribute)
       $res = $service->syncProduct($product);
 
       $summary['products']++;
