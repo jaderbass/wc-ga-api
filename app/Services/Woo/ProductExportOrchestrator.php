@@ -74,6 +74,49 @@ class ProductExportOrchestrator
       ];
     }
 
+    // --- 3b) (NEU) Parent-Attribute für variable Produkte setzen --------
+    if ($type === 'variable' && $product->variations()->exists()) {
+      $attributeMap = config('woo.mapping.variation_attribute_map', [
+        'size'          => 'Size',
+        'color'         => 'Color',
+        'length'        => 'Length',
+        'certification' => 'Certification',
+        'grosse'        => 'Size',
+        'groesse'       => 'Size',
+        'farbe'         => 'Color',
+      ]);
+
+      /** @var \App\Models\Shop $shop */
+      $shop = \App\Models\Shop::query()->first();
+      $resolver = new \App\Services\Woo\WooAttributeResolver($shop);
+
+      $parentAttributes = [];
+      foreach ($attributeMap as $internalKey => $wooLabel) {
+        $resolved = $resolver->resolve($internalKey);
+        if (!$resolved) continue;
+
+        $options = $product->variations()
+          ->pluck($internalKey)
+          ->filter(fn($v) => $v !== null && $v !== '')
+          ->unique()->values()->all();
+
+        if (empty($options)) continue;
+
+        $parentAttributes[] = [
+          'id'        => $resolved['id'],
+          'name'      => $resolved['name'],
+          'options'   => array_values($options),
+          'visible'   => true,
+          'variation' => true,
+        ];
+      }
+
+      if (!empty($parentAttributes)) {
+        $payload['type'] = 'variable';
+        $payload['attributes'] = $parentAttributes;
+      }
+    }
+
     // --- 4) Upsert (mit Preflight) --------------------------------------
     Log::info('ProductExportOrchestrator: upserting product', [
       'product_id'      => $product->id,
