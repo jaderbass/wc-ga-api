@@ -3,6 +3,9 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
+use App\Models\Shop;
+use App\Services\Woo\WooClient;
+use GuzzleHttp\Exception\ClientException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -65,6 +68,42 @@ class ProductUpsertService
   }
 
   /**
+   * Liefert einen WooClient für den Shop des Produkts (Fallback: first()).
+   */
+  private function makeClientFor(Product $product): WooClient
+  {
+    /** @var Shop|null $shop */
+    $shop = method_exists($product, 'shop') ? $product->shop : null;
+    if (!$shop) {
+      $shop = Shop::query()->firstOrFail();
+    }
+    return new WooClient($shop);
+  }
+
+  /**
+   * Prüft, ob ein Woo-Produkt mit gegebener ID existiert.
+   */
+  private function remoteProductExists(Product $product, int $remoteId): bool
+  {
+    $client = $this->makeClientFor($product);
+
+    try {
+      $client->get("products/{$remoteId}");
+      return true;
+    } catch (ClientException $e) {
+      $code = $e->getResponse()?->getStatusCode();
+      $body = (string) ($e->getResponse()?->getBody() ?? '');
+      if ($code === 404) {
+        return false;
+      }
+      if ($code === 400 && str_contains($body, 'woocommerce_rest_product_invalid_id')) {
+        return false;
+      }
+      throw $e; // andere Client-Fehler weiterreichen
+    }
+  }
+
+  /**
    * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
    *
    * Ablauf:
@@ -91,10 +130,35 @@ class ProductUpsertService
       return ['action' => 'skipped', 'status' => 0, 'remote_id' => null, 'body' => null];
     }
 
-    // 1) Falls lokale Remote-ID schon da → Update
+    // 1) Falls lokale Remote-ID schon da → erst Existenz in Woo prüfen
     if (!empty($product->woo_product_id)) {
-      return $this->updateExisting((int) $product->woo_product_id, $product, $payload, $failHard);
+      $remoteId = (int) $product->woo_product_id;
+
+      try {
+        if ($this->remoteProductExists($product, $remoteId)) {
+          return $this->updateExisting($remoteId, $product, $payload, $failHard);
+        }
+
+        // Remote kennt die ID nicht → für diesen Lauf auf Create umschalten
+        Log::warning('ProductUpsertService: remote id invalid, switching to CREATE', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+        ]);
+        $product->woo_product_id = null; // NICHT persistieren – nur für diesen Run
+      } catch (\Throwable $e) {
+        if ($failHard) {
+          throw $e;
+        }
+        Log::error('ProductUpsertService: preflight check failed', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+          'error' => $e->getMessage(),
+        ]);
+        // konservativ: Create-Pfad probieren
+        $product->woo_product_id = null;
+      }
     }
+
 
     // 2) Kein woo_product_id: per SKU prüfen (falls im Payload vorhanden)
     $sku = $payload['sku'] ?? null;
