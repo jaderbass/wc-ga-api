@@ -106,82 +106,110 @@ class ProductUpsertService
   /**
    * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
    *
-   * Ablauf:
-   * 1) Wenn $product->woo_product_id gesetzt → PUT.
-   * 2) Sonst: Wenn $payload['sku'] vorhanden → SKU-Preflight:
-   *      - existiert Produkt? → ID setzen, PUT
-   *      - sonst POST
-   * 3) Nach POST: remote ID speichern in products.woo_product_id
-   *
-   * @param  Product               $product  Lokales Produktmodell (enthält woo_product_id|null)
-   * @param  array<string,mixed>   $payload  Woo-/products-Payload (ohne Preisfelder)
-   * @param  bool                  $failHard Exceptions bei HTTP-Fehlern werfen?
+   * @param  Product               $product
+   * @param  array<string,mixed>   $payload
+   * @param  bool                  $failHard
    * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
    */
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
-    // 0) Safety: Base-Konfig prüfen
-    if (empty(config('woo.api.base_url')) || empty(config('woo.api.key')) || empty(config('woo.api.secret'))) {
-      $msg = 'Missing Woo API config (base_url, key, secret).';
-      Log::error('ProductUpsertService: ' . $msg, ['product_id' => $product->id]);
-      if ($failHard) {
-        throw new \RuntimeException($msg);
+    /** @var \App\Services\Woo\WooClient $client */
+    $client = app(\App\Services\Woo\WooClient::class);
+
+    $endpointBase = 'products';
+
+    // --- Response-Normalisierung (PSR-7 oder Array) ---
+    $parseResponse = function ($resp): array {
+      // PSR-7?
+      if (is_object($resp) && method_exists($resp, 'getStatusCode') && method_exists($resp, 'getBody')) {
+        $status = (int) $resp->getStatusCode();
+        $raw    = (string) $resp->getBody();
+        $body   = $raw !== '' ? (json_decode($raw, true) ?: []) : [];
+        return ['status' => $status, 'body' => $body];
       }
-      return ['action' => 'skipped', 'status' => 0, 'remote_id' => null, 'body' => null];
-    }
+      // Array-Shape (diverse Varianten erlauben)
+      if (is_array($resp)) {
+        $status = (int) ($resp['status'] ?? $resp['statusCode'] ?? 200);
+        $body   = $resp['body'] ?? $resp['data'] ?? $resp;
+        if (!is_array($body)) {
+          $body = is_string($body) && $body !== '' ? (json_decode($body, true) ?: []) : [];
+        }
+        return ['status' => $status, 'body' => $body];
+      }
+      // Fallback
+      return ['status' => 200, 'body' => []];
+    };
 
-    // 1) Falls lokale Remote-ID schon da → erst Existenz in Woo prüfen
-    if (!empty($product->woo_product_id)) {
-      $remoteId = (int) $product->woo_product_id;
+    // --- 1) Preflight (nur ohne bekannte Woo-ID) ---
+    $remoteId = (int) ($product->woo_product_id ?? 0);
 
+    if ($remoteId <= 0 && !empty($payload['sku']) && class_exists(\App\Services\Woo\WooProductLookupService::class)) {
       try {
-        if ($this->remoteProductExists($product, $remoteId)) {
-          return $this->updateExisting($remoteId, $product, $payload, $failHard);
+        /** @var \App\Services\Woo\WooProductLookupService $lookup */
+        $lookup  = app(\App\Services\Woo\WooProductLookupService::class);
+        $foundId = (int) ($lookup->findProductIdBySku((string) $payload['sku']) ?? 0);
+        if ($foundId > 0) {
+          $remoteId = $foundId; // Lokal erst nach erfolgreichem PUT schreiben
         }
-
-        // Remote kennt die ID nicht → für diesen Lauf auf Create umschalten
-        Log::warning('ProductUpsertService: remote id invalid, switching to CREATE', [
-          'product_id' => $product->id,
-          'woo_product_id' => $remoteId,
-        ]);
-        $product->woo_product_id = null; // NICHT persistieren – nur für diesen Run
       } catch (\Throwable $e) {
-        if ($failHard) {
-          throw $e;
-        }
-        Log::error('ProductUpsertService: preflight check failed', [
-          'product_id' => $product->id,
-          'woo_product_id' => $remoteId,
-          'error' => $e->getMessage(),
-        ]);
-        // konservativ: Create-Pfad probieren
-        $product->woo_product_id = null;
+        // Lookup-Fehler nicht kritisch
       }
     }
 
+    $isUpdate = $remoteId > 0;
 
-    // 2) Kein woo_product_id: per SKU prüfen (falls im Payload vorhanden)
-    $sku = $payload['sku'] ?? null;
-    if (!empty($sku)) {
-      $existingId = $this->lookup->findProductIdBySku($sku);
-      if ($existingId !== null) {
-        // ID lokal persistieren, damit künftige Syncs immer PUT nutzen
-        $product->woo_product_id = $existingId;
+    try {
+      if ($isUpdate) {
+        // PUT /products/{id}
+        $resp = $client->put("{$endpointBase}/{$remoteId}", $payload);
+        $norm = $parseResponse($resp);
+
+        return [
+          'action'    => 'updated',
+          'status'    => $norm['status'],
+          'remote_id' => (int) ($norm['body']['id'] ?? $remoteId),
+          'body'      => $norm['body'],
+        ];
+      }
+
+      // POST /products
+      $resp = $client->post($endpointBase, $payload);
+      $norm = $parseResponse($resp);
+
+      $newId = (int) ($norm['body']['id'] ?? 0);
+      if ($newId > 0) {
+        $product->woo_product_id = $newId;
         $product->save();
-
-        Log::info('ProductUpsertService: Preflight hit, switching to UPDATE', [
-          'product_id' => $product->id,
-          'woo_product_id' => $existingId,
-          'sku' => $sku,
-        ]);
-
-        return $this->updateExisting($existingId, $product, $payload, $failHard);
       }
-    }
 
-    // 3) Create (POST)
-    return $this->createNew($product, $payload, $failHard);
+      return [
+        'action'    => 'created',
+        'status'    => $norm['status'],
+        'remote_id' => $newId ?: null,
+        'body'      => $norm['body'],
+      ];
+    } catch (\Throwable $e) {
+      $msg = $e->getMessage();
+
+      $isInvalidId =
+        str_contains($msg, 'woocommerce_rest_product_invalid_id') ||
+        str_contains($msg, '"code":"woocommerce_rest_product_invalid_id"') ||
+        str_contains($msg, 'Invalid ID');
+
+      if ($failHard) {
+        throw $e;
+      }
+
+      return [
+        'action'    => $isUpdate ? 'update-failed' : 'create-failed',
+        'status'    => $isUpdate ? 400 : 400,
+        'remote_id' => $isUpdate ? $remoteId : null,
+        'body'      => ['error' => $msg, 'invalid_id' => $isInvalidId],
+      ];
+    }
   }
+
+
 
   /**
    * PUT /products/{id}
