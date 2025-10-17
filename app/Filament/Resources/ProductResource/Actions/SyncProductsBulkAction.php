@@ -80,27 +80,50 @@ class SyncProductsBulkAction extends BulkAction
 
       foreach ($records as $product) {
         try {
-          $dryRun      = (bool)($data['dry_run'] ?? false);
-          $onlyChanged = (bool)($data['only_changed'] ?? true);
-
-          // Aktuelle Signatur: (Product $product, bool $failHard = false)
+          // Orchestrator entscheidet PUT/POST + Invalid-ID-Recovery
           $res = $orch->syncSingle($product, false);
 
-          if (($res['status'] ?? '') === 'error') {
+          $action = (string)($res['action'] ?? '');
+          $status = (int)($res['status'] ?? 0);
+          $remote = $res['remote_id'] ?? ($res['id'] ?? null);
+          $error  = $res['body']['error'] ?? ($res['message'] ?? null);
+
+          // neue Klassifizierung: alles mit -failed oder HTTP >= 400 ist Fehler
+          $isFailed = str_ends_with($action, '-failed') || $status >= 400;
+
+          if ($isFailed) {
             $fail++;
-            $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
-          } elseif (!empty($res['skipped'])) {
+            $msg = $error ? " – {$error}" : '';
+            $details[] = "✖ #{$product->id}: {$action}{$msg}";
+            Log::error('SyncProductsBulkAction: update/create failed', [
+              'product_id' => $product->id,
+              'action'     => $action,
+              'status'     => $status,
+              'remote_id'  => $remote,
+              'error'      => $error,
+            ]);
+          } elseif ($action === 'skipped' || !empty($res['skipped'])) {
             $skip++;
             $details[] = "⏭ #{$product->id}: unverändert";
           } else {
             $ok++;
-            $act = $res['action'] ?? 'update';
-            $woo = $res['id'] ?? ($res['woo_product_id'] ?? '?');
-            $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
+            $act = $action ?: 'updated';
+            $wid = $remote ?? '?';
+            $details[] = "✔ #{$product->id} → {$act} (Woo #{$wid})";
+            Log::info('SyncProductsBulkAction: success', [
+              'product_id' => $product->id,
+              'action'     => $act,
+              'status'     => $status,
+              'remote_id'  => $wid,
+            ]);
           }
         } catch (\Throwable $e) {
           $fail++;
           $details[] = "✖ #{$product->id}: " . $e->getMessage();
+          Log::error('SyncProductsBulkAction: exception', [
+            'product_id' => $product->id,
+            'message'    => $e->getMessage(),
+          ]);
         }
       }
 
