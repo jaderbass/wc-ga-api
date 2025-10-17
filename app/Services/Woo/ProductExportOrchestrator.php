@@ -171,41 +171,6 @@ class ProductExportOrchestrator
     return array_filter($payload, static fn($v) => !($v === null || $v === ''));
   }
 
-
-  /**
-   * Baut ein minimales, valides Woo-/products-Payload direkt aus dem lokalen Produkt.
-   * - Keine Preise
-   * - Für variable Parents standardmäßig KEINE SKU (Woo-Best-Practice)
-   * - Entfernt leere Felder
-   *
-   * @return array<string,mixed>
-   */
-  private function buildProductPayload(\App\Models\Product $product): array
-  {
-    $type = $product->product_type ?? 'simple';
-    $isVariable = $type === 'variable';
-
-    // Falls Deine Feldnamen abweichen, hier anpassen:
-    $name        = $product->name ?? ('Product #' . $product->id);
-    $description = $product->description ?? '';
-    $short       = property_exists($product, 'short_description') ? ($product->short_description ?? '') : '';
-    // Bei variablem Parent bewusst keine SKU setzen:
-    $sku         = $isVariable ? null : ($product->sku ?? null);
-
-    $payload = [
-      'name'              => $name,
-      'type'              => in_array($type, ['simple', 'variable'], true) ? $type : 'simple',
-      'description'       => $description,
-      'short_description' => $short,
-      'sku'               => $sku,
-      'status'            => 'publish',
-    ];
-
-    // Leere/null entfernen
-    return array_filter($payload, static fn($v) => !($v === null || $v === ''));
-  }
-
-
   /**
    * Synchronisiert alle Varianten eines Produkts mit WooCommerce.
    *
