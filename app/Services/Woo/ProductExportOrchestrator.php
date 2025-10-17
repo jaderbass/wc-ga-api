@@ -3,7 +3,6 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
-use App\Models\Shop;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -140,71 +139,52 @@ class ProductExportOrchestrator
   /**
    * Synchronisiert alle Varianten eines Produkts mit WooCommerce.
    *
-   * Diese Methode bildet den zentralen Einstiegspunkt für den Variantensync,
-   * analog zum Parent-Produkt-Upsert. Sie akzeptiert optionale Steuerparameter
-   * (Shop-Auswahl, Dry-Run, Nur-geänderte) und normalisiert die Rückgabe.
+   * Zentraler Einstiegspunkt für den Variantensync – analog zum Parent-Upsert.
+   * Nutzt den VariationSyncService mit der aktuellen Signatur
+   *   syncProduct(Product $product, bool $failHard = false)
+   * und normalisiert die Rückgabe für die Filament-UI.
    *
-   * @param  Product     $product       Das Quell-Produkt, dessen Varianten synchronisiert werden.
-   * @param  Shop|null   $shop          Zielshop (falls null, wird der Default-Shop verwendet).
-   * @param  bool        $dryRun        Wenn true: keine Schreiboperationen, nur Vorschau/Zählung.
-   * @param  bool        $onlyChanged   Wenn true: nur Varianten mit Änderungen übertragen.
+   * @param  \App\Models\Product  $product
    * @return array{
-   *     product_id:int,
-   *     shop_id:int|null,
-   *     variants:int,
-   *     created:int,
-   *     updated:int,
-   *     skipped:int,
-   *     dry_run:bool,
-   *     only_changed:bool
+   *   product_id:int,
+   *   variants:int,
+   *   created:int,
+   *   updated:int,
+   *   skipped:int,
+   *   errors:int,
+   *   details: array<int, array<string,mixed>>
    * }
    */
-  public function syncVariationsForProduct(
-    Product $product,
-    ?Shop $shop = null,
-    bool $dryRun = false,
-    bool $onlyChanged = true
-  ): array {
-    // Shop ermitteln (Fallback auf Default)
-    if (!$shop) {
-      $shop = Shop::query()->where('is_default', true)->first();
-    }
-
-    /** @var VariationSyncService $svc */
-    $svc = app(VariationSyncService::class);
+  public function syncVariationsForProduct(\App\Models\Product $product): array
+  {
+    /** @var \App\Services\Woo\VariationSyncService $svc */
+    $svc = app(\App\Services\Woo\VariationSyncService::class);
 
     try {
-      // Bevorzugte (erweiterte) Signatur:
-      // syncProduct(Product $product, ?Shop $shop, bool $dryRun, bool $onlyChanged, bool $failHard=false)
-      $res = $svc->syncProduct(
-        $product,
-        shop: $shop,
-        dryRun: $dryRun,
-        onlyChanged: $onlyChanged
-      );
-    } catch (\ArgumentCountError $e) {
-      // Rückwärtskompatibilität: alte Signatur ohne optionale Parameter
+      // Aktuelle Service-Signatur: (Product $product, bool $failHard = false)
       $res = $svc->syncProduct($product, false);
+    } catch (\Throwable $e) {
+      \Illuminate\Support\Facades\Log::error('Orchestrator: variant sync failed', [
+        'product_id' => $product->id,
+        'message'    => $e->getMessage(),
+      ]);
+      throw $e;
     }
 
     $created  = (int) ($res['created'] ?? 0);
     $updated  = (int) ($res['updated'] ?? 0);
     $skipped  = (int) ($res['skipped'] ?? 0);
-    $variants = (int) ($res['variants'] ?? ($created + $updated + $skipped));
+    $errors   = (int) ($res['errors']  ?? 0);
+    $variants = $created + $updated + $skipped;
 
-    $out = [
-      'product_id'   => $product->id,
-      'shop_id'      => $shop?->id,
-      'variants'     => $variants,
-      'created'      => $created,
-      'updated'      => $updated,
-      'skipped'      => $skipped,
-      'dry_run'      => $dryRun,
-      'only_changed' => $onlyChanged,
+    return [
+      'product_id' => $product->id,
+      'variants'   => $variants,
+      'created'    => $created,
+      'updated'    => $updated,
+      'skipped'    => $skipped,
+      'errors'     => $errors,
+      'details'    => $res['details'] ?? [],
     ];
-
-    Log::info('Orchestrator: variant sync result', $out);
-
-    return $out;
   }
 }
