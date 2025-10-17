@@ -78,38 +78,31 @@ class SyncProductsBulkAction extends BulkAction
         $fail = 0;
         $details = [];
 
-        foreach ($records as $product) {
-          try {
-            // Orchestrator übernimmt Preflight (ungültige woo_product_id -> Create)
-            // Falls Dein syncSingle keine Parameter für shop/dry_run/only_changed hat,
-            // rufe es einfach ohne diese auf (siehe Fallback unten).
-            $dryRun      = (bool)($data['dry_run'] ?? false);
-            $onlyChanged = (bool)($data['only_changed'] ?? true);
+      foreach ($records as $product) {
+        try {
+          $dryRun      = (bool)($data['dry_run'] ?? false);
+          $onlyChanged = (bool)($data['only_changed'] ?? true);
 
-            try {
-              $res = $orch->syncSingle($product, $shop, $dryRun, $onlyChanged);
-            } catch (\ArgumentCountError $sigMismatch) {
-              // Rückwärtskompatibel: alte Signatur ohne diese Parameter
-              $res = $orch->syncSingle($product);
-            }
+          // Aktuelle Signatur: (Product $product, bool $failHard = false)
+          $res = $orch->syncSingle($product, false);
 
-            if (($res['status'] ?? '') === 'error') {
-              $fail++;
-              $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
-            } elseif (!empty($res['skipped'])) {
-              $skip++;
-              $details[] = "⏭ #{$product->id}: unverändert";
-            } else {
-              $ok++;
-              $act = $res['action'] ?? 'update';
-              $woo = $res['id'] ?? ($res['woo_product_id'] ?? '?');
-              $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
-            }
-          } catch (\Throwable $e) {
+          if (($res['status'] ?? '') === 'error') {
             $fail++;
-            $details[] = "✖ #{$product->id}: " . $e->getMessage();
+            $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
+          } elseif (!empty($res['skipped'])) {
+            $skip++;
+            $details[] = "⏭ #{$product->id}: unverändert";
+          } else {
+            $ok++;
+            $act = $res['action'] ?? 'update';
+            $woo = $res['id'] ?? ($res['woo_product_id'] ?? '?');
+            $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
           }
+        } catch (\Throwable $e) {
+          $fail++;
+          $details[] = "✖ #{$product->id}: " . $e->getMessage();
         }
+      }
 
         $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
         Notification::make()
