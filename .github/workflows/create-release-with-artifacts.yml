@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Create GitHub Release + Attach Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for changelog range
+
+      - name: Prepare artifacts directory
+        run: mkdir -p artifacts
+
+      - name: Build docs archive (if present)
+        run: |
+          if [ -d docs ]; then
+            zip -r artifacts/docs-${{ github.ref_name }}.zip docs
+          else
+            echo "No docs/ directory found, skipping docs archive."
+          fi
+
+      - name: Include top-level READMEs (optional)
+        run: |
+          if [ -f README.md ]; then cp README.md artifacts/README-${{ github.ref_name }}.md; fi
+          if [ -f README-dev.md ]; then cp README-dev.md artifacts/README-dev-${{ github.ref_name }}.md; fi
+
+      - name: Build release notes from commit history
+        id: notes
+        run: |
+          # Determine previous tag (if any)
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD | tail -1)
+            RANGE="$FIRST_COMMIT..HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+
+          {
+            echo "## 🚀 ${{ github.ref_name }}"
+            echo ""
+            echo "### Changes since ${PREV_TAG:-project start}"
+            echo ""
+            git log --pretty=format:'- %s (%h)' "$RANGE"
+            echo ""
+          } > RELEASE_NOTES.md
+
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release and upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          generate_release_notes: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          files: |
+            artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
