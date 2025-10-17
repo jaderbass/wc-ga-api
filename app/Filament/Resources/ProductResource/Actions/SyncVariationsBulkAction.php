@@ -5,7 +5,6 @@ namespace App\Filament\Resources\ProductResource\Actions;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Woo\ProductExportOrchestrator;
-use App\Services\Woo\VariationSyncService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
@@ -16,9 +15,9 @@ use Illuminate\Support\Facades\Log;
 /**
  * SyncVariationsBulkAction
  *
- * - Gleiches Modal & UX wie beim Parent-Sync (Shop, only_changed, dry_run)
- * - Aufruf über ProductExportOrchestrator (bevorzugt), Fallback: VariationSyncService
- * - Eigene handle()-Methode; action() ruft handle() auf (konsistent zu Deinem Wunsch)
+ * - Identisches Modal/UX wie bei der Parent-BulkAction (Shop, only_changed, dry_run)
+ * - Aufruf erfolgt zentral über ProductExportOrchestrator::syncVariationsForProduct($product)
+ * - Keine named args oder nicht existente Methoden
  */
 class SyncVariationsBulkAction extends BulkAction
 {
@@ -58,22 +57,17 @@ class SyncVariationsBulkAction extends BulkAction
   }
 
   /**
-   * Führt den Varianten-Sync für alle ausgewählten Produkte aus.
+   * Führt den Varianten-Sync für die ausgewählten Produkte aus.
    *
    * @param  Collection<int,Product>                       $records
    * @param  array{shop_id:int,only_changed?:bool,dry_run?:bool} $data
    */
   protected function handle(Collection $records, array $data): void
   {
-    /** @var Shop $shop */
-    $shop        = Shop::findOrFail($data['shop_id']);
-    $onlyChanged = (bool)($data['only_changed'] ?? true);
-    $dryRun      = (bool)($data['dry_run'] ?? false);
-
+    // Hinweis: Shop/only_changed/dry_run sind UI-Optionen für spätere Erweiterung.
+    // Aktuell nimmt der Service diese Parameter nicht an; der Orchestrator kapselt den Call.
     /** @var ProductExportOrchestrator $orch */
     $orch = app(ProductExportOrchestrator::class);
-    /** @var VariationSyncService $vsvc */
-    $vsvc = app(VariationSyncService::class);
 
     $summary = [
       'products' => 0,
@@ -89,41 +83,18 @@ class SyncVariationsBulkAction extends BulkAction
       $summary['products']++;
 
       try {
-        // Bevorzugt über den Orchestrator (Varianten):
-        // Erwartete mögliche Methodennamen (je nach Deinem Orchestrator):
-        // - syncVariationsForProduct(Product $product, ?Shop $shop = null, bool $dryRun = false, bool $onlyChanged = true)
-        // - syncProductVariants(...)
-        // Wir probieren zuerst 'syncVariationsForProduct', dann 'syncProductVariants'.
-        if (method_exists($orch, 'syncVariationsForProduct')) {
-          $res = $orch->syncVariationsForProduct($product, $shop, $dryRun, $onlyChanged);
-        } elseif (method_exists($orch, 'syncProductVariants')) {
-          $res = $orch->syncProductVariants($product, $shop, $dryRun, $onlyChanged);
-        } else {
-          // Fallback: direkter Service-Aufruf (Signatur an Dein Projekt anpassen)
-          // Versuche neue, optionale Parameter:
-          try {
-            $res = $vsvc->syncProduct($product, shop: $shop, dryRun: $dryRun, onlyChanged: $onlyChanged);
-          } catch (\ArgumentCountError $e) {
-            // Fallback auf alte Signatur (Product, failHard=false)
-            $res = $vsvc->syncProduct($product, false);
-          }
-        }
+        // Zentraler Einstieg – keine named args, Signatur: syncVariationsForProduct(Product): array
+        $res = $orch->syncVariationsForProduct($product);
 
-        // Ergebniswerte konsolidieren
-        $variants         = (int)($res['variants'] ?? 0);
-        $created          = (int)($res['created'] ?? 0);
-        $updated          = (int)($res['updated'] ?? 0);
-        $skipped          = (int)($res['skipped'] ?? 0);
+        $created  = (int)($res['created'] ?? 0);
+        $updated  = (int)($res['updated'] ?? 0);
+        $skipped  = (int)($res['skipped'] ?? 0);
+        $variants = (int)($res['variants'] ?? ($created + $updated + $skipped));
 
-        // Wenn 'variants' nicht gesetzt ist, grob aus created/updated/skipped ableiten
-        if ($variants === 0) {
-          $variants = $created + $updated + $skipped;
-        }
-
-        $summary['variants'] += $variants;
         $summary['created']  += $created;
         $summary['updated']  += $updated;
         $summary['skipped']  += $skipped;
+        $summary['variants'] += $variants;
       } catch (\Throwable $e) {
         $summary['errors']++;
         Log::error('SyncVariationsBulkAction: error while syncing variants', [
@@ -133,14 +104,14 @@ class SyncVariationsBulkAction extends BulkAction
       }
     }
 
-    // UI-Feedback
+    // Feedback
     $title = $summary['errors'] > 0
       ? 'Woo-Variantensync abgeschlossen (mit Fehlern)'
       : 'Woo-Variantensync erfolgreich';
 
     $body = "Produkte: {$summary['products']} · Varianten: {$summary['variants']} · "
-      . "neu: {$summary['created']} · aktualisiert: {$summary['updated']} · übersprungen: {$summary['skipped']} · "
-      . "Fehler: {$summary['errors']}";
+      . "neu: {$summary['created']} · aktualisiert: {$summary['updated']} · "
+      . "übersprungen: {$summary['skipped']} · Fehler: {$summary['errors']}";
 
     Notification::make()
       ->title($title)
@@ -148,10 +119,6 @@ class SyncVariationsBulkAction extends BulkAction
       ->{$summary['errors'] > 0 ? 'danger' : 'success'}()
       ->send();
 
-    Log::info('SyncVariationsBulkAction summary', $summary + [
-      'onlyChanged' => $onlyChanged,
-      'dryRun'      => $dryRun,
-      'shop_id'     => $shop->id,
-    ]);
+    Log::info('SyncVariationsBulkAction summary', $summary);
   }
 }
