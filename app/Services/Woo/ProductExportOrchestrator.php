@@ -36,104 +36,97 @@ class ProductExportOrchestrator
   ) {}
 
   /**
-   * Synchronisiert genau ein Produkt (Create/Update, abhängig von Preflight/woo_product_id).
+   * Synchronisiert ein Parent-Produkt mit WooCommerce.
+   *
+   * Robustheit:
+   * - Wenn Woo 400 "woocommerce_rest_product_invalid_id" zurückgibt (veraltete/nicht existente ID),
+   *   setzen wir lokal woo_product_id = null und versuchen CREATE erneut.
    *
    * @param  Product $product
-   * @param  bool    $failHard
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
+   * @param  bool    $failHard  true = Exceptions durchreichen
+   * @return array<string,mixed>
    */
   public function syncSingle(Product $product, bool $failHard = false): array
   {
-    // --- 1) Produkt-Typ bestimmen --------------------------------------
-    // Primär: aus DB-Feld `product_type` ('simple'|'variable').
-    // Fallback: Heuristik über vorhandene Varianten.
-    $type = $product->product_type ?: ($product->variations()->exists() ? 'variable' : 'simple');
-    if (!in_array($type, ['simple', 'variable'], true)) {
-      $type = $product->variations()->exists() ? 'variable' : 'simple';
-    }
+    /** @var \App\Services\Woo\ProductUpsertService $upsert */
+    $upsert = app(\App\Services\Woo\ProductUpsertService::class);
 
-    // --- 2) Basis-Payload bauen (OHNE Preise) ----------------------------
-    $payload = [
-      'type'        => $type, // Woo erwartet 'type', nicht 'product_type'
-      'name'        => (string) ($product->product_name ?? $product->name ?? "Product {$product->id}"),
-      'slug'        => (string) ($product->slug ?? ''), // optional
-      'status'      => 'publish',                       // oder 'draft'
-      'description' => (string) ($product->description ?? ''),
-      'short_description' => (string) ($product->short_description ?? ''),
-    ];
+    $attempt = function () use ($upsert, $product, $failHard): array {
+      // Hinweis: Diese Methode sollte intern entscheiden "create vs update"
+      // anhand von $product->woo_product_id.
+      return $upsert->upsert($product, $failHard);
+    };
 
-    // SKU nur bei "simple" setzen (Best Practice: Parent ohne SKU bei "variable")
-    if ($type === 'simple' && !empty($product->sku)) {
-      $payload['sku'] = (string) $product->sku;
-    }
+    try {
+      return $attempt();
+    } catch (\Throwable $e) {
+      $msg = $e->getMessage();
 
-    // --- 3) Bilder (optional) -------------------------------------------
-    if (!empty($product->image_url)) {
-      $payload['images'] = [
-        ['src' => (string) $product->image_url],
-      ];
-    }
+      // Erkenne den bekannten Woo-Fehler (invalid id)
+      $isInvalidId =
+        str_contains($msg, 'woocommerce_rest_product_invalid_id') ||
+        str_contains($msg, 'Invalid ID') ||
+        str_contains($msg, '"code":"woocommerce_rest_product_invalid_id"');
 
-    // --- 3b) (NEU) Parent-Attribute für variable Produkte setzen --------
-    if ($type === 'variable' && $product->variations()->exists()) {
-      $attributeMap = config('woo.mapping.variation_attribute_map', [
-        'size'          => 'Size',
-        'color'         => 'Color',
-        'length'        => 'Length',
-        'certification' => 'Certification',
-        'grosse'        => 'Size',
-        'groesse'       => 'Size',
-        'farbe'         => 'Color',
+      if ($isInvalidId) {
+        $oldId = $product->woo_product_id;
+        Log::warning('Orchestrator: invalid woo_product_id detected, retrying as create', [
+          'product_id'      => $product->id,
+          'old_woo_id'      => $oldId,
+          'exception_class' => get_class($e),
+          'exception_msg'   => $msg,
+        ]);
+
+        // Lokale ID leeren und persistieren → nächster Upsert wird CREATE
+        $product->woo_product_id = null;
+        $product->save();
+
+        // Zweiter Versuch als CREATE
+        try {
+          $res = $attempt();
+
+          // Bei Erfolg: neue ID aus Response in Produkt persistieren, falls vorhanden
+          $newId = $res['id'] ?? ($res['woo_product_id'] ?? null);
+          if ($newId && (int)$newId !== (int)$oldId) {
+            $product->woo_product_id = (int) $newId;
+            $product->save();
+          }
+
+          return $res;
+        } catch (\Throwable $e2) {
+          Log::error('Orchestrator: retry after invalid_id failed', [
+            'product_id'    => $product->id,
+            'old_woo_id'    => $oldId,
+            'exception_msg' => $e2->getMessage(),
+          ]);
+          if ($failHard) {
+            throw $e2;
+          }
+
+          return [
+            'status'  => 'error',
+            'message' => $e2->getMessage(),
+            'action'  => 'retry-create-failed',
+          ];
+        }
+      }
+
+      // anderer Fehler → optional durchreichen
+      if ($failHard) {
+        throw $e;
+      }
+
+      Log::error('Orchestrator: product sync failed', [
+        'product_id'    => $product->id,
+        'message'       => $msg,
       ]);
 
-      /** @var \App\Models\Shop $shop */
-      $shop = \App\Models\Shop::query()->first();
-      $resolver = new \App\Services\Woo\WooAttributeResolver($shop);
-
-      $parentAttributes = [];
-      foreach ($attributeMap as $internalKey => $wooLabel) {
-        $resolved = $resolver->resolve($internalKey);
-        if (!$resolved) continue;
-
-        $options = $product->variations()
-          ->pluck($internalKey)
-          ->filter(fn($v) => $v !== null && $v !== '')
-          ->unique()->values()->all();
-
-        if (empty($options)) continue;
-
-        $parentAttributes[] = [
-          'id'        => $resolved['id'],
-          'name'      => $resolved['name'],
-          'options'   => array_values($options),
-          'visible'   => true,
-          'variation' => true,
-        ];
-      }
-
-      if (!empty($parentAttributes)) {
-        $payload['type'] = 'variable';
-        $payload['attributes'] = $parentAttributes;
-      }
+      return [
+        'status'  => 'error',
+        'message' => $msg,
+        'action'  => 'failed',
+      ];
     }
-
-    // --- 4) Upsert (mit Preflight) --------------------------------------
-    Log::info('ProductExportOrchestrator: upserting product', [
-      'product_id'      => $product->id,
-      'woo_product_id'  => $product->woo_product_id,
-      'type'            => $type,
-      'has_variations'  => $type === 'variable',
-      'parent_sku_used' => $payload['sku'] ?? null,
-    ]);
-
-    $result = $this->upsert->upsertProduct($product, $payload, $failHard);
-
-    Log::info('ProductExportOrchestrator: upsert result', [
-      'product_id' => $product->id,
-      'result'     => $result,
-    ]);
-
-    return $result;
   }
 
   /**
