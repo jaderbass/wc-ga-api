@@ -3,6 +3,7 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
+use App\Models\Shop;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -134,5 +135,76 @@ class ProductExportOrchestrator
     ]);
 
     return $result;
+  }
+
+  /**
+   * Synchronisiert alle Varianten eines Produkts mit WooCommerce.
+   *
+   * Diese Methode bildet den zentralen Einstiegspunkt für den Variantensync,
+   * analog zum Parent-Produkt-Upsert. Sie akzeptiert optionale Steuerparameter
+   * (Shop-Auswahl, Dry-Run, Nur-geänderte) und normalisiert die Rückgabe.
+   *
+   * @param  Product     $product       Das Quell-Produkt, dessen Varianten synchronisiert werden.
+   * @param  Shop|null   $shop          Zielshop (falls null, wird der Default-Shop verwendet).
+   * @param  bool        $dryRun        Wenn true: keine Schreiboperationen, nur Vorschau/Zählung.
+   * @param  bool        $onlyChanged   Wenn true: nur Varianten mit Änderungen übertragen.
+   * @return array{
+   *     product_id:int,
+   *     shop_id:int|null,
+   *     variants:int,
+   *     created:int,
+   *     updated:int,
+   *     skipped:int,
+   *     dry_run:bool,
+   *     only_changed:bool
+   * }
+   */
+  public function syncVariationsForProduct(
+    Product $product,
+    ?Shop $shop = null,
+    bool $dryRun = false,
+    bool $onlyChanged = true
+  ): array {
+    // Shop ermitteln (Fallback auf Default)
+    if (!$shop) {
+      $shop = Shop::query()->where('is_default', true)->first();
+    }
+
+    /** @var VariationSyncService $svc */
+    $svc = app(VariationSyncService::class);
+
+    try {
+      // Bevorzugte (erweiterte) Signatur:
+      // syncProduct(Product $product, ?Shop $shop, bool $dryRun, bool $onlyChanged, bool $failHard=false)
+      $res = $svc->syncProduct(
+        $product,
+        shop: $shop,
+        dryRun: $dryRun,
+        onlyChanged: $onlyChanged
+      );
+    } catch (\ArgumentCountError $e) {
+      // Rückwärtskompatibilität: alte Signatur ohne optionale Parameter
+      $res = $svc->syncProduct($product, false);
+    }
+
+    $created  = (int) ($res['created'] ?? 0);
+    $updated  = (int) ($res['updated'] ?? 0);
+    $skipped  = (int) ($res['skipped'] ?? 0);
+    $variants = (int) ($res['variants'] ?? ($created + $updated + $skipped));
+
+    $out = [
+      'product_id'   => $product->id,
+      'shop_id'      => $shop?->id,
+      'variants'     => $variants,
+      'created'      => $created,
+      'updated'      => $updated,
+      'skipped'      => $skipped,
+      'dry_run'      => $dryRun,
+      'only_changed' => $onlyChanged,
+    ];
+
+    Log::info('Orchestrator: variant sync result', $out);
+
+    return $out;
   }
 }
