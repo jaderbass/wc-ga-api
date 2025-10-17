@@ -38,12 +38,12 @@ class ProductExportOrchestrator
   /**
    * Synchronisiert ein Parent-Produkt mit WooCommerce.
    *
-   * Robustheit:
-   * - Wenn Woo 400 "woocommerce_rest_product_invalid_id" zurückgibt (veraltete/nicht existente ID),
-   *   setzen wir lokal woo_product_id = null und versuchen CREATE erneut.
+   * - Baut das Woo-/products-Payload (ohne Preise).
+   * - Ruft ProductUpsertService::upsertProduct($product, $payload, $failHard) auf.
+   * - Bei "woocommerce_rest_product_invalid_id": woo_product_id = null setzen und Create erneut versuchen.
    *
    * @param  Product $product
-   * @param  bool    $failHard  true = Exceptions durchreichen
+   * @param  bool    $failHard
    * @return array<string,mixed>
    */
   public function syncSingle(Product $product, bool $failHard = false): array
@@ -51,18 +51,26 @@ class ProductExportOrchestrator
     /** @var \App\Services\Woo\ProductUpsertService $upsert */
     $upsert = app(\App\Services\Woo\ProductUpsertService::class);
 
-    $attempt = function () use ($upsert, $product, $failHard): array {
-      // Hinweis: Diese Methode sollte intern entscheiden "create vs update"
-      // anhand von $product->woo_product_id.
-      return $upsert->upsert($product, $failHard);
+    // 1) Payload für Woo /products aufbauen (minimal & lokal)
+    $payload = $this->makeMinimalProductPayload($product);
+
+    $attempt = function () use ($upsert, $product, $payload, $failHard): array {
+      return $upsert->upsertProduct($product, $payload, $failHard);
     };
 
     try {
-      return $attempt();
+      $res    = $attempt();
+      $remote = $res['remote_id'] ?? null;
+
+      if (!$product->woo_product_id && $remote) {
+        $product->woo_product_id = (int) $remote;
+        $product->save();
+      }
+
+      return $res;
     } catch (\Throwable $e) {
       $msg = $e->getMessage();
 
-      // Erkenne den bekannten Woo-Fehler (invalid id)
       $isInvalidId =
         str_contains($msg, 'woocommerce_rest_product_invalid_id') ||
         str_contains($msg, 'Invalid ID') ||
@@ -70,6 +78,7 @@ class ProductExportOrchestrator
 
       if ($isInvalidId) {
         $oldId = $product->woo_product_id;
+
         Log::warning('Orchestrator: invalid woo_product_id detected, retrying as create', [
           'product_id'      => $product->id,
           'old_woo_id'      => $oldId,
@@ -77,18 +86,19 @@ class ProductExportOrchestrator
           'exception_msg'   => $msg,
         ]);
 
-        // Lokale ID leeren und persistieren → nächster Upsert wird CREATE
+        // 2) Lokale ID leeren → nächster Upsert wird POST
         $product->woo_product_id = null;
         $product->save();
 
-        // Zweiter Versuch als CREATE
-        try {
-          $res = $attempt();
+        // Payload ggf. neu (hier identisch, aber sauber)
+        $payload = $this->makeMinimalProductPayload($product);
 
-          // Bei Erfolg: neue ID aus Response in Produkt persistieren, falls vorhanden
-          $newId = $res['id'] ?? ($res['woo_product_id'] ?? null);
-          if ($newId && (int)$newId !== (int)$oldId) {
-            $product->woo_product_id = (int) $newId;
+        try {
+          $res    = $upsert->upsertProduct($product, $payload, $failHard);
+          $remote = $res['remote_id'] ?? null;
+
+          if ($remote && (int) $remote !== (int) $oldId) {
+            $product->woo_product_id = (int) $remote;
             $product->save();
           }
 
@@ -99,6 +109,7 @@ class ProductExportOrchestrator
             'old_woo_id'    => $oldId,
             'exception_msg' => $e2->getMessage(),
           ]);
+
           if ($failHard) {
             throw $e2;
           }
@@ -111,14 +122,13 @@ class ProductExportOrchestrator
         }
       }
 
-      // anderer Fehler → optional durchreichen
       if ($failHard) {
         throw $e;
       }
 
       Log::error('Orchestrator: product sync failed', [
-        'product_id'    => $product->id,
-        'message'       => $msg,
+        'product_id' => $product->id,
+        'message'    => $msg,
       ]);
 
       return [
@@ -128,6 +138,73 @@ class ProductExportOrchestrator
       ];
     }
   }
+
+  /**
+   * Baut ein minimales, valides Woo-/products-Payload direkt aus dem lokalen Produkt.
+   * - Keine Preise
+   * - Für variable Parents standardmäßig KEINE SKU (Woo-Best-Practice)
+   * - Leere Felder werden entfernt
+   *
+   * @return array<string,mixed>
+   */
+  private function makeMinimalProductPayload(Product $product): array
+  {
+    $type = $product->product_type ?? 'simple';
+    $isVariable = $type === 'variable';
+
+    // Felde-Namen ggf. an Dein Model anpassen:
+    $name        = $product->name ?? ('Product #' . $product->id);
+    $description = $product->description ?? '';
+    $short       = property_exists($product, 'short_description') ? ($product->short_description ?? '') : '';
+    $sku         = $isVariable ? null : ($product->sku ?? null); // Parent ohne SKU bei variable
+
+    $payload = [
+      'name'              => $name,
+      'type'              => in_array($type, ['simple', 'variable'], true) ? $type : 'simple',
+      'description'       => $description,
+      'short_description' => $short,
+      'sku'               => $sku,
+      'status'            => 'publish',
+    ];
+
+    // Leere/null entfernen
+    return array_filter($payload, static fn($v) => !($v === null || $v === ''));
+  }
+
+
+  /**
+   * Baut ein minimales, valides Woo-/products-Payload direkt aus dem lokalen Produkt.
+   * - Keine Preise
+   * - Für variable Parents standardmäßig KEINE SKU (Woo-Best-Practice)
+   * - Entfernt leere Felder
+   *
+   * @return array<string,mixed>
+   */
+  private function buildProductPayload(\App\Models\Product $product): array
+  {
+    $type = $product->product_type ?? 'simple';
+    $isVariable = $type === 'variable';
+
+    // Falls Deine Feldnamen abweichen, hier anpassen:
+    $name        = $product->name ?? ('Product #' . $product->id);
+    $description = $product->description ?? '';
+    $short       = property_exists($product, 'short_description') ? ($product->short_description ?? '') : '';
+    // Bei variablem Parent bewusst keine SKU setzen:
+    $sku         = $isVariable ? null : ($product->sku ?? null);
+
+    $payload = [
+      'name'              => $name,
+      'type'              => in_array($type, ['simple', 'variable'], true) ? $type : 'simple',
+      'description'       => $description,
+      'short_description' => $short,
+      'sku'               => $sku,
+      'status'            => 'publish',
+    ];
+
+    // Leere/null entfernen
+    return array_filter($payload, static fn($v) => !($v === null || $v === ''));
+  }
+
 
   /**
    * Synchronisiert alle Varianten eines Produkts mit WooCommerce.
