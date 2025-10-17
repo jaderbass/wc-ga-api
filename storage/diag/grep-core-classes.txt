@@ -1,0 +1,8 @@
+﻿
+app\Models\Product.php:73:     * Dieser Alias wird vom Filament-RelationManager `ProductVariantRelationManager`
+app\Models\User.php:18:     * Muss zum verwendeten Auth-Guard passen (z.B. 'web' oder 'filament').
+app\Providers\AppServiceProvider.php:6:use Filament\Facades\Filament;
+app\Providers\AppServiceProvider.php:7:use Filament\Navigation\NavigationGroup;
+app\Providers\AppServiceProvider.php:22:     * It is a good place to register Filament navigation items and set the default dashboard.
+
+
