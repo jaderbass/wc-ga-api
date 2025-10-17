@@ -1,181 +1,204 @@
-# GeoAlpin WooCommerce Sync
+# 🌄 GeoAlpin – Produkt- & Varianten-Sync zwischen Laravel/Filament und WooCommerce
 
-Dieses Projekt erweitert die GeoAlpin-Plattform um eine stabile **Import- und Export-Pipeline für WooCommerce-Produkte**.  
-Es ermöglicht, Produktdaten aus Herstellerquellen (CSV/XML) einzulesen, in der Datenbank zu speichern und anschließend  
-in ein WooCommerce-kompatibles Format zu exportieren.
+Dieses Projekt automatisiert den Import, die Verwaltung und den Export von Produktdaten
+zwischen dem Laravel-/Filament-Backend und WooCommerce-Shops.
+
+Entwickelt von **JAderBass web’n’more** (Jörg Aderhold)  
+Stand: 2025-10-17
 
 ---
 
-## 1. Installation
+## 🧭 Projektüberblick
 
-### 1.1 Voraussetzungen
+**Ziel:**  
+- Automatische Synchronisierung von Produkt- und Variantendaten mit WooCommerce  
+- Hersteller-unabhängige Import-Pipeline (CSV, XML, später API)  
+- Vereinheitlichte Export- und Sync-Mechanismen  
+- Zentrale Steuerung via Filament-Dashboard
 
-- PHP 8.2+
-- Composer
-- MySQL 8.x
-- Node.js + npm
-- Laragon (oder gleichwertige lokale Umgebung)
+**Technologien:**  
+- Laravel 12 (PHP 8.3)  
+- Filament 3.2  
+- MySQL 8.x  
+- WooCommerce REST API (v3)  
+- Composer / npm / Vite
 
-### 1.2 Projekt einrichten
+---
 
+## ⚙️ Systemvoraussetzungen
+
+| Komponente | Empfehlung |
+|-------------|-------------|
+| **PHP** | ≥ 8.3 mit `curl`, `mbstring`, `intl`, `xml`, `json` |
+| **MySQL** | ≥ 8.0 |
+| **Webserver** | Apache 2.4 oder Nginx 1.18+ |
+| **Node.js** | ≥ 20 |
+| **Composer** | ≥ 2.7 |
+| **Speicherbedarf** | ≥ 512 MB (Dev), ≥ 2 GB (Prod) |
+
+---
+
+## 🚀 Installation & Setup
+
+### 1️⃣ Repository klonen
 ```bash
 git clone https://github.com/jaderbass/wc-ga-api.git
 cd wc-ga-api
+```
+
+### 2️⃣ Abhängigkeiten installieren
+```bash
 composer install
 npm install && npm run build
 ```
 
-### 1.3 .env konfigurieren
-
-- Datenbank-Zugangsdaten (`DB_CONNECTION`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
-- Optional: zusätzliche Verbindungen (z. B. `mysql_dump` für Schema-Dump)
-
----
-
-## 2. Datenbank
-
-### 2.1 Migrationen & Seed
-
+### 3️⃣ Env-Datei erstellen
 ```bash
-php artisan migrate --seed
+cp .env.example .env
+php artisan key:generate
 ```
 
-### 2.2 Schema-Dump (für Neuinstallationen)
+### 4️⃣ Datenbank konfigurieren
+Passe in `.env` an:
+```dotenv
+DB_DATABASE=geoalpin
+DB_USERNAME=geoalpin_user
+DB_PASSWORD=...
+```
 
+### 5️⃣ Migration & Baseline-Dump
 ```bash
+php artisan migrate
+php artisan db:seed   # falls Seeders vorhanden
 php artisan schema:dump --prune
 ```
 
-→ erstellt `database/schema/mysql-schema.sql` als Baseline.
-
-### 2.3 Neue Installation (komplett von Null)
-
+### 6️⃣ Filament-Admin starten
 ```bash
-git clone https://github.com/jaderbass/wc-ga-api.git
-cd wc-ga-api
-composer install
-npm install && npm run build
-cp .env.example .env   # Zugangsdaten anpassen
-php artisan migrate --seed
+php artisan serve
 ```
+Zugriff: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
 
 ---
 
-## 3. Artisan Commands – WooCommerce Sync
+## 🧩 Import-Module
 
-### 3.1 Backfill Commands
+| Typ | Basisklasse | Beschreibung |
+|------|--------------|--------------|
+| CSV | `GenericCsvProductImporter` | Importiert Lieferanten-CSV nach Mapping-Schema |
+| XML | `BaseXmlImporter` (geplant) | Liest XML-Feeds und wandelt sie in Produkt-Entitäten um |
+| API | (in Planung) | Direkter API-Feed-Import über Hersteller-Endpoints |
 
-- **`php artisan products:backfill`**  
-  Füllt fehlende Felder in der `products`-Tabelle auf (z. B. Maße, Gewicht).  
-  Optionen:  
-  - `--chunk=1000` → Anzahl Produkte pro Durchlauf.  
-  - `--dry-run` → Nur Anzeige, keine DB-Änderung.
-
-- **`php artisan variations:backfill`**  
-  Füllt fehlende Felder in der `product_variations`-Tabelle auf.  
-  Optionen:  
-  - `--chunk=1000` → Anzahl Variationen pro Durchlauf.  
-  - `--dry-run` → Nur Anzeige, keine DB-Änderung.
-
-### 3.2 Export Commands
-
-- **`php artisan woo:export:sample`**  
-  Erstellt eine kleine CSV-Stichprobe für den WooCommerce-Import.  
-  Optionen:  
-  - `--manufacturer=Edelrid` → Herstellername für Mapping.  
-  - `--limit=5` → Anzahl Produkte im Export.  
-  - `--out=storage/app/woo-export-sample.csv` → Zielpfad für CSV-Datei.
+Konfigurationen unter `config/import_mappings/*.php`  
+Logik unter `app/Importers/` und `app/Helpers/`
 
 ---
 
-## 4. Hinweise
+## 🔄 Produkt- & Varianten-Synchronisation
 
-- Exportierte CSVs sind kompatibel mit dem WooCommerce-Importer.  
-- Preisspalten (`regular_price`, `sale_price`, etc.) werden **nie** exportiert (Policy).  
-- Attribute ohne Präfix `pa_` werden **nicht** exportiert.  
-- Logs prüfen (`storage/logs/laravel.log`), falls Export/Backfill fehlschlägt.  
+Das System unterstützt den bidirektionalen Sync von Produkten und Varianten
+zwischen Laravel/Filament und WooCommerce.
+
+### Filament-Dashboard
+- **Produkt synchronisieren** → `SyncProductsBulkAction` → `ProductExportOrchestrator::syncSingle()`
+- **Varianten synchronisieren** → `SyncVariationsBulkAction` → `ProductExportOrchestrator::syncVariationsForProduct()`
+
+**Bedienung:**
+1. Produkte markieren → Menü **Mehrfach-Operationen**
+2. Modal öffnen → Shop, „Nur geänderte senden“, „Dry-Run“ wählen
+3. Ergebnis-Toast zeigt Statusmeldungen
+
+### CLI-Sync
+```bash
+php artisan app:woo-sync-product
+php artisan app:woo-sync-variations
+```
+
+Optionen (falls implementiert):  
+`--dry`, `--only-changed`, `--shop=ID`
+
+### Logs
+- Speicherort: `storage/logs/laravel.log`
+- Prefixe:
+  - `[SyncProductsBulkAction]`
+  - `[SyncVariationsBulkAction]`
+  - `[ProductExportOrchestrator]`
+- `.env` prüfen bei API-Fehlern:
+  - `WOO_API_BASE_URL`
+  - `WOO_API_KEY`
+  - `WOO_API_SECRET`
+
+📘 **Detaillierte Anleitung:**  
+siehe [`docs/Product-Sync-Guide.md`](docs/Product-Sync-Guide.md)
 
 ---
 
-## 5. Tags & Versionierung
+## 📡 Webhooks (Inbound)
 
-- Stabile Snapshots werden als Tags veröffentlicht (z. B. `v0.3.1-import-stable`).  
-- Feature-Branches: `feature/...` (z. B. `feature/woo-export`).  
-- PRs laufen über GitHub und werden via **Squash & Merge** integriert.
+WooCommerce sendet Produkt-Events an:
+```
+POST /api/webhooks/woo/{shopId}
+```
+
+Header:
+```
+X-WC-Webhook-Topic: product.updated
+X-WC-Webhook-Signature: <HMAC>
+```
+
+Verarbeitung:
+`App\Http\Controllers\WooWebhookController::handle()`  
+→ ruft intern den `ProductExportOrchestrator` auf.
 
 ---
 
-## 6. Nächste Schritte
+## 🧾 Logging & Fehleranalyse
 
-- Hersteller-spezifische Maps (`app/Support/Woo/ManufacturerMaps/...`) erweitern.  
-- Exporter für vollständigen WooCommerce-Import anpassen.  
-- Weitere Hersteller (Kask, Singing Rock XML) einbinden.  
+- **Datei:** `storage/logs/laravel.log`
+- **Log-Level:** `.env → LOG_LEVEL=debug`
+- **Anzeige:** Filament zeigt Toasts nach jedem Sync
+- **Fehlercodes:**
+  - `400` → Ungültige Payload
+  - `401` → Falsche Woo-Credentials
+  - `404` → Parent-Produkt fehlt
+  - `500` → Serverfehler (Woo oder App)
 
-## 7. 🔌 WooCommerce API-Verbindung testen
+---
 
-Bevor Produkt- oder Varianten-Syncs ausgeführt werden, sollte geprüft
-werden, ob die Laravel-App erfolgreich eine Verbindung zur WooCommerce
-REST API mit den in der `.env` hinterlegten Zugangsdaten herstellen
-kann.
+## 🧹 Wartung & Refactoring
 
-### 1) Environment Setup
+### Aktuell erledigt
+- Konsistente BulkActions (Products + Variations)
+- Orchestrator als Single-Entry-Point
+- Logging vereinheitlicht (`Log::info`, kein Backslash)
+- Config-Docs für Woo-Settings
 
-In der `.env` folgende Einträge hinzufügen (Domain und API-Keys
-anpassen):
+### Nächste Schritte
+- `DispatchVariationsSyncJob` (Queue-Mode)
+- Erweiterte XML-Importer-Basis
+- Cleanup alter Migrations
+- README-Erweiterung um API-Endpoints
 
-``` env
-WOO_SYNC_ENABLED=true
-WOO_API_BASE_URL=https://testshop.geoalpin.com
-WOO_API_VERSION=wc/v3
-WOO_API_KEY=ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-WOO_API_SECRET=cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
+---
 
-Danach den Config-Cache leeren:
+## 🧰 Entwickler-Tools
 
-``` bash
-php artisan config:clear
-php artisan cache:clear
-```
+| Zweck | Pfad |
+|-------|------|
+| Artisan Commands | `app/Console/Commands/` |
+| Testskripte | `tests/bin/` |
+| Woo-Services | `app/Services/Woo/` |
+| Filament-Actions | `app/Filament/Resources/ProductResource/Actions/` |
+| Importer-Basis | `app/Importers/` |
 
-### 2) Sanity-Check Command ausführen
+---
 
-Mit dem eingebauten Artisan-Command prüfen:
+## 👨‍💻 Autor
 
-``` bash
-php artisan woo:ping
-```
+**Jörg Aderhold**  
+JAderBass web’n’more – Erfurt  
+[www.jaderbass.de](https://www.jaderbass.de)
 
-### 3) Erwartete Ausgabe
+---
 
-- **Erfolgsfall:**
-  - Konsole zeigt `HTTP Status: 200`
-  - Anzahl der Produkte (kann 0 sein, wenn der Shop leer ist)
-  - JSON-Snippet des ersten Produkts (in der Konsole evtl.
-        abgeschnitten)
-- **Fehlerfall:**
-  - Konsole zeigt Fehlermeldung (401 Unauthorized, 403 Forbidden,
-        404 Not Found, etc.)
-  - Fehler wird zusätzlich in `storage/logs/laravel.log`
-        protokolliert
-
-### 4) Troubleshooting
-
-- **401 / 403 Unauthorized** → API-Key/Secret prüfen, Berechtigung
-    *Lesen/Schreiben* setzen.
-- **404 Not Found** → Prüfen, ob `WOO_API_BASE_URL` exakt der Shop-URL
-    entspricht.
-- **Timeout / Verbindung abgelehnt** → Internet/SSL-Setup prüfen.
-- **Leeres Ergebnis** → Shop ist erreichbar, enthält aber keine
-    Produkte.
-
-### 5) Nächste Schritte
-
-Sobald der `woo:ping` Command funktioniert, können gefahrlos Syncs
-gestartet werden:
-
-``` bash
-php artisan woo:sync:variations --id=123
-```
-
-oder in Filament die Bulk Action **„Sync Variations to Woo"** ausführen.
+© 2025 JAderBass web’n’more · Stand 2025-10-17

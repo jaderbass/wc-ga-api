@@ -14,11 +14,10 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\ProductResource\Pages;
+use App\Filament\Resources\ProductResource\Actions\SyncProductsBulkAction;
 use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
+use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
-use App\Models\Shop;
-use App\Services\Woo\WooProductService;
 use App\Support\ImportLog;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
@@ -35,15 +34,12 @@ use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Collection;
 
 /**
  * Class ProductResource
@@ -458,71 +454,74 @@ class ProductResource extends Resource
            * - Optional: Dry-run
            * - Shop wählbar (Default-Shop vorbelegt)
            */
-          BulkAction::make('sync_to_woo')
-            ->label('Zu Woo synchronisieren')
-            ->icon('heroicon-o-arrow-up-on-square')
-            ->deselectRecordsAfterCompletion()
-            ->requiresConfirmation()
-            ->form([
-              Select::make('shop_id')
-                ->label('Shop')
-                ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
-                ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
-                ->required(),
-              Toggle::make('only_changed')
-                ->label('Nur geänderte senden')
-                ->default(true),
-              Toggle::make('dry_run')
-                ->label('Dry-run (nur Vorschau)')
-                ->default(false),
-            ])
-            ->action(function (Collection $records, array $data) {
-              /** @var Shop $shop */
-              $shop = Shop::findOrFail($data['shop_id']);
-              /** @var WooProductService $svc */
-              $svc = app(WooProductService::class);
+          // BulkAction::make('sync_to_woo')
+          //   ->label('Zu Woo synchronisieren')
+          //   ->icon('heroicon-o-arrow-up-on-square')
+          //   ->deselectRecordsAfterCompletion()
+          //   ->requiresConfirmation()
+          //   ->form([
+          //     Select::make('shop_id')
+          //       ->label('Shop')
+          //       ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
+          //       ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
+          //       ->required(),
+          //     Toggle::make('only_changed')
+          //       ->label('Nur geänderte senden')
+          //       ->default(true),
+          //     Toggle::make('dry_run')
+          //       ->label('Dry-run (nur Vorschau)')
+          //       ->default(false),
+          //   ])
+          //   ->action(function (Collection $records, array $data) {
+          //     /** @var Shop $shop */
+          //     $shop = Shop::findOrFail($data['shop_id']);
+          //     /** @var WooProductService $svc */
+          //     $svc = app(WooProductService::class);
 
-              $ok = 0;
-              $skip = 0;
-              $fail = 0;
-              $details = [];
+          //     $ok = 0;
+          //     $skip = 0;
+          //     $fail = 0;
+          //     $details = [];
 
-              foreach ($records as $product) {
-                try {
-                  $res = $svc->upsertProduct(
-                    $product,
-                    $shop,
-                    (bool)($data['dry_run'] ?? false),
-                    (bool)($data['only_changed'] ?? false),
-                  );
+          //     foreach ($records as $product) {
+          //       try {
+          //         $res = $svc->upsertProduct(
+          //           $product,
+          //           $shop,
+          //           (bool)($data['dry_run'] ?? false),
+          //           (bool)($data['only_changed'] ?? false),
+          //         );
 
-                  if (($res['status'] ?? '') === 'error') {
-                    $fail++;
-                    $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
-                  } elseif (!empty($res['skipped'])) {
-                    $skip++;
-                    $details[] = "⏭ #{$product->id}: unverändert";
-                  } else {
-                    $ok++;
-                    $act = $res['action'] ?? 'update';
-                    $woo = $res['id'] ?? '?';
-                    $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
-                  }
-                } catch (\Throwable $e) {
-                  $fail++;
-                  $details[] = "✖ #{$product->id}: " . $e->getMessage();
-                }
-              }
+          //         if (($res['status'] ?? '') === 'error') {
+          //           $fail++;
+          //           $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
+          //         } elseif (!empty($res['skipped'])) {
+          //           $skip++;
+          //           $details[] = "⏭ #{$product->id}: unverändert";
+          //         } else {
+          //           $ok++;
+          //           $act = $res['action'] ?? 'update';
+          //           $woo = $res['id'] ?? '?';
+          //           $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
+          //         }
+          //       } catch (\Throwable $e) {
+          //         $fail++;
+          //         $details[] = "✖ #{$product->id}: " . $e->getMessage();
+          //       }
+          //     }
 
-              $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
-              Notification::make()
-                ->title('Woo-Sync abgeschlossen')
-                ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
-                ->success()
-                ->send();
-            }),
-          SyncVariationsBulkAction::make('sync-variations'),
-        ]),
+          //     $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
+          //     Notification::make()
+          //       ->title('Woo-Sync abgeschlossen')
+          //       ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
+          //       ->success()
+          //       ->send();
+          //   }),
+          SyncProductsBulkAction::make('sync_to_woo'),
+          SyncVariationsBulkAction::make('sync_variations_to_woo'),
+        ])
+        ->label('Mehrfach-Operationen')
+        ->icon('heroicon-o-arrow-path'),
       ]);
   }
 
