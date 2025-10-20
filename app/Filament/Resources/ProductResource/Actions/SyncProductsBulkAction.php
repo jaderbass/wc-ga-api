@@ -127,7 +127,8 @@ class SyncProductsBulkAction extends BulkAction
         }
       }
 
-        $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
+
+      $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
         Notification::make()
           ->title('Woo-Sync abgeschlossen')
           ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
