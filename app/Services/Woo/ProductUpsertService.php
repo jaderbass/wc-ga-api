@@ -389,6 +389,21 @@ class ProductUpsertService
   {
     unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
 
+    // Name aus DB-Feld product_name sicherstellen
+    if (empty($payload['name'])) {
+      $payload['name'] = $product->product_name ?? ('Product #' . $product->id);
+    }
+
+    // Typ setzen, wenn noch nicht vorhanden
+    if (empty($payload['type'])) {
+      $type = $product->product_type ?? 'simple';
+      $payload['type'] = in_array($type, ['simple', 'variable'], true) ? $type : 'simple';
+    }
+
+    // Basis-Sichtbarkeit (damit Themes nicht verstecken)
+    $payload['status'] = $payload['status'] ?? 'publish';
+    $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
+
     $attrValues = $this->collectVariantAttributes($product); // ⬅️ liest Varianten aus DB
 
     if (empty($attrValues)) {
