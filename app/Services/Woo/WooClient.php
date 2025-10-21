@@ -6,6 +6,7 @@ use App\Models\Shop;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\ConnectException; // <-- hinzufügen
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class WooClient
@@ -71,35 +72,32 @@ class WooClient
 
     protected function request(string $method, string $resource, array $opts = [])
     {
-        // --- BEGIN: Endpoint normalisieren ---
-        // Entfernt führende Slashes und versehentlich mitgeliefertes 'wp-json/{ver}/'
+        // Endpoint normalisieren (wie bisher)
         $url = ltrim($resource, '/');
         $url = preg_replace('#^wp-json/[^/]+/#i', '', $url) ?: $url;
-        // --- END: Endpoint normalisieren ---
 
+        // Immer JSON akzeptieren
         $opts['headers']['Accept'] = 'application/json';
 
-        $optsBasic = $opts + [
-            'auth' => [$this->shop->consumer_key, $this->shop->consumer_secret],
-        ];
+        // ✨ Immer Query-Auth verwenden (robust hinter Proxy/CDN)
+        $optsQuery = $opts;
+        $optsQuery['query'] = array_merge($opts['query'] ?? [], [
+            'consumer_key'    => $this->shop->consumer_key,
+            'consumer_secret' => $this->shop->consumer_secret,
+        ]);
+        unset($optsQuery['auth']); // keine Basic-Auth
 
         try {
-            $res = $this->http->request($method, $url, $optsBasic);
-        } catch (ClientException $e) {
-            if ($e->getResponse()?->getStatusCode() !== 401) {
-                throw $this->wrap($e, $method, $url);
-            }
-            $optsQuery = $opts;
-            $optsQuery['query'] = array_merge($opts['query'] ?? [], [
-                'consumer_key'    => $this->shop->consumer_key,
-                'consumer_secret' => $this->shop->consumer_secret,
+            // Debug-Log mit sicheren Metadaten (keine Secrets)
+            Log::debug('WooClient request', [
+                'base_uri' => (string) $this->http->getConfig('base_uri'),
+                'method'   => $method,
+                'endpoint' => $url,
+                'shop_id'  => $this->shop->id,
+                'key_tail' => substr((string) $this->shop->consumer_key, -4),
             ]);
-            unset($optsQuery['auth']);
-            try {
-                $res = $this->http->request($method, $url, $optsQuery);
-            } catch (\Throwable $e2) {
-                throw $this->wrap($e2, $method, $url);
-            }
+
+            $res = $this->http->request($method, $url, $optsQuery);
         } catch (\Throwable $e) {
             throw $this->wrap($e, $method, $url);
         }
@@ -108,6 +106,7 @@ class WooClient
         $decoded = json_decode($body, true);
         return is_array($decoded) ? $decoded : $body;
     }
+
 
     protected function wrap(\Throwable $e, string $method, string $endpoint): RuntimeException
     {
