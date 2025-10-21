@@ -493,95 +493,57 @@ class ProductUpsertService
 
 
   /**
-   * Aggregiert alle Options-Werte je Attribut-Slug aus der DB-Struktur:
-   * - product_attributes:   [id, product_id, slug (oder name)]
-   * - product_attribute_values: [id, product_id, variation_id, attribute_id, value]
+   * Aggregiert alle Options-Werte je Attribut-Slug auf Basis der echten DB-Struktur:
+   * pv (product_variations) → piv (product_variation_attribute_value)
+   * → pav (product_attribute_values) → pa (product_attributes)
    *
    * Rückgabe: Map slug => unique options[]
-   *   z. B. ['pa_size'=>['S','M'], 'pa_color'=>['Blue','Red']]
-   *
-   * @return array<string,array<int,string>>
+   *   z. B. ['pa_size'=>['S','M','L'], 'pa_color'=>['Blue','Red']]
    */
   private function collectVariantAttributes(\App\Models\Product $product): array
   {
-    // Models vorausgesetzt (Passe die Namespaces an, falls abweichend)
-    $PA  = \App\Models\ProductAttribute::query()
-      ->where('product_id', $product->id)
-      ->get(['id', 'product_id', 'slug', 'name']);
+    // Wir arbeiten bewusst mit Query Builder, um keine Relations vorauszusetzen.
+    $rows = \Illuminate\Support\Facades\DB::table('product_variations as pv')
+      ->join('product_variation_attribute_value as piv', 'piv.product_variation_id', '=', 'pv.id')
+      ->join('product_attribute_values as pav', 'pav.id', '=', 'piv.product_attribute_value_id')
+      ->join('product_attributes as pa', 'pa.id', '=', 'pav.attribute_id')
+      ->where('pv.product_id', $product->id)
+      ->select([
+        'pa.slug as attr_slug',          // erwarteter Woo-Slug, idealerweise 'pa_*'
+        'pav.value as option_value',     // sichtbarer Options-Text
+        // 'pav.slug as option_slug',    // falls du Term-Slugs verwenden willst
+      ])
+      ->get();
 
-    if ($PA->isEmpty()) {
-      Log::info('collectVariantAttributes: no product_attributes found', ['product_id' => $product->id]);
-      return [];
-    }
-
-    // Map: attribute_id -> slug (oder name als Fallback)
-    $idToSlug = [];
-    foreach ($PA as $row) {
-      $slug = $row->slug ?? null;
-      if (!$slug || $slug === '') {
-        // Fallback: name → in pa_* umwandeln, falls sinnvoll
-        $slug = $this->normalizeAttrSlug((string) ($row->name ?? ''));
-      }
-      if (!$slug || $slug === '') {
-        continue;
-      }
-      $idToSlug[(int) $row->id] = (string) $slug;
-    }
-
-    if (empty($idToSlug)) {
-      Log::warning('collectVariantAttributes: attributes found but no slugs resolvable', ['product_id' => $product->id]);
-      return [];
-    }
-
-    // Alle Varianten-IDs des Produkts
-    $variantIds = \App\Models\ProductVariation::query()
-      ->where('product_id', $product->id)
-      ->pluck('id')
-      ->all();
-
-    // Alle Values für dieses Produkt – sowohl product-level als auch variation-level
-    $PAV = \App\Models\ProductAttributeValue::query()
-      ->where('product_id', $product->id)
-      ->when(!empty($variantIds), fn($q) => $q->orWhereIn('variation_id', $variantIds))
-      ->get(['attribute_id', 'value', 'variation_id']);
-
-    if ($PAV->isEmpty()) {
-      Log::info('collectVariantAttributes: no product_attribute_values found', ['product_id' => $product->id]);
-      return [];
-    }
-
-    // Aggregation: slug => [values...]
     $acc = [];
-    foreach ($PAV as $row) {
-      $attrId = (int) ($row->attribute_id ?? 0);
-      $val    = (string) ($row->value ?? '');
-
-      if ($attrId <= 0 || $val === '') {
+    foreach ($rows as $r) {
+      $slug = (string) ($r->attr_slug ?? '');
+      $val  = (string) ($r->option_value ?? '');
+      if ($slug === '' || $val === '') {
         continue;
       }
-      $slug = $idToSlug[$attrId] ?? null;
-      if (!$slug) {
-        continue;
-      }
+      // Optional: Slug normalisieren (nur wenn nötig)
+      // if (!str_starts_with($slug, 'pa_')) { $slug = 'pa_' . $slug; }
       $acc[$slug][] = $val;
     }
 
-    // Deduplizieren/aufbereiten
+    // Deduplizieren / leere entfernen
     $out = [];
     foreach ($acc as $slug => $vals) {
-      $vals = array_values(array_unique(array_map('strval', array_filter($vals, fn($v) => $v !== null && $v !== ''))));
+      $vals = array_values(array_unique(array_filter(array_map('strval', $vals), fn($v) => $v !== '')));
       if (!empty($vals)) {
-        $out[(string) $slug] = $vals;
+        $out[$slug] = $vals;
       }
     }
 
-    Log::debug('collectVariantAttributes result', [
+    Log::debug('collectVariantAttributes: aggregated from piv/pav/pa', [
       'product_id' => $product->id,
-      'attributes' => array_map(fn($v) => count($v), $out), // nur Anzahlen zur Übersicht
+      'attributes' => array_map(fn($v) => count($v), $out), // nur Anzahlen
     ]);
 
     return $out;
   }
+
 
   /**
    * Vereinfacht Namen → Slug (pa_*) für bekannte Attribute.
