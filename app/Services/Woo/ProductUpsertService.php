@@ -211,113 +211,6 @@ class ProductUpsertService
     }
   }
 
-  /**
-   * Stellt sicher, dass der Parent ein korrektes Woo-Attribut-Setup hat.
-   * - setzt type='variable', wenn Varianten-Attribute vorhanden
-   * - baut attributes[] aus allen Variantenwerten
-   * - entfernt Preisfelder am Parent (Sicherheit)
-   *
-   * @param  Product               $product
-   * @param  array<string,mixed>   $payload
-   * @return array<string,mixed>
-   */
-  private function ensureParentAttributes(Product $product, array $payload): array
-  {
-    // Preise am Parent nie mitsenden
-    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
-
-    // Alle Varianten-Attributwerte einsammeln
-    $attrValues = $this->collectVariantAttributes($product);
-
-    if (empty($attrValues)) {
-      // Keine Attribute → Parent kann simple bleiben
-      return $payload;
-    }
-
-    // Parent auf 'variable' setzen
-    $payload['type'] = 'variable';
-
-    // Woo-Attribute-Array aufbauen (position aufsteigend)
-    $attributes = [];
-    $pos = 0;
-    foreach ($attrValues as $slug => $options) {
-      if (empty($options)) {
-        continue;
-      }
-      $attributes[] = [
-        'name'      => $slug,           // z. B. 'pa_size'
-        'position'  => $pos++,
-        'visible'   => true,
-        'variation' => true,
-        'options'   => array_values(array_unique($options)),
-      ];
-    }
-
-    if (!empty($attributes)) {
-      $payload['attributes'] = $attributes;
-    }
-
-    // Optional: Sichtbarkeit/Status, falls nötig
-    if (empty($payload['status'])) {
-      $payload['status'] = 'publish';
-    }
-    if (empty($payload['catalog_visibility'])) {
-      $payload['catalog_visibility'] = 'visible';
-    }
-
-    return $payload;
-    // Hinweis: Preise bleiben weiterhin draußen.
-  }
-
-  /**
-   * Sammelt aus allen Varianten die Werte für bekannte Attribut-Slugs (pa_*).
-   * Passe die Feldnamen-Liste an Deine DB-Felder an (de/en).
-   *
-   * @return array<string,array<int,string>>  z. B. ['pa_size'=>['S','M'], 'pa_color'=>['Blue']]
-   */
-  private function collectVariantAttributes(Product $product): array
-  {
-    // Bekannte Slug→Feldnamen-Mappings (wie im VariationPayloadBuilder)
-    $map = [
-      'pa_color' => ['color', 'farbe', 'colour'],
-      'pa_size'  => ['size', 'groesse', 'größe', 'gr'],
-      // Weitere Slugs möglich:
-      // 'pa_length' => ['length_label', 'laenge'],
-      // 'pa_width'  => ['width_label', 'breite'],
-    ];
-
-    $values = [];
-    foreach (array_keys($map) as $slug) {
-      $values[$slug] = [];
-    }
-
-    // Varianten laden (ohne N+1: falls Relation vorhanden, gern $product->variations nutzen)
-    $variants = ProductVariation::query()->where('product_id', $product->id)->get();
-
-    foreach ($variants as $v) {
-      foreach ($map as $slug => $fields) {
-        foreach ($fields as $f) {
-          if (isset($v->{$f}) && $v->{$f} !== null && $v->{$f} !== '') {
-            $values[$slug][] = (string) $v->{$f};
-            break; // je Slug nur erstes passendes Feld nehmen
-          }
-        }
-      }
-    }
-
-    // Leere Slugs entfernen
-    foreach ($values as $slug => $opts) {
-      $opts = array_values(array_filter(array_unique($opts), fn($x) => $x !== ''));
-      if (empty($opts)) {
-        unset($values[$slug]);
-      } else {
-        $values[$slug] = $opts;
-      }
-    }
-
-    return $values;
-  }
-
 
   /**
    * PUT /products/{id}
@@ -480,5 +373,104 @@ class ProductUpsertService
     $body = $resp->json();
     $msg  = is_array($body) ? json_encode($body) : (string) $resp->body();
     throw new \RuntimeException("Woo API {$action} failed: HTTP {$resp->status()} {$msg}");
+  }
+
+  /**
+   * Sorgt dafür, dass der Parent ein korrektes Woo-Attribut-Setup hat.
+   * - setzt type='variable', wenn Varianten-Attribute vorhanden
+   * - baut attributes[] aus allen Variantenwerten (aus DB)
+   * - entfernt sicherheitshalber Preisfelder am Parent
+   *
+   * @param  Product               $product
+   * @param  array<string,mixed>   $payload
+   * @return array<string,mixed>
+   */
+  private function ensureParentAttributes(Product $product, array $payload): array
+  {
+    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
+
+    $attrValues = $this->collectVariantAttributes($product); // ⬅️ liest Varianten aus DB
+
+    if (empty($attrValues)) {
+      // Keine Attribute → Parent kann simple bleiben
+      return $payload;
+    }
+
+    // Parent auf 'variable' setzen
+    $payload['type'] = 'variable';
+
+    // Woo-Attribute-Array aufbauen (position aufsteigend)
+    $attributes = [];
+    $pos = 0;
+    foreach ($attrValues as $slug => $options) {
+      if (empty($options)) {
+        continue;
+      }
+      $attributes[] = [
+        'name'      => $slug,                            // z. B. 'pa_size'
+        'position'  => $pos++,
+        'visible'   => true,
+        'variation' => true,
+        'options'   => array_values(array_unique($options)),
+      ];
+    }
+
+    if (!empty($attributes)) {
+      $payload['attributes'] = $attributes;
+    }
+
+    // Sichtbarkeit standardisieren (für Themes, die sonst ausblenden)
+    $payload['status'] = $payload['status'] ?? 'publish';
+    $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
+
+    return $payload;
+  }
+
+  /**
+   * Liest alle Varianten des Produkts aus der DB und sammelt die Attributwerte.
+   * Passe die Feldnamen links an Deine echten Spalten an (de/en).
+   *
+   * @return array<string,array<int,string>>  z. B. ['pa_size'=>['S','M'], 'pa_color'=>['Blue']]
+   */
+  private function collectVariantAttributes(Product $product): array
+  {
+    // Slug → mögliche Feldnamen an Deinen Tabellenaufbau anpassen:
+    $map = [
+      'pa_color' => ['color', 'farbe', 'colour'],
+      'pa_size'  => ['size', 'groesse', 'größe', 'gr'],
+    ];
+
+    $values = [];
+    foreach (array_keys($map) as $slug) {
+      $values[$slug] = [];
+    }
+
+    // Varianten aus DB lesen
+    $variants = \App\Models\ProductVariation::query()
+      ->where('product_id', $product->id)
+      ->get(['id', 'product_id', 'sku', 'color', 'farbe', 'size', 'groesse', 'größe', 'gr']);
+
+    foreach ($variants as $v) {
+      foreach ($map as $slug => $fields) {
+        foreach ($fields as $f) {
+          if (isset($v->{$f}) && $v->{$f} !== null && $v->{$f} !== '') {
+            $values[$slug][] = (string) $v->{$f};
+            break; // je Slug nur erstes passendes Feld nehmen
+          }
+        }
+      }
+    }
+
+    // Leere Slugs entfernen + Werte deduplizieren
+    foreach ($values as $slug => $opts) {
+      $opts = array_values(array_filter(array_unique($opts), fn($x) => $x !== ''));
+      if (empty($opts)) {
+        unset($values[$slug]);
+      } else {
+        $values[$slug] = $opts;
+      }
+    }
+
+    return $values;
   }
 }
