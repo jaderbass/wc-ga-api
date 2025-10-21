@@ -76,7 +76,7 @@ class WooClient
         $url = ltrim($resource, '/');
         $url = preg_replace('#^wp-json/[^/]+/#i', '', $url) ?: $url;
         // --- END: Endpoint normalisieren ---
-ö
+
         $opts['headers']['Accept'] = 'application/json';
 
         $optsBasic = $opts + [
