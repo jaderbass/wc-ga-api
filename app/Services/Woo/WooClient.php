@@ -17,9 +17,28 @@ class WooClient
     {
         $this->shop = $shop;
 
+        // --- BEGIN: robuste Ermittlung von Base + Version ---
         $base = rtrim((string) $shop->base_url, '/');
+
+        // Fallback auf .env, wenn Shop-URL fehlt
+        if ($base === '') {
+            $base = rtrim((string) (config('woo.api_base_url') ?? env('WOO_API_BASE_URL', '')), '/');
+        }
+
+        // http -> https erzwingen
         $base = preg_replace('#^http:#i', 'https:', $base);
-        $ver  = $shop->api_version ?: 'wc/v3';
+
+        // Version aus Shop oder .env
+        $ver = trim((string) ($shop->api_version ?: (config('woo.api_version') ?? env('WOO_API_VERSION', 'wc/v3'))), '/');
+
+        // Harte Validierung: ohne Host kein Request → verhindert cURL error 3
+        if ($base === '' || !preg_match('#^https?://#i', $base)) {
+            throw new \InvalidArgumentException("Invalid Woo base URL (Shop + .env): '{$base}'");
+        }
+        if ($ver === '') {
+            $ver = 'wc/v3';
+        }
+        // --- END: robuste Ermittlung von Base + Version ---
 
         $this->http = new Client([
             'base_uri'         => $base . '/wp-json/' . trim($ver, '/') . '/',
@@ -52,7 +71,12 @@ class WooClient
 
     protected function request(string $method, string $resource, array $opts = [])
     {
+        // --- BEGIN: Endpoint normalisieren ---
+        // Entfernt führende Slashes und versehentlich mitgeliefertes 'wp-json/{ver}/'
         $url = ltrim($resource, '/');
+        $url = preg_replace('#^wp-json/[^/]+/#i', '', $url) ?: $url;
+        // --- END: Endpoint normalisieren ---
+ö
         $opts['headers']['Accept'] = 'application/json';
 
         $optsBasic = $opts + [
