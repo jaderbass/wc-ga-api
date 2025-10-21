@@ -376,10 +376,10 @@ class ProductUpsertService
   }
 
   /**
-   * Sorgt dafür, dass der Parent ein korrektes Woo-Attribut-Setup hat.
-   * - setzt type='variable', wenn Varianten-Attribute vorhanden
-   * - baut attributes[] aus allen Variantenwerten (aus DB)
-   * - entfernt sicherheitshalber Preisfelder am Parent
+   * Stellt sicher, dass der Parent ein korrektes Woo-Attribut-Setup hat.
+   * - nutzt WooAttributeResolver (falls vorhanden), sonst Fallback auf DB-Varianten
+   * - setzt type='variable' und attributes[] mit options
+   * - entfernt Preisfelder am Parent (Sicherheit)
    *
    * @param  Product               $product
    * @param  array<string,mixed>   $payload
@@ -387,59 +387,110 @@ class ProductUpsertService
    */
   private function ensureParentAttributes(Product $product, array $payload): array
   {
+    // Preise am Parent nie mitsenden
     unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
 
-    // Name aus DB-Feld product_name sicherstellen
-    if (empty($payload['name'])) {
-      $payload['name'] = $product->product_name ?? ('Product #' . $product->id);
-    }
-
-    // Typ setzen, wenn noch nicht vorhanden
-    if (empty($payload['type'])) {
-      $type = $product->product_type ?? 'simple';
-      $payload['type'] = in_array($type, ['simple', 'variable'], true) ? $type : 'simple';
-    }
-
-    // Basis-Sichtbarkeit (damit Themes nicht verstecken)
-    $payload['status'] = $payload['status'] ?? 'publish';
-    $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
-
-    $attrValues = $this->collectVariantAttributes($product); // ⬅️ liest Varianten aus DB
-
-    if (empty($attrValues)) {
-      // Keine Attribute → Parent kann simple bleiben
-      return $payload;
-    }
-
-    // Parent auf 'variable' setzen
-    $payload['type'] = 'variable';
-
-    // Woo-Attribute-Array aufbauen (position aufsteigend)
+    // 1) Bevorzugt: Resolver verwenden (falls gebunden)
     $attributes = [];
-    $pos = 0;
-    foreach ($attrValues as $slug => $options) {
-      if (empty($options)) {
-        continue;
+    if (app()->bound(\App\Services\Woo\WooAttributeResolver::class)) {
+      /** @var mixed $resolver */
+      $resolver = app(\App\Services\Woo\WooAttributeResolver::class);
+
+      // Versuche diverse sinnvolle Methoden, ohne die konkrete Signatur zu erzwingen.
+      // Erwartete Rückgabe-Form bei "direkten" Methoden: array<int,array{name,options[],visible,variation,position?}>
+      // Alternativ: Map slug => options[]; wir konvertieren dann selbst zu Woo-Attributes.
+      $attributes = $this->getAttributesFromResolver($resolver, $product);
+    }
+
+    // 2) Fallback: aus den DB-Varianten selbst aggregieren
+    if (empty($attributes)) {
+      $attrValues = $this->collectVariantAttributes($product); // Map: slug => [options...]
+      if (!empty($attrValues)) {
+        $pos = 0;
+        foreach ($attrValues as $slug => $options) {
+          if (empty($options)) {
+            continue;
+          }
+          $attributes[] = [
+            'name'      => $slug,                               // z. B. 'pa_size'
+            'position'  => $pos++,
+            'visible'   => true,
+            'variation' => true,
+            'options'   => array_values(array_unique($options)),
+          ];
+        }
       }
-      $attributes[] = [
-        'name'      => $slug,                            // z. B. 'pa_size'
-        'position'  => $pos++,
-        'visible'   => true,
-        'variation' => true,
-        'options'   => array_values(array_unique($options)),
-      ];
     }
 
+    // 3) Wenn Attribute vorhanden → Parent als 'variable' markieren + attributes setzen
     if (!empty($attributes)) {
+      $payload['type'] = 'variable';
       $payload['attributes'] = $attributes;
-    }
 
-    // Sichtbarkeit standardisieren (für Themes, die sonst ausblenden)
-    $payload['status'] = $payload['status'] ?? 'publish';
-    $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
+      // Sichtbarkeit standardisieren (manche Themes verstecken sonst)
+      $payload['status'] = $payload['status'] ?? 'publish';
+      $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
+    }
 
     return $payload;
   }
+
+  /**
+   * Liest Parent-Attribute über den WooAttributeResolver (versch. mögliche Methodennamen).
+   * Gibt entweder fertige Woo-Attributes zurück, oder baut sie aus einer slug=>options Map.
+   *
+   * @return array<int,array{name:string,options:array,visible:bool,variation:bool,position?:int}>
+   */
+  private function getAttributesFromResolver($resolver, \App\Models\Product $product): array
+  {
+    try {
+      // 1) Direkte "fertige" Attribute?
+      foreach (['attributesForParent', 'buildParentAttributes', 'resolveParentAttributes'] as $method) {
+        if (method_exists($resolver, $method)) {
+          $res = $resolver->{$method}($product);
+          if (is_array($res) && !empty($res)) {
+            // Wir akzeptieren hier bereits die Woo-Shape
+            return array_values($res);
+          }
+        }
+      }
+
+      // 2) Map slug => options[] und selbst in Woo-Attributes umwandeln
+      foreach (['collectVariantAttributes', 'variantOptionsForParent', 'optionsForProduct'] as $method) {
+        if (method_exists($resolver, $method)) {
+          $map = $resolver->{$method}($product); // erwarten: ['pa_size'=>['S','M'], ...]
+          if (is_array($map) && !empty($map)) {
+            $attrs = [];
+            $pos = 0;
+            foreach ($map as $slug => $options) {
+              if (!is_array($options) || empty($options)) {
+                continue;
+              }
+              $attrs[] = [
+                'name'      => (string) $slug,
+                'position'  => $pos++,
+                'visible'   => true,
+                'variation' => true,
+                'options'   => array_values(array_unique(array_map('strval', $options))),
+              ];
+            }
+            if (!empty($attrs)) {
+              return $attrs;
+            }
+          }
+        }
+      }
+    } catch (\Throwable $e) {
+      // Resolver vorhanden, aber lieferte Fehler → Ignorieren, Fallback greift.
+      Log::warning('WooAttributeResolver usage failed, falling back to DB aggregation', [
+        'product_id' => $product->id,
+        'message'    => $e->getMessage(),
+      ]);
+    }
+
+    return [];
+  }
+
 
   /**
    * Liest alle Varianten des Produkts aus der DB und sammelt die Attributwerte.
