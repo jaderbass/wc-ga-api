@@ -3,6 +3,7 @@
 namespace App\Services\Woo;
 
 use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Models\Shop;
 use App\Services\Woo\WooClient;
 use GuzzleHttp\Exception\ClientException;
@@ -111,23 +112,40 @@ class ProductUpsertService
    * @param  bool                  $failHard
    * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
    */
+  /**
+   * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
+   *
+   * - Preise werden NICHT synchronisiert.
+   * - Für variable Produkte wird die Attributliste aus den Varianten aufgebaut:
+   *   [
+   *     ['name' => 'pa_size',  'position' => 0, 'visible' => true, 'variation' => true, 'options' => ['S','M','L']],
+   *     ['name' => 'pa_color', 'position' => 1, 'visible' => true, 'variation' => true, 'options' => ['Blue','Red']]
+   *   ]
+   *
+   * @param  Product               $product
+   * @param  array<string,mixed>   $payload  (ohne Preise)
+   * @param  bool                  $failHard
+   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
+   */
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
     /** @var \App\Services\Woo\WooClient $client */
     $client = app(\App\Services\Woo\WooClient::class);
 
-    $endpointBase = 'products';
+    // 0) Sicherstellen: keine Preisfelder am Parent
+    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
+
+    // 1) Parent-Attribute aus Varianten ableiten (macht Parent sichtbar & variabel)
+    $payload = $this->ensureParentAttributes($product, $payload);
 
     // --- Response-Normalisierung (PSR-7 oder Array) ---
     $parseResponse = function ($resp): array {
-      // PSR-7?
       if (is_object($resp) && method_exists($resp, 'getStatusCode') && method_exists($resp, 'getBody')) {
         $status = (int) $resp->getStatusCode();
         $raw    = (string) $resp->getBody();
         $body   = $raw !== '' ? (json_decode($raw, true) ?: []) : [];
         return ['status' => $status, 'body' => $body];
       }
-      // Array-Shape (diverse Varianten erlauben)
       if (is_array($resp)) {
         $status = (int) ($resp['status'] ?? $resp['statusCode'] ?? 200);
         $body   = $resp['body'] ?? $resp['data'] ?? $resp;
@@ -136,31 +154,15 @@ class ProductUpsertService
         }
         return ['status' => $status, 'body' => $body];
       }
-      // Fallback
       return ['status' => 200, 'body' => []];
     };
 
-    // --- 1) Preflight (nur ohne bekannte Woo-ID) ---
-    $remoteId = (int) ($product->woo_product_id ?? 0);
-
-    if ($remoteId <= 0 && !empty($payload['sku']) && class_exists(\App\Services\Woo\WooProductLookupService::class)) {
-      try {
-        /** @var \App\Services\Woo\WooProductLookupService $lookup */
-        $lookup  = app(\App\Services\Woo\WooProductLookupService::class);
-        $foundId = (int) ($lookup->findProductIdBySku((string) $payload['sku']) ?? 0);
-        if ($foundId > 0) {
-          $remoteId = $foundId; // Lokal erst nach erfolgreichem PUT schreiben
-        }
-      } catch (\Throwable $e) {
-        // Lookup-Fehler nicht kritisch
-      }
-    }
-
-    $isUpdate = $remoteId > 0;
+    $endpointBase = 'products';
+    $remoteId     = (int) ($product->woo_product_id ?? 0);
 
     try {
-      if ($isUpdate) {
-        // PUT /products/{id}
+      if ($remoteId > 0) {
+        // UPDATE
         $resp = $client->put("{$endpointBase}/{$remoteId}", $payload);
         $norm = $parseResponse($resp);
 
@@ -172,7 +174,7 @@ class ProductUpsertService
         ];
       }
 
-      // POST /products
+      // CREATE
       $resp = $client->post($endpointBase, $payload);
       $norm = $parseResponse($resp);
 
@@ -201,14 +203,120 @@ class ProductUpsertService
       }
 
       return [
-        'action'    => $isUpdate ? 'update-failed' : 'create-failed',
-        'status'    => $isUpdate ? 400 : 400,
-        'remote_id' => $isUpdate ? $remoteId : null,
+        'action'    => $remoteId > 0 ? 'update-failed' : 'create-failed',
+        'status'    => $remoteId > 0 ? 400 : 400,
+        'remote_id' => $remoteId > 0 ? $remoteId : null,
         'body'      => ['error' => $msg, 'invalid_id' => $isInvalidId],
       ];
     }
   }
 
+  /**
+   * Stellt sicher, dass der Parent ein korrektes Woo-Attribut-Setup hat.
+   * - setzt type='variable', wenn Varianten-Attribute vorhanden
+   * - baut attributes[] aus allen Variantenwerten
+   * - entfernt Preisfelder am Parent (Sicherheit)
+   *
+   * @param  Product               $product
+   * @param  array<string,mixed>   $payload
+   * @return array<string,mixed>
+   */
+  private function ensureParentAttributes(Product $product, array $payload): array
+  {
+    // Preise am Parent nie mitsenden
+    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
+
+    // Alle Varianten-Attributwerte einsammeln
+    $attrValues = $this->collectVariantAttributes($product);
+
+    if (empty($attrValues)) {
+      // Keine Attribute → Parent kann simple bleiben
+      return $payload;
+    }
+
+    // Parent auf 'variable' setzen
+    $payload['type'] = 'variable';
+
+    // Woo-Attribute-Array aufbauen (position aufsteigend)
+    $attributes = [];
+    $pos = 0;
+    foreach ($attrValues as $slug => $options) {
+      if (empty($options)) {
+        continue;
+      }
+      $attributes[] = [
+        'name'      => $slug,           // z. B. 'pa_size'
+        'position'  => $pos++,
+        'visible'   => true,
+        'variation' => true,
+        'options'   => array_values(array_unique($options)),
+      ];
+    }
+
+    if (!empty($attributes)) {
+      $payload['attributes'] = $attributes;
+    }
+
+    // Optional: Sichtbarkeit/Status, falls nötig
+    if (empty($payload['status'])) {
+      $payload['status'] = 'publish';
+    }
+    if (empty($payload['catalog_visibility'])) {
+      $payload['catalog_visibility'] = 'visible';
+    }
+
+    return $payload;
+    // Hinweis: Preise bleiben weiterhin draußen.
+  }
+
+  /**
+   * Sammelt aus allen Varianten die Werte für bekannte Attribut-Slugs (pa_*).
+   * Passe die Feldnamen-Liste an Deine DB-Felder an (de/en).
+   *
+   * @return array<string,array<int,string>>  z. B. ['pa_size'=>['S','M'], 'pa_color'=>['Blue']]
+   */
+  private function collectVariantAttributes(Product $product): array
+  {
+    // Bekannte Slug→Feldnamen-Mappings (wie im VariationPayloadBuilder)
+    $map = [
+      'pa_color' => ['color', 'farbe', 'colour'],
+      'pa_size'  => ['size', 'groesse', 'größe', 'gr'],
+      // Weitere Slugs möglich:
+      // 'pa_length' => ['length_label', 'laenge'],
+      // 'pa_width'  => ['width_label', 'breite'],
+    ];
+
+    $values = [];
+    foreach (array_keys($map) as $slug) {
+      $values[$slug] = [];
+    }
+
+    // Varianten laden (ohne N+1: falls Relation vorhanden, gern $product->variations nutzen)
+    $variants = ProductVariation::query()->where('product_id', $product->id)->get();
+
+    foreach ($variants as $v) {
+      foreach ($map as $slug => $fields) {
+        foreach ($fields as $f) {
+          if (isset($v->{$f}) && $v->{$f} !== null && $v->{$f} !== '') {
+            $values[$slug][] = (string) $v->{$f};
+            break; // je Slug nur erstes passendes Feld nehmen
+          }
+        }
+      }
+    }
+
+    // Leere Slugs entfernen
+    foreach ($values as $slug => $opts) {
+      $opts = array_values(array_filter(array_unique($opts), fn($x) => $x !== ''));
+      if (empty($opts)) {
+        unset($values[$slug]);
+      } else {
+        $values[$slug] = $opts;
+      }
+    }
+
+    return $values;
+  }
 
 
   /**
