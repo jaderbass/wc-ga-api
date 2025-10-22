@@ -129,6 +129,24 @@ class ProductUpsertService
    */
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
+
+    // --- Mini-Patch: Name immer aus product_name ableiten, wenn nicht gesetzt ---
+    // Hintergrund: Woo zeigt derzeit "Product #<id>", wenn 'name' fehlt.
+    // Lösung: payload['name'] aus $product->product_name übernehmen.
+    if (!isset($payload['name']) || $payload['name'] === null || $payload['name'] === '') {
+      if (isset($product->product_name) && $product->product_name !== '') {
+        $payload['name'] = $product->product_name;
+      }
+    }
+
+    // Debug-Log, damit im Log eindeutig sichtbar ist, welcher Name zu Woo geht.
+    // Achtung: Log-Ausgaben ohne Backslash (siehe Projektregel).
+    Log::debug('ProductUpsertService: resolved name for upsert', [
+      'product_id'    => $product->id ?? null,
+      'resolved_name' => $payload['name'] ?? null,
+    ]);
+
+
     /** @var \App\Services\Woo\WooClient $client */
     $client = app(\App\Services\Woo\WooClient::class);
 
