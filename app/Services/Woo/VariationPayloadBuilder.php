@@ -17,6 +17,28 @@ class VariationPayloadBuilder
   {
     $attributes = $this->resolveAttributes($parent, $variation);
 
+    // --- Normalize attribute slugs to Woo global format (pa_*) ---
+    // Wir arbeiten mit Attribut-Objekten im Format ['name' => ..., 'option' => ...].
+    // Falls 'name' nicht mit 'pa_' beginnt, präfixen wir es.
+    foreach ($attributes as &$attr) {
+      if (!is_array($attr) || !isset($attr['name'])) {
+        continue;
+      }
+      $name = (string) $attr['name'];
+      if ($name !== '' && !str_starts_with($name, 'pa_')) {
+        // Doppel-Underscore vermeiden (z. B. "__size") und sauber präfixen
+        $attr['name'] = 'pa_' . ltrim($name, '_');
+      }
+    }
+    unset($attr);
+
+    // Debug-Log, um die finalen Attribute zu verifizieren
+    Log::debug('VariationPayloadBuilder: normalized attribute slugs', [
+      'product_id' => $parent->id,
+      'attributes' => $attributes,
+    ]);
+
+
     if (empty($attributes)) {
       Log::warning('VariationPayloadBuilder: no attributes for variation', [
         'variation_id' => $variation->id,
