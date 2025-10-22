@@ -222,7 +222,7 @@ class SyncProductsBulkAction extends BulkAction
         $updated  = $product->updated_at ? Carbon::parse($product->updated_at) : null;
 
         if ($lastSync && $updated && $updated->lte($lastSync)) {
-          $skip++;
+          $summary['skipped']++;
           $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ woo_synced_at)";
           Log::info('SyncProductsBulkAction: skipped unchanged (timestamp guard)', [
             'product_id'   => $product->id,
@@ -259,6 +259,11 @@ class SyncProductsBulkAction extends BulkAction
             'action'     => $action,
             'remote_id'  => $remoteId,
           ]);
+          // Nach erfolgreichem created/updated:
+          if (!empty($remote)) {
+            $product->woo_synced_at = now();
+            $product->save();
+          }
         } else {
           // alles andere (inkl. created/updated OHNE id) → skipped
           $summary['skipped']++;
