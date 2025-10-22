@@ -113,4 +113,9 @@ class VariationPayloadBuilder
 
     return $attrs;
   }
+
+  public function buildForVariation(\App\Models\Product $parent, \App\Models\ProductVariation $variation): array
+  {
+    return $this->build($parent, $variation);
+  }
 }
