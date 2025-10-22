@@ -130,20 +130,33 @@ class ProductUpsertService
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
 
-    // --- Mini-Patch: Name immer aus product_name ableiten, wenn nicht gesetzt ---
-    // Hintergrund: Woo zeigt derzeit "Product #<id>", wenn 'name' fehlt.
-    // Lösung: payload['name'] aus $product->product_name übernehmen.
-    if (!isset($payload['name']) || $payload['name'] === null || $payload['name'] === '') {
-      if (isset($product->product_name) && $product->product_name !== '') {
-        $payload['name'] = $product->product_name;
+    // --- Name-Resolver (DB-first, Payload darf nicht übersteuern) ---
+    $incoming = isset($payload['name']) ? trim((string) $payload['name']) : '';
+    $nameFromDb = is_string($product->product_name ?? null) ? trim($product->product_name) : '';
+
+    $incomingIsPlaceholder = ($incoming === '') || (bool) preg_match('/^Product\s*#\s*\d+$/i', $incoming);
+
+    // Regel: DB gewinnt. Wenn product_name existiert, setzen wir ihn immer.
+    // Nur wenn product_name leer ist, verwenden wir (falls vorhanden) einen sinnvollen incoming-Namen.
+    // Fallback bleibt "Product #<id>".
+    if ($nameFromDb !== '') {
+      if ($incoming !== '' && $incoming !== $nameFromDb) {
+        Log::debug('ProductUpsertService: overriding payload name with DB product_name', [
+          'product_id'   => $product->id ?? null,
+          'incoming'     => $incoming,
+          'db_name'      => $nameFromDb,
+          'incoming_is_placeholder' => $incomingIsPlaceholder,
+        ]);
       }
+      $payload['name'] = $nameFromDb;
+    } else {
+      $payload['name'] = !$incomingIsPlaceholder ? $incoming : ('Product #' . ($product->id ?? 'n/a'));
     }
 
-    // Debug-Log, damit im Log eindeutig sichtbar ist, welcher Name zu Woo geht.
-    // Achtung: Log-Ausgaben ohne Backslash (siehe Projektregel).
     Log::debug('ProductUpsertService: resolved name for upsert', [
       'product_id'    => $product->id ?? null,
-      'resolved_name' => $payload['name'] ?? null,
+      'resolved_name' => $payload['name'],
+      'source'        => $nameFromDb !== '' ? 'db:product_name' : ($incomingIsPlaceholder ? 'fallback' : 'payload.name'),
     ]);
 
     // --- Vereinheitlichte Upsert-Delegation + Normalisierung ---
