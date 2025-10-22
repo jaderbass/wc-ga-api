@@ -135,6 +135,12 @@ class ProductUpsertService
     // 0) Sicherstellen: keine Preisfelder am Parent
     unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
 
+    // Name sicherstellen (aus DB-Feld product_name), nur falls noch nicht gesetzt:
+    if (empty($payload['name'])) {
+      $payload['name'] = $product->product_name ?? ('Product #' . $product->id);
+    }
+
+
     // 1) Parent-Attribute aus Varianten ableiten (macht Parent sichtbar & variabel)
     $payload = $this->ensureParentAttributes($product, $payload);
 
