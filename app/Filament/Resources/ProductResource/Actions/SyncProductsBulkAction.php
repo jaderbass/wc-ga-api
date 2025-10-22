@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProductResource\Actions;
 use App\Models\Product;
 use App\Models\Shop;
 use App\Services\Woo\WooProductService;
+use Carbon\Carbon;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
@@ -46,10 +47,7 @@ class SyncProductsBulkAction extends BulkAction
   {
     parent::setUp();
 
-    /* $this->label('Sync Products to Woo')
-      ->icon('heroicon-o-arrow-up-on-square')
-      ->requiresConfirmation()
-      ->action(fn(Collection $records) => $this->handle($records)); */
+
     $this->label('Produkt synchronisieren')
       ->icon('heroicon-o-arrow-up-on-square')
       ->deselectRecordsAfterCompletion()
@@ -78,9 +76,44 @@ class SyncProductsBulkAction extends BulkAction
         $fail = 0;
         $details = [];
 
+      $selectedIds = $records->pluck('id')->values()->all();
+      Log::info('SyncProductsBulkAction: starting with selected IDs', [
+        'count' => count($selectedIds),
+        'ids'   => $selectedIds,
+      ]);
+
       foreach ($records as $product) {
         try {
           $product->refresh();
+
+          if (!in_array($product->id, $selectedIds, true)) {
+            // Sollte nie passieren, aber falls doch: NICHT senden.
+            $skip++;
+            Log::warning('SyncProductsBulkAction: product not in selectedIds -> skipped', [
+              'product_id' => $product->id,
+            ]);
+            continue;
+          }
+
+
+          // --- Guard: only_changed -> updated_at muss > woo_synced_at sein ---
+          $onlyChanged = (bool)($data['only_changed'] ?? false);
+          if ($onlyChanged) {
+            $lastSync = $product->woo_synced_at ? Carbon::parse($product->woo_synced_at) : null;
+            $updated  = $product->updated_at ? Carbon::parse($product->updated_at) : null;
+
+            if ($lastSync && $updated && $updated->lte($lastSync)) {
+              $skip++;
+              $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ woo_synced_at)";
+              Log::info('SyncProductsBulkAction: skipped unchanged (timestamp guard)', [
+                'product_id'   => $product->id,
+                'updated_at'   => $updated?->toDateTimeString(),
+                'woo_synced_at' => $lastSync?->toDateTimeString(),
+              ]);
+              continue; // nichts schicken
+            }
+          }
+
           // Orchestrator entscheidet PUT/POST + Invalid-ID-Recovery
           $res = $orch->syncSingle($product, false);
 
@@ -126,6 +159,12 @@ class SyncProductsBulkAction extends BulkAction
               'remote_id'  => $wid,
             ]);
           }
+
+          // Nach erfolgreichem created/updated:
+          if (!empty($remote)) {
+            $product->woo_synced_at = now();
+            $product->save();
+          }
         } catch (\Throwable $e) {
           $fail++;
           $details[] = "✖ #{$product->id}: " . $e->getMessage();
@@ -165,10 +204,35 @@ class SyncProductsBulkAction extends BulkAction
       'errors'   => 0,
     ];
 
+    $selectedIds = $records->pluck('id')->values()->all();
+    Log::info('SyncProductsBulkAction: starting with selected IDs', [
+      'count' => count($selectedIds),
+      'ids'   => $selectedIds,
+    ]);
+
     foreach ($records as $product) {
       /** @var Product $product */
       // Sicherstellen, dass das Model frisch aus der DB geladen ist
       $product->refresh();
+
+      // --- Guard: only_changed -> updated_at muss > woo_synced_at sein ---
+      $onlyChanged = (bool)($data['only_changed'] ?? false);
+      if ($onlyChanged) {
+        $lastSync = $product->woo_synced_at ? Carbon::parse($product->woo_synced_at) : null;
+        $updated  = $product->updated_at ? Carbon::parse($product->updated_at) : null;
+
+        if ($lastSync && $updated && $updated->lte($lastSync)) {
+          $skip++;
+          $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ woo_synced_at)";
+          Log::info('SyncProductsBulkAction: skipped unchanged (timestamp guard)', [
+            'product_id'   => $product->id,
+            'updated_at'   => $updated?->toDateTimeString(),
+            'woo_synced_at' => $lastSync?->toDateTimeString(),
+          ]);
+          continue; // nichts schicken
+        }
+      }
+
       $summary['products']++;
 
       try {
@@ -203,6 +267,12 @@ class SyncProductsBulkAction extends BulkAction
             'action'      => $action,
             'has_remoteId' => (bool)$remoteId,
           ]);
+        }
+
+        // Nach erfolgreichem created/updated:
+        if (!empty($remote)) {
+          $product->woo_synced_at = now();
+          $product->save();
         }
       } catch (\Throwable $e) {
         $summary['errors']++;
