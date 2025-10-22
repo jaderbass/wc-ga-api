@@ -99,16 +99,16 @@ class SyncProductsBulkAction extends BulkAction
           // --- Guard: only_changed -> updated_at muss > woo_synced_at sein ---
           $onlyChanged = (bool)($data['only_changed'] ?? false);
           if ($onlyChanged) {
-            $lastSync = $product->woo_synced_at ? Carbon::parse($product->woo_synced_at) : null;
-            $updated  = $product->updated_at ? Carbon::parse($product->updated_at) : null;
+            $lastSync = $product->last_synced_at ? Carbon::parse($product->last_synced_at) : null;
+            $updated  = $product->updated_at     ? Carbon::parse($product->updated_at)     : null;
 
             if ($lastSync && $updated && $updated->lte($lastSync)) {
               $skip++;
-              $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ woo_synced_at)";
+              $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ last_synced_at)";
               Log::info('SyncProductsBulkAction: skipped unchanged (timestamp guard)', [
-                'product_id'   => $product->id,
-                'updated_at'   => $updated?->toDateTimeString(),
-                'woo_synced_at' => $lastSync?->toDateTimeString(),
+                'product_id'     => $product->id,
+                'updated_at'     => $updated?->toDateTimeString(),
+                'last_synced_at' => $lastSync?->toDateTimeString(),
               ]);
               continue; // nichts schicken
             }
@@ -162,7 +162,7 @@ class SyncProductsBulkAction extends BulkAction
 
           // Nach erfolgreichem created/updated:
           if (!empty($remote)) {
-            $product->woo_synced_at = now();
+            $product->last_synced_at = now();
             $product->save();
           }
         } catch (\Throwable $e) {
@@ -218,18 +218,17 @@ class SyncProductsBulkAction extends BulkAction
       // --- Guard: only_changed -> updated_at muss > woo_synced_at sein ---
       $onlyChanged = (bool)($data['only_changed'] ?? false);
       if ($onlyChanged) {
-        $lastSync = $product->woo_synced_at ? Carbon::parse($product->woo_synced_at) : null;
-        $updated  = $product->updated_at ? Carbon::parse($product->updated_at) : null;
+        $lastSync = $product->last_synced_at ? Carbon::parse($product->last_synced_at) : null;
+        $updated  = $product->updated_at     ? Carbon::parse($product->updated_at)     : null;
 
         if ($lastSync && $updated && $updated->lte($lastSync)) {
           $summary['skipped']++;
-          $details[] = "⏭ #{$product->id}: unverändert (updated_at ≤ woo_synced_at)";
           Log::info('SyncProductsBulkAction: skipped unchanged (timestamp guard)', [
-            'product_id'   => $product->id,
-            'updated_at'   => $updated?->toDateTimeString(),
-            'woo_synced_at' => $lastSync?->toDateTimeString(),
+            'product_id'     => $product->id,
+            'updated_at'     => $updated?->toDateTimeString(),
+            'last_synced_at' => $lastSync?->toDateTimeString(),
           ]);
-          continue; // nichts schicken
+          continue;
         }
       }
 
@@ -260,8 +259,8 @@ class SyncProductsBulkAction extends BulkAction
             'remote_id'  => $remoteId,
           ]);
           // Nach erfolgreichem created/updated:
-          if (!empty($remote)) {
-            $product->woo_synced_at = now();
+          if (!empty($remoteId)) {
+            $product->last_synced_at = now();
             $product->save();
           }
         } else {
