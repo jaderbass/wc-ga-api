@@ -85,7 +85,7 @@ class SyncProductsBulkAction extends BulkAction
 
           $action = (string)($res['action'] ?? '');
           $status = (int)($res['status'] ?? 0);
-          $remote = $res['remote_id'] ?? ($res['id'] ?? null);
+          $remote = $this->extractRemoteId($res);
           $error  = $res['body']['error'] ?? ($res['message'] ?? null);
 
           // neue Klassifizierung: alles mit -failed oder HTTP >= 400 ist Fehler
@@ -102,13 +102,21 @@ class SyncProductsBulkAction extends BulkAction
               'remote_id'  => $remote,
               'error'      => $error,
             ]);
-          } elseif ($action === 'skipped' || !empty($res['skipped'])) {
+          } elseif ($action === 'skipped' || !empty($res['skipped']) || !$remote) {
+            // Ohne Remote-ID NICHT als Erfolg zählen → skipped
             $skip++;
-            $details[] = "⏭ #{$product->id}: unverändert";
+            $reason = $action === 'skipped' ? 'unverändert' : 'keine remote_id';
+            $details[] = "⏭ #{$product->id}: {$reason}";
+            Log::warning('SyncProductsBulkAction: response without id — skipped', [
+              'product_id'   => $product->id,
+              'action'       => $action,
+              'status'       => $status,
+              'has_remoteId' => (bool) $remote,
+            ]);
           } else {
             $ok++;
             $act = $action ?: 'updated';
-            $wid = $remote ?? '?';
+            $wid = $remote;
             $details[] = "✔ #{$product->id} → {$act} (Woo #{$wid})";
             Log::info('SyncProductsBulkAction: success', [
               'product_id' => $product->id,
@@ -164,16 +172,34 @@ class SyncProductsBulkAction extends BulkAction
         // Orchestrierter Upsert des Hauptprodukts (mit Preflight)
         $res = $orch->syncSingle($product, failHard: false);
 
-        $action = (string) ($res['action'] ?? 'skipped');
-        if ($action === 'created') {
-          $summary['created']++;
-        } elseif ($action === 'updated') {
-          $summary['updated']++;
-        } elseif ($action === 'skipped') {
-          $summary['skipped']++;
-        } else {
-          // z. B. 'error' oder unbekannt
+        $action   = (string) ($res['action'] ?? 'skipped');
+        $remoteId = $this->extractRemoteId($res);
+        $status   = (int)($res['status'] ?? 0);
+
+        if (str_ends_with($action, '-failed') || $status >= 400) {
           $summary['errors']++;
+          Log::error('SyncProductsBulkAction: error while syncing product', [
+            'product_id' => $product->id,
+            'action'     => $action,
+            'status'     => $status,
+            'remote_id'  => $remoteId,
+          ]);
+        } elseif (($action === 'created' || $action === 'updated') && $remoteId) {
+          // Nur als Erfolg zählen, wenn wirklich eine ID zurückkam
+          $summary[$action]++; // 'created' oder 'updated'
+          Log::info('SyncProductsBulkAction: success', [
+            'product_id' => $product->id,
+            'action'     => $action,
+            'remote_id'  => $remoteId,
+          ]);
+        } else {
+          // alles andere (inkl. created/updated OHNE id) → skipped
+          $summary['skipped']++;
+          Log::warning('SyncProductsBulkAction: skipped (no changes or no id)', [
+            'product_id'  => $product->id,
+            'action'      => $action,
+            'has_remoteId' => (bool)$remoteId,
+          ]);
         }
       } catch (\Throwable $e) {
         $summary['errors']++;
@@ -193,5 +219,20 @@ class SyncProductsBulkAction extends BulkAction
     }
 
     Log::info('SyncProductsBulkAction summary', $summary);
+  }
+
+  /**
+   * Extrahiert die Woo-Remote-ID aus gemischten Service-Responses.
+   */
+  private function extractRemoteId(mixed $res): ?int
+  {
+    if (is_array($res)) {
+      $id = $res['remote_id'] ?? $res['id'] ?? ($res['body']['id'] ?? null);
+    } elseif (is_object($res)) {
+      $id = $res->remote_id ?? $res->id ?? null;
+    } else {
+      $id = null;
+    }
+    return $id ? (int) $id : null;
   }
 }
