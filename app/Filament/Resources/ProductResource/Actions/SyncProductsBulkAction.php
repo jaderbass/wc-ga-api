@@ -80,6 +80,7 @@ class SyncProductsBulkAction extends BulkAction
 
       foreach ($records as $product) {
         try {
+          $product->refresh();
           // Orchestrator entscheidet PUT/POST + Invalid-ID-Recovery
           $res = $orch->syncSingle($product, false);
 
@@ -166,6 +167,8 @@ class SyncProductsBulkAction extends BulkAction
 
     foreach ($records as $product) {
       /** @var Product $product */
+      // Sicherstellen, dass das Model frisch aus der DB geladen ist
+      $product->refresh();
       $summary['products']++;
 
       try {
