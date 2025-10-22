@@ -116,6 +116,7 @@ class VariationPayloadBuilder
 
   public function buildForVariation(\App\Models\Product $parent, \App\Models\ProductVariation $variation): array
   {
+    // Alias für ältere Aufrufer – delegiert auf build()
     return $this->build($parent, $variation);
   }
 }
