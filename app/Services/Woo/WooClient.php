@@ -72,32 +72,53 @@ class WooClient
 
     protected function request(string $method, string $resource, array $opts = [])
     {
-        // Endpoint normalisieren (wie bisher)
+        // Endpoint normalisieren
         $url = ltrim($resource, '/');
         $url = preg_replace('#^wp-json/[^/]+/#i', '', $url) ?: $url;
 
         // Immer JSON akzeptieren
         $opts['headers']['Accept'] = 'application/json';
 
-        // ✨ Immer Query-Auth verwenden (robust hinter Proxy/CDN)
-        $optsQuery = $opts;
-        $optsQuery['query'] = array_merge($opts['query'] ?? [], [
-            'consumer_key'    => $this->shop->consumer_key,
-            'consumer_secret' => $this->shop->consumer_secret,
-        ]);
-        unset($optsQuery['auth']); // keine Basic-Auth
+        // 1) Versuch: Basic Auth (funktionierte bei dir früher zuverlässig)
+        $optsBasic = $opts + [
+            'auth' => [$this->shop->consumer_key, $this->shop->consumer_secret],
+        ];
 
         try {
-            // Debug-Log mit sicheren Metadaten (keine Secrets)
-            Log::debug('WooClient request', [
+            Log::debug('WooClient request (basic)', [
                 'base_uri' => (string) $this->http->getConfig('base_uri'),
                 'method'   => $method,
                 'endpoint' => $url,
                 'shop_id'  => $this->shop->id,
-                'key_tail' => substr((string) $this->shop->consumer_key, -4),
             ]);
 
-            $res = $this->http->request($method, $url, $optsQuery);
+            $res = $this->http->request($method, $url, $optsBasic);
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            // Nur bei 401 auf Query-Auth ausweichen
+            if ($e->getResponse()?->getStatusCode() !== 401) {
+                throw $this->wrap($e, $method, $url);
+            }
+
+            // 2) Fallback: Query-Auth (manche Hosts strippen den Authorization-Header)
+            $optsQuery = $opts;
+            $optsQuery['query'] = array_merge($opts['query'] ?? [], [
+                'consumer_key'    => $this->shop->consumer_key,
+                'consumer_secret' => $this->shop->consumer_secret,
+            ]);
+            unset($optsQuery['auth']);
+
+            try {
+                Log::debug('WooClient request (query-fallback)', [
+                    'base_uri' => (string) $this->http->getConfig('base_uri'),
+                    'method'   => $method,
+                    'endpoint' => $url,
+                    'shop_id'  => $this->shop->id,
+                ]);
+
+                $res = $this->http->request($method, $url, $optsQuery);
+            } catch (\Throwable $e2) {
+                throw $this->wrap($e2, $method, $url);
+            }
         } catch (\Throwable $e) {
             throw $this->wrap($e, $method, $url);
         }
@@ -106,6 +127,7 @@ class WooClient
         $decoded = json_decode($body, true);
         return is_array($decoded) ? $decoded : $body;
     }
+
 
 
     protected function wrap(\Throwable $e, string $method, string $endpoint): RuntimeException
