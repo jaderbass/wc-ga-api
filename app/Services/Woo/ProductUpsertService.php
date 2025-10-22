@@ -146,93 +146,21 @@ class ProductUpsertService
       'resolved_name' => $payload['name'] ?? null,
     ]);
 
+    // --- Vereinheitlichte Upsert-Delegation + Normalisierung ---
+    // Wir delegieren an die bestehenden HTTP-Helper, damit alle Requests
+    // zentral über $this->http laufen, und normalisieren anschließend die Response.
+    $remoteId = (int) ($product->woo_product_id ?? 0);
 
-    /** @var \App\Services\Woo\WooClient $client */
-    $client = app(\App\Services\Woo\WooClient::class);
-
-    // 0) Sicherstellen: keine Preisfelder am Parent
-    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
-
-    // Name sicherstellen (aus DB-Feld product_name), nur falls noch nicht gesetzt:
-    if (empty($payload['name'])) {
-      $payload['name'] = $product->product_name ?? ('Product #' . $product->id);
-    }
-
-
-    // 1) Parent-Attribute aus Varianten ableiten (macht Parent sichtbar & variabel)
-    $payload = $this->ensureParentAttributes($product, $payload);
-
-    // --- Response-Normalisierung (PSR-7 oder Array) ---
-    $parseResponse = function ($resp): array {
-      if (is_object($resp) && method_exists($resp, 'getStatusCode') && method_exists($resp, 'getBody')) {
-        $status = (int) $resp->getStatusCode();
-        $raw    = (string) $resp->getBody();
-        $body   = $raw !== '' ? (json_decode($raw, true) ?: []) : [];
-        return ['status' => $status, 'body' => $body];
-      }
-      if (is_array($resp)) {
-        $status = (int) ($resp['status'] ?? $resp['statusCode'] ?? 200);
-        $body   = $resp['body'] ?? $resp['data'] ?? $resp;
-        if (!is_array($body)) {
-          $body = is_string($body) && $body !== '' ? (json_decode($body, true) ?: []) : [];
-        }
-        return ['status' => $status, 'body' => $body];
-      }
-      return ['status' => 200, 'body' => []];
-    };
-
-    $endpointBase = 'products';
-    $remoteId     = (int) ($product->woo_product_id ?? 0);
-
-    try {
-      if ($remoteId > 0) {
-        // UPDATE
-        $resp = $client->put("{$endpointBase}/{$remoteId}", $payload);
-        $norm = $parseResponse($resp);
-
-        return [
-          'action'    => 'updated',
-          'status'    => $norm['status'],
-          'remote_id' => (int) ($norm['body']['id'] ?? $remoteId),
-          'body'      => $norm['body'],
-        ];
-      }
-
+    if ($remoteId > 0) {
+      // UPDATE
+      $res = $this->updateExisting($remoteId, $product, $payload, $failHard);
+    } else {
       // CREATE
-      $resp = $client->post($endpointBase, $payload);
-      $norm = $parseResponse($resp);
-
-      $newId = (int) ($norm['body']['id'] ?? 0);
-      if ($newId > 0) {
-        $product->woo_product_id = $newId;
-        $product->save();
-      }
-
-      return [
-        'action'    => 'created',
-        'status'    => $norm['status'],
-        'remote_id' => $newId ?: null,
-        'body'      => $norm['body'],
-      ];
-    } catch (\Throwable $e) {
-      $msg = $e->getMessage();
-
-      $isInvalidId =
-        str_contains($msg, 'woocommerce_rest_product_invalid_id') ||
-        str_contains($msg, '"code":"woocommerce_rest_product_invalid_id"') ||
-        str_contains($msg, 'Invalid ID');
-
-      if ($failHard) {
-        throw $e;
-      }
-
-      return [
-        'action'    => $remoteId > 0 ? 'update-failed' : 'create-failed',
-        'status'    => $remoteId > 0 ? 400 : 400,
-        'remote_id' => $remoteId > 0 ? $remoteId : null,
-        'body'      => ['error' => $msg, 'invalid_id' => $isInvalidId],
-      ];
+      $res = $this->createNew($product, $payload, $failHard);
     }
+
+    // Einheitliches Response-Shape für Aufrufer (BulkAction, Orchestrator, etc.)
+    return $this->normalizeUpsertResponse($res);
   }
 
 
@@ -580,5 +508,67 @@ class ProductUpsertService
       'size', 'größe', 'groesse', 'gr' => 'pa_size',
       default => $n !== '' ? $n : '',
     };
+  }
+
+  /**
+   * Vereinheitlicht beliebige Service/HTTP-Responses in ein konsistentes Array.
+   * Liefert immer: ['status'=>int, 'id'=>?int, 'remote_id'=>?int, 'action'=>?string, 'body'=>array]
+   */
+  private function normalizeUpsertResponse(mixed $res): array
+  {
+    $status = null;
+    $id     = null;
+    $action = null;
+    $body   = null;
+
+    if (is_array($res)) {
+      // Häufige Muster aus unseren Services
+      $status = $res['status'] ?? $res['code'] ?? null;
+      $id     = $res['remote_id'] ?? $res['id'] ?? ($res['body']['id'] ?? null);
+      $action = $res['action'] ?? null;
+      $body   = $res['body'] ?? $res;
+    } elseif (is_object($res)) {
+      // HTTP-Wrapper oder stdClass
+      if (method_exists($res, 'json')) {
+        try {
+          $body = $res->json();
+        } catch (\Throwable $e) {
+          $body = null;
+        }
+      } elseif (property_exists($res, 'body')) {
+        $body = is_array($res->body) ? $res->body : json_decode((string) $res->body, true);
+      } else {
+        // stdClass → in Array kippen
+        $body = json_decode(json_encode($res), true);
+      }
+
+      if (method_exists($res, 'status')) {
+        $status = $res->status();
+      } elseif (method_exists($res, 'getStatusCode')) {
+        $status = $res->getStatusCode();
+      } elseif (is_array($body) && isset($body['status'])) {
+        $status = $body['status'];
+      }
+
+      $id     = $body['id'] ?? ($res->id ?? ($res->remote_id ?? null));
+      $action = $body['action'] ?? ($res->action ?? null);
+    }
+
+    $normalized = [
+      'status'    => (int) ($status ?? 0),
+      'id'        => $id !== null ? (int) $id : null,
+      'remote_id' => $id !== null ? (int) $id : null,
+      'action'    => is_string($action) ? $action : null,
+      'body'      => is_array($body) ? $body : (is_string($body) ? ['raw' => $body] : []),
+    ];
+
+    // Debug zur Kontrolle der Normalisierung
+    Log::debug('ProductUpsertService: normalized upsert response', [
+      'status'    => $normalized['status'],
+      'remote_id' => $normalized['remote_id'],
+      'action'    => $normalized['action'],
+    ]);
+
+    return $normalized;
   }
 }
