@@ -107,14 +107,6 @@ class ProductUpsertService
   /**
    * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
    *
-   * @param  Product               $product
-   * @param  array<string,mixed>   $payload
-   * @param  bool                  $failHard
-   * @return array{action:string,status:int,remote_id:int|null,body:array<string,mixed>|null}
-   */
-  /**
-   * Upsert eines Hauptprodukts: PUT (wenn ID bekannt/gefunden), sonst POST.
-   *
    * - Preise werden NICHT synchronisiert.
    * - Für variable Produkte wird die Attributliste aus den Varianten aufgebaut:
    *   [
