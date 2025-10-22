@@ -84,6 +84,24 @@ class WooClient
             'auth' => [$this->shop->consumer_key, $this->shop->consumer_secret],
         ];
 
+        $isWrite = in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'], true);
+
+        if ($isWrite) {
+            // Query-Auth erzwingen
+            $optsQuery = $opts;
+            $optsQuery['query'] = array_merge($opts['query'] ?? [], [
+                'consumer_key'    => $this->shop->consumer_key,
+                'consumer_secret' => $this->shop->consumer_secret,
+            ]);
+            unset($optsQuery['auth']);
+            $res = $this->http->request($method, $url, $optsQuery);
+        } else {
+            // GET: Basic-Auth beibehalten
+            $optsBasic = $opts + ['auth' => [$this->shop->consumer_key, $this->shop->consumer_secret]];
+            $res = $this->http->request($method, $url, $optsBasic);
+        }
+
+
         try {
             Log::debug('WooClient request (basic)', [
                 'base_uri' => (string) $this->http->getConfig('base_uri'),
