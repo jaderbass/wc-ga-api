@@ -1,0 +1,172 @@
+﻿about                                  Display basic information about your application
+clear-compiled                         Remove the compiled class file
+completion                             Dump the shell completion script
+db                                     Start a new database CLI session
+docs                                   Access the Laravel documentation
+down                                   Put the application into maintenance / demo mode
+env                                    Display the current framework environment
+help                                   Display help for a command
+inspire                                Display an inspiring quote
+list                                   List commands
+migrate                                Run the database migrations
+optimize                               Cache framework bootstrap, configuration, and metadata to increase performance
+serve                                  Serve the application on the PHP development server
+tinker                                 Interact with your application
+up                                     Bring the application out of maintenance mode
+auth:clear-resets                      Flush expired password reset tokens
+cache:clear                            Flush the application cache
+cache:forget                           Remove an item from the cache
+cache:prune-stale-tags                 Prune stale cache tags from the cache (Redis only)
+channel:list                           List all registered private broadcast channels
+config:cache                           Create a cache file for faster configuration loading
+config:clear                           Remove the configuration cache file
+config:publish                         Publish configuration files to your application
+config:show                            Display all of the values for a given configuration file or key
+db:monitor                             Monitor the number of connections on the specified database
+db:seed                                Seed the database with records
+db:show                                Display information about the given database
+db:table                               Display information about the given database table
+db:wipe                                Drop all tables, views, and types
+env:decrypt                            Decrypt an environment file
+env:encrypt                            Encrypt an environment file
+event:cache                            Discover and cache the application's events and listeners
+event:clear                            Clear all cached events and listeners
+event:list                             List the application's events and listeners
+filament:about                         Display basic information about Filament packages that are installed
+filament:assets                        Set up Filament assets
+filament:cache-components              Cache all components
+filament:check-translations            Check for missing and removed translations
+filament:clear-cached-components       Clear all cached components
+filament:install                       Install Filament
+filament:optimize                      Cache components and Blade icons to increase performance
+filament:optimize-clear                Remove the cached components and Blade icons
+filament:upgrade                       Upgrade Filament to the latest version
+icons:cache                            Discover icon sets and generate a manifest file
+icons:clear                            Remove the blade icons manifest file
+import:products                        Import products from a CSV file using a mapping
+install:api                            Create an API routes file and install Laravel Sanctum or Laravel Passport
+install:broadcasting                   Create a broadcasting channel routes file
+key:generate                           Set the application key
+lang:publish                           Publish all language files that are available for customization
+livewire:attribute                     Create a new Livewire attribute class
+livewire:configure-s3-upload-cleanup   Configure temporary file upload s3 directory to automatically cleanup files older than 24hrs
+livewire:copy                          Copy a Livewire component
+livewire:delete                        Delete a Livewire component
+livewire:form                          Create a new Livewire form class
+livewire:layout                        Create a new app layout file
+livewire:make                          Create a new Livewire component
+livewire:move                          Move a Livewire component
+livewire:publish                       Publish Livewire configuration
+livewire:stubs                         Publish Livewire stubs
+livewire:upgrade                       Interactive upgrade helper to migrate from v2 to v3
+make:admin                             Erstellt oder aktualisiert einen Benutzer und weist ihm Admin-Rechte zu.
+make:cache-table                       Create a migration for the cache database table
+make:cast                              Create a new custom Eloquent cast class
+make:channel                           Create a new channel class
+make:class                             Create a new class
+make:command                           Create a new Artisan command
+make:component                         Create a new view component class
+make:controller                        Create a new controller class
+make:enum                              Create a new enum
+make:event                             Create a new event class
+make:exception                         Create a new custom exception class
+make:factory                           Create a new model factory
+make:filament-cluster                  Create a new Filament cluster class
+make:filament-exporter                 Create a new Filament exporter class
+make:filament-importer                 Create a new Filament importer class
+make:filament-issue                    Generates a link to the Filament issue page and pre-fills the version numbers.
+make:filament-page                     Create a new Filament page class and view
+make:filament-panel                    Create a new Filament panel
+make:filament-relation-manager         Create a new Filament relation manager class for a resource
+make:filament-resource                 Create a new Filament resource class and default page classes
+make:filament-theme                    Create a new Filament panel theme
+make:filament-user                     Create a new Filament user
+make:filament-widget                   Create a new Filament widget class
+make:form-field                        Create a new form field class and view
+make:form-layout                       Create a new form layout component class and view
+make:infolist-entry                    Create a new infolist entry class and view
+make:infolist-layout                   Create a new infolist layout component class and view
+make:interface                         Create a new interface
+make:job                               Create a new job class
+make:job-middleware                    Create a new job middleware class
+make:listener                          Create a new event listener class
+make:livewire                          Create a new Livewire component
+make:livewire-form                     Create a new Livewire component containing a Filament form
+make:livewire-table                    Create a new Livewire component containing a Filament table
+make:mail                              Create a new email class
+make:middleware                        Create a new HTTP middleware class
+make:migration                         Create a new migration file
+make:model                             Create a new Eloquent model class
+make:notification                      Create a new notification class
+make:notifications-table               Create a migration for the notifications table
+make:observer                          Create a new observer class
+make:policy                            Create a new policy class
+make:provider                          Create a new service provider class
+make:queue-batches-table               Create a migration for the batches database table
+make:queue-failed-table                Create a migration for the failed queue jobs database table
+make:queue-table                       Create a migration for the queue jobs database table
+make:request                           Create a new form request class
+make:resource                          Create a new resource
+make:rule                              Create a new validation rule
+make:scope                             Create a new scope class
+make:seeder                            Create a new seeder class
+make:session-table                     Create a migration for the session database table
+make:table-column                      Create a new table column class and cell view
+make:test                              Create a new test class
+make:trait                             Create a new trait
+make:view                              Create a new view
+migrate:fresh                          Drop all tables and re-run all migrations
+migrate:install                        Create the migration repository
+migrate:refresh                        Reset and re-run all migrations
+migrate:reset                          Rollback all database migrations
+migrate:rollback                       Rollback the last database migration
+migrate:status                         Show the status of each migration
+model:prune                            Prune models that are no longer needed
+model:show                             Show information about an Eloquent model
+optimize:clear                         Remove the cached bootstrap files
+package:discover                       Rebuild the cached package manifest
+permission:cache-reset                 Reset the permission cache
+permission:create-permission           Create a permission
+permission:create-role                 Create a role
+permission:setup-teams                 Setup the teams feature by generating the associated migration.
+permission:show                        Show a table of roles and permissions per guard
+permissions:fix-guards                 Pr├╝ft und korrigiert guard_name von Rollen & Permissions.
+permissions:fix-plan                   Erzeugt einen rein dokumentierten Fix-Plan (CSV & optional SQL) f├╝r Guard-Korrekturen, Orphans und Duplikate ÔÇô ohne ├änderungen an der DB.
+permissions:health                     Pr├╝ft Integrit├ñt von Rollen/Permissions & Pivots; optional CSV-Exporte f├╝r Mismatches und Statistiken.
+products:backfill                      Backfill f├╝r fehlende Produktfelder.
+queue:clear                            Delete all of the jobs from the specified queue
+queue:failed                           List all of the failed queue jobs
+queue:flush                            Flush all of the failed queue jobs
+queue:forget                           Delete a failed queue job
+queue:listen                           Listen to a given queue
+queue:monitor                          Monitor the size of the specified queues
+queue:prune-batches                    Prune stale entries from the batches database
+queue:prune-failed                     Prune stale entries from the failed jobs table
+queue:restart                          Restart queue worker daemons after their current job
+queue:retry                            Retry a failed queue job
+queue:retry-batch                      Retry the failed jobs for a batch
+queue:work                             Start processing jobs on the queue as a daemon
+route:cache                            Create a route cache file for faster route registration
+route:clear                            Remove the route cache file
+route:list                             List all registered routes
+schedule:clear-cache                   Delete the cached mutex files created by scheduler
+schedule:interrupt                     Interrupt the current schedule run
+schedule:list                          List all scheduled tasks
+schedule:run                           Run the scheduled commands
+schedule:test                          Run a scheduled command
+schedule:work                          Start the schedule worker
+schema:dump                            Dump the given database schema
+storage:link                           Create the symbolic links configured for the application
+storage:unlink                         Delete existing symbolic links configured for the application
+stub:publish                           Publish all stubs that are available for customization
+tunnel:quick                           Startet einen Cloudflare Quick Tunnel und zeigt die ├Âffentliche URL an.
+variations:backfill                    Backfill f├╝r fehlende Variationsfelder.
+vendor:publish                         Publish any publishable assets from vendor packages
+view:cache                             Compile all of the application's Blade templates
+view:clear                             Clear all compiled view files
+woo:export:sample                      Kleiner Testexport f├╝r WooCommerce.
+woo:mappings:reset                     Bereinigt lokale Woo-Mappings (woo_product_id) ÔÇô komplett oder validierungsbasiert
+woo:ping                               Test WooCommerce API connectivity and credentials.
+woo:shop:test                          Testet die Verbindung zur WooCommerce-API mit dem konfigurierten Shop.
+woo:sync:product                       Sync WooCommerce parent products using SKU-preflight upsert (create/update).
+woo:sync:variations                    Sync WooCommerce product variations (outbound) using SKU match & create/update logic

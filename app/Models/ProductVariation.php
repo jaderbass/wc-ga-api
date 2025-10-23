@@ -19,8 +19,14 @@ class ProductVariation extends Model
   ];
 
   protected $casts = [
-    // Die 'attributes' Spalte wird nicht mehr als JSON gecastet, da sie entfernt wird.
+    'attributes_json' => 'array',
+    'manage_stock'    => 'bool',
   ];
+
+
+ /*  protected $casts = [
+    // Die 'attributes' Spalte wird nicht mehr als JSON gecastet, da sie entfernt wird.
+  ]; */
 
   public function product(): BelongsTo
   {

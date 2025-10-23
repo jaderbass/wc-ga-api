@@ -9,6 +9,7 @@
 /public/storage
 /storage/pail
 .env
+.env-original.example
 .env.backup
 .env.production
 .phpactor.json

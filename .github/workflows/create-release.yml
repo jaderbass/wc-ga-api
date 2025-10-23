@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create_release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed for changelog range
+
+      - name: Build release notes from commit history
+        id: notes
+        run: |
+          # Determine previous tag (if any)
+          PREV_TAG=$(git tag --list 'v*' --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD | tail -1)
+            RANGE="$FIRST_COMMIT..HEAD"
+          else
+            RANGE="$PREV_TAG..HEAD"
+          fi
+
+          {
+            echo "## 🚀 ${GITHUB_REF_NAME}"
+            echo ""
+            echo "### Changes since ${PREV_TAG:-project start}"
+            echo ""
+            git log --pretty=format:'- %s (%h)' "$RANGE"
+            echo ""
+          } > RELEASE_NOTES.md
+
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          generate_release_notes: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
