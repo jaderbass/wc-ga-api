@@ -53,11 +53,20 @@ class SyncProductsBulkAction extends BulkAction
       ->deselectRecordsAfterCompletion()
       ->requiresConfirmation()
       ->form([
+        /* Select::make('shop_id')
+          ->label('Shop')
+          ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
+          ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
+          ->required(), */
         Select::make('shop_id')
           ->label('Shop')
           ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
           ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
-          ->required(),
+          ->required()
+          ->native(false)    // <— aktiviert Tom Select (JS-basiert)
+          ->searchable()
+          ->preload(),
+
         Toggle::make('only_changed')
           ->label('Nur geänderte senden')
           ->default(true),
