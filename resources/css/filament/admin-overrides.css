@@ -35,3 +35,69 @@
     /* Tailwind gray-800: gut lesbar */
   }
 }
+
+/* === Tom Select (Filament Select Felder im Modal) === */
+.ts-dropdown {
+  /* Grundfläche hell/dunkel klarer */
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  /* gray-900 */
+  border-color: #e5e7eb !important;
+  /* gray-200 */
+}
+
+.ts-dropdown .option {
+  color: #111827 !important;
+}
+
+.ts-dropdown .option:hover,
+.ts-dropdown .option.active,
+.ts-dropdown .option.selected {
+  background-color: #eef2ff !important;
+  /* indigo-50 */
+  color: #111827 !important;
+  /* gray-900 */
+}
+
+/* Dark Mode */
+html.dark .ts-dropdown {
+  background-color: #1f2937 !important;
+  /* gray-800 */
+  color: #f9fafb !important;
+  /* gray-50 */
+  border-color: #374151 !important;
+  /* gray-700 */
+}
+
+html.dark .ts-dropdown .option {
+  color: #f3f4f6 !important;
+  /* gray-100 */
+}
+
+html.dark .ts-dropdown .option:hover,
+html.dark .ts-dropdown .option.active,
+html.dark .ts-dropdown .option.selected {
+  background-color: #374151 !important;
+  /* gray-700 */
+  color: #f9fafb !important;
+  /* gray-50 */
+}
+
+/* === Filament Dropdown (Allgemeine Menüeinträge) === */
+.fi-dropdown .fi-dropdown-item:hover,
+.fi-dropdown .fi-dropdown-item:focus,
+.fi-dropdown .fi-dropdown-item[aria-current="true"] {
+  background-color: #eef2ff !important;
+  /* indigo-50 */
+  color: #111827 !important;
+  /* gray-900 */
+}
+
+html.dark .fi-dropdown .fi-dropdown-item:hover,
+html.dark .fi-dropdown .fi-dropdown-item:focus,
+html.dark .fi-dropdown .fi-dropdown-item[aria-current="true"] {
+  background-color: #374151 !important;
+  /* gray-700 */
+  color: #f9fafb !important;
+  /* gray-50 */
+}

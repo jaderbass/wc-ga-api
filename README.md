@@ -1,67 +1,204 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 🌄 GeoAlpin – Produkt- & Varianten-Sync zwischen Laravel/Filament und WooCommerce
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Dieses Projekt automatisiert den Import, die Verwaltung und den Export von Produktdaten
+zwischen dem Laravel-/Filament-Backend und WooCommerce-Shops.
 
-## About Laravel
+Entwickelt von **JAderBass web’n’more** (Jörg Aderhold)  
+Stand: 2025-10-17
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🧭 Projektüberblick
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+**Ziel:**  
+- Automatische Synchronisierung von Produkt- und Variantendaten mit WooCommerce  
+- Hersteller-unabhängige Import-Pipeline (CSV, XML, später API)  
+- Vereinheitlichte Export- und Sync-Mechanismen  
+- Zentrale Steuerung via Filament-Dashboard
 
-## Learning Laravel
+**Technologien:**  
+- Laravel 12 (PHP 8.3)  
+- Filament 3.2  
+- MySQL 8.x  
+- WooCommerce REST API (v3)  
+- Composer / npm / Vite
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+---
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## ⚙️ Systemvoraussetzungen
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+| Komponente | Empfehlung |
+|-------------|-------------|
+| **PHP** | ≥ 8.3 mit `curl`, `mbstring`, `intl`, `xml`, `json` |
+| **MySQL** | ≥ 8.0 |
+| **Webserver** | Apache 2.4 oder Nginx 1.18+ |
+| **Node.js** | ≥ 20 |
+| **Composer** | ≥ 2.7 |
+| **Speicherbedarf** | ≥ 512 MB (Dev), ≥ 2 GB (Prod) |
 
-## Laravel Sponsors
+---
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## 🚀 Installation & Setup
 
-### Premium Partners
+### 1️⃣ Repository klonen
+```bash
+git clone https://github.com/jaderbass/wc-ga-api.git
+cd wc-ga-api
+```
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+### 2️⃣ Abhängigkeiten installieren
+```bash
+composer install
+npm install && npm run build
+```
 
-## Contributing
+### 3️⃣ Env-Datei erstellen
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 4️⃣ Datenbank konfigurieren
+Passe in `.env` an:
+```dotenv
+DB_DATABASE=geoalpin
+DB_USERNAME=geoalpin_user
+DB_PASSWORD=...
+```
 
-## Code of Conduct
+### 5️⃣ Migration & Baseline-Dump
+```bash
+php artisan migrate
+php artisan db:seed   # falls Seeders vorhanden
+php artisan schema:dump --prune
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 6️⃣ Filament-Admin starten
+```bash
+php artisan serve
+```
+Zugriff: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## 🧩 Import-Module
 
-## License
+| Typ | Basisklasse | Beschreibung |
+|------|--------------|--------------|
+| CSV | `GenericCsvProductImporter` | Importiert Lieferanten-CSV nach Mapping-Schema |
+| XML | `BaseXmlImporter` (geplant) | Liest XML-Feeds und wandelt sie in Produkt-Entitäten um |
+| API | (in Planung) | Direkter API-Feed-Import über Hersteller-Endpoints |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-# Laravel12ImportExportCSV
+Konfigurationen unter `config/import_mappings/*.php`  
+Logik unter `app/Importers/` und `app/Helpers/`
+
+---
+
+## 🔄 Produkt- & Varianten-Synchronisation
+
+Das System unterstützt den bidirektionalen Sync von Produkten und Varianten
+zwischen Laravel/Filament und WooCommerce.
+
+### Filament-Dashboard
+- **Produkt synchronisieren** → `SyncProductsBulkAction` → `ProductExportOrchestrator::syncSingle()`
+- **Varianten synchronisieren** → `SyncVariationsBulkAction` → `ProductExportOrchestrator::syncVariationsForProduct()`
+
+**Bedienung:**
+1. Produkte markieren → Menü **Mehrfach-Operationen**
+2. Modal öffnen → Shop, „Nur geänderte senden“, „Dry-Run“ wählen
+3. Ergebnis-Toast zeigt Statusmeldungen
+
+### CLI-Sync
+```bash
+php artisan app:woo-sync-product
+php artisan app:woo-sync-variations
+```
+
+Optionen (falls implementiert):  
+`--dry`, `--only-changed`, `--shop=ID`
+
+### Logs
+- Speicherort: `storage/logs/laravel.log`
+- Prefixe:
+  - `[SyncProductsBulkAction]`
+  - `[SyncVariationsBulkAction]`
+  - `[ProductExportOrchestrator]`
+- `.env` prüfen bei API-Fehlern:
+  - `WOO_API_BASE_URL`
+  - `WOO_API_KEY`
+  - `WOO_API_SECRET`
+
+📘 **Detaillierte Anleitung:**  
+siehe [`docs/Product-Sync-Guide.md`](docs/Product-Sync-Guide.md)
+
+---
+
+## 📡 Webhooks (Inbound)
+
+WooCommerce sendet Produkt-Events an:
+```
+POST /api/webhooks/woo/{shopId}
+```
+
+Header:
+```
+X-WC-Webhook-Topic: product.updated
+X-WC-Webhook-Signature: <HMAC>
+```
+
+Verarbeitung:
+`App\Http\Controllers\WooWebhookController::handle()`  
+→ ruft intern den `ProductExportOrchestrator` auf.
+
+---
+
+## 🧾 Logging & Fehleranalyse
+
+- **Datei:** `storage/logs/laravel.log`
+- **Log-Level:** `.env → LOG_LEVEL=debug`
+- **Anzeige:** Filament zeigt Toasts nach jedem Sync
+- **Fehlercodes:**
+  - `400` → Ungültige Payload
+  - `401` → Falsche Woo-Credentials
+  - `404` → Parent-Produkt fehlt
+  - `500` → Serverfehler (Woo oder App)
+
+---
+
+## 🧹 Wartung & Refactoring
+
+### Aktuell erledigt
+- Konsistente BulkActions (Products + Variations)
+- Orchestrator als Single-Entry-Point
+- Logging vereinheitlicht (`Log::info`, kein Backslash)
+- Config-Docs für Woo-Settings
+
+### Nächste Schritte
+- `DispatchVariationsSyncJob` (Queue-Mode)
+- Erweiterte XML-Importer-Basis
+- Cleanup alter Migrations
+- README-Erweiterung um API-Endpoints
+
+---
+
+## 🧰 Entwickler-Tools
+
+| Zweck | Pfad |
+|-------|------|
+| Artisan Commands | `app/Console/Commands/` |
+| Testskripte | `tests/bin/` |
+| Woo-Services | `app/Services/Woo/` |
+| Filament-Actions | `app/Filament/Resources/ProductResource/Actions/` |
+| Importer-Basis | `app/Importers/` |
+
+---
+
+## 👨‍💻 Autor
+
+**Jörg Aderhold**  
+JAderBass web’n’more – Erfurt  
+[www.jaderbass.de](https://www.jaderbass.de)
+
+---
+
+© 2025 JAderBass web’n’more · Stand 2025-10-17

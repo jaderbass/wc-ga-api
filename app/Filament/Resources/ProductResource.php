@@ -14,6 +14,8 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\ProductResource\Actions\SyncProductsBulkAction;
+use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Support\ImportLog;
@@ -26,14 +28,18 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Toggle;
 use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Filament\Forms\Components\Placeholder;
 
 /**
  * Class ProductResource
@@ -77,8 +83,15 @@ class ProductResource extends Resource
               TextInput::make('product_name')
                 ->label('Produktname')
                 ->required()
+                ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
                 ->maxLength(255)
-                ->columnSpan(8),
+                ->columnSpan(4),
+
+              TextInput::make('slug')
+                ->label('Slug')
+                ->helperText('URL-Teil, automatisch aus dem Namen. Kollisionen werden serverseitig aufgelöst.')
+                ->required()
+                ->columnSpan(4),
 
               TextInput::make('product_number')
                 ->label('Produktnummer')
@@ -92,13 +105,28 @@ class ProductResource extends Resource
                 ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
                 ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
                 ->columnSpan(4),
+
               Select::make('manufacturer_id')
                 ->required()
                 ->relationship('manufacturer', 'manufacturer')
                 ->columnSpan(4),
+
               TextInput::make('sku')
-                ->maxLength(32)
+                ->label('SKU')
+                // Beim Editieren feldweise „password-like“: leer anzeigen
+                ->formatStateUsing(fn($state, $record, string $context) => $context === 'edit' ? '' : $state)
+                // Alte SKU als Platzhalter, damit man sie sieht ohne sie zu übernehmen
+                ->placeholder(fn($record) => $record?->sku)
+                // Nur beim Erstellen Pflicht
+                ->required(fn(string $context) => $context === 'create')
+                // Unique, aber aktuellen Datensatz ignorieren
+                ->unique(ignoreRecord: true)
+                // Beim Editieren nur speichern, wenn etwas eingegeben wurde (leer = unverändert)
+                ->dehydrated(fn($state) => filled($state))
+                ->maxLength(255)
+                ->helperText('Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
                 ->columnSpan(4),
+
             ]) //Grid
           ]) //schema
           ->collapsible(),
@@ -108,11 +136,19 @@ class ProductResource extends Resource
           ->schema([
             Grid::make(12)->schema([
               Textarea::make('description')
+                ->label('Beschreibung')
+                ->rows(6)
                 ->required()
+                ->maxLength(65535)
                 ->columnSpan(6),
-              Textarea::make('shortdescription')
+
+              Textarea::make('short_description')
+                ->label('Kurzbeschreibung')
+                ->rows(6)
                 ->required()
+                ->maxLength(65535)
                 ->columnSpan(6),
+
             ]) // Grid
           ]) //schema
           ->collapsible(),
@@ -410,9 +446,82 @@ class ProductResource extends Resource
           }),
       ])
       ->bulkActions([
-        Tables\Actions\BulkActionGroup::make([
-          Tables\Actions\DeleteBulkAction::make(),
-        ]),
+        BulkActionGroup::make([
+          DeleteBulkAction::make()->label('Löschen'),
+          /**
+           * Fügt eine Bulk-Action hinzu, um ausgewählte Produkte zu Woo zu synchronisieren.
+           * - Optional: Only changed
+           * - Optional: Dry-run
+           * - Shop wählbar (Default-Shop vorbelegt)
+           */
+          // BulkAction::make('sync_to_woo')
+          //   ->label('Zu Woo synchronisieren')
+          //   ->icon('heroicon-o-arrow-up-on-square')
+          //   ->deselectRecordsAfterCompletion()
+          //   ->requiresConfirmation()
+          //   ->form([
+          //     Select::make('shop_id')
+          //       ->label('Shop')
+          //       ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
+          //       ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
+          //       ->required(),
+          //     Toggle::make('only_changed')
+          //       ->label('Nur geänderte senden')
+          //       ->default(true),
+          //     Toggle::make('dry_run')
+          //       ->label('Dry-run (nur Vorschau)')
+          //       ->default(false),
+          //   ])
+          //   ->action(function (Collection $records, array $data) {
+          //     /** @var Shop $shop */
+          //     $shop = Shop::findOrFail($data['shop_id']);
+          //     /** @var WooProductService $svc */
+          //     $svc = app(WooProductService::class);
+
+          //     $ok = 0;
+          //     $skip = 0;
+          //     $fail = 0;
+          //     $details = [];
+
+          //     foreach ($records as $product) {
+          //       try {
+          //         $res = $svc->upsertProduct(
+          //           $product,
+          //           $shop,
+          //           (bool)($data['dry_run'] ?? false),
+          //           (bool)($data['only_changed'] ?? false),
+          //         );
+
+          //         if (($res['status'] ?? '') === 'error') {
+          //           $fail++;
+          //           $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
+          //         } elseif (!empty($res['skipped'])) {
+          //           $skip++;
+          //           $details[] = "⏭ #{$product->id}: unverändert";
+          //         } else {
+          //           $ok++;
+          //           $act = $res['action'] ?? 'update';
+          //           $woo = $res['id'] ?? '?';
+          //           $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
+          //         }
+          //       } catch (\Throwable $e) {
+          //         $fail++;
+          //         $details[] = "✖ #{$product->id}: " . $e->getMessage();
+          //       }
+          //     }
+
+          //     $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
+          //     Notification::make()
+          //       ->title('Woo-Sync abgeschlossen')
+          //       ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
+          //       ->success()
+          //       ->send();
+          //   }),
+          SyncProductsBulkAction::make('sync_to_woo'),
+          SyncVariationsBulkAction::make('sync_variations_to_woo'),
+        ])
+        ->label('Mehrfach-Operationen')
+        ->icon('heroicon-o-arrow-path'),
       ]);
   }
 
