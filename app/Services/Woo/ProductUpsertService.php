@@ -121,6 +121,10 @@ class ProductUpsertService
    */
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
+    // --- Parent-Attribute sicherstellen (deine vorhandene Helper-Methode) ---
+    // Mischt 'type' => 'variable' + attributes[] (variation:true, options[]) ins Payload
+    // und entfernt Preisfelder am Parent.
+    $payload = $this->ensureParentAttributes($product, $payload);
 
     // --- Name-Resolver (DB-first, Payload darf nicht übersteuern) ---
     $incoming = isset($payload['name']) ? trim((string) $payload['name']) : '';
@@ -155,6 +159,33 @@ class ProductUpsertService
     // Wir delegieren an die bestehenden HTTP-Helper, damit alle Requests
     // zentral über $this->http laufen, und normalisieren anschließend die Response.
     $remoteId = (int) ($product->woo_product_id ?? 0);
+
+    // Preflight: Wenn eine ID lokal existiert, prüfe ob sie remote wirklich existiert.
+    if ($remoteId > 0) {
+      $exists = false;
+      try {
+        $exists = $this->remoteProductExists($product, $remoteId);
+      } catch (\Throwable $e) {
+        // defensive: wenn die Probe scheitert, behandeln wie "existiert nicht"
+        Log::warning('preflight_exception', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+          'error' => $e->getMessage(),
+        ]);
+      }
+      if (!$exists) {
+        Log::warning('preflight_failed_invalid_id', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+        ]);
+        // lokale ID löschen → Create-Pfad aktivieren
+        $product->woo_product_id = null;
+        $product->save();
+        $remoteId = 0;
+      } else {
+        Log::debug('preflight_ok', ['product_id' => $product->id, 'woo_product_id' => $remoteId]);
+      }
+    }
 
     if ($remoteId > 0) {
       // UPDATE

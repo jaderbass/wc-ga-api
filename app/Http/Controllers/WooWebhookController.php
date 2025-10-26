@@ -25,29 +25,6 @@ class WooWebhookController extends Controller
 
         $payload   = $request->getContent(); // RAW body!
 
-        /* $secret    = trim((string) $shop->webhook_secret);   // Sicherheitsnetz
-        $got       = trim((string) $request->header('X-WC-Webhook-Signature', ''));
-        $calc      = base64_encode(hash_hmac('sha256', $payload, $secret, true));
-
-        if ($got === '' || ! hash_equals($calc, $got)) {
-            Log::warning('Woo webhook: invalid signature', [
-                'shop_id'   => $shop->id,
-                'secret_len' => strlen($secret),
-                'got_head'  => substr($got, 0, 8) . '…' . substr($got, -8),
-                'calc_head' => substr($calc, 0, 8) . '…' . substr($calc, -8),
-                'body_len'  => strlen($payload),
-            ]);
-            return response('Invalid signature', 401);
-        }
-
-        $signature = (string) $request->header('X-WC-Webhook-Signature', '');
-        $calc      = base64_encode(hash_hmac('sha256', $payload, (string) $shop->webhook_secret, true));
-
-        if ($signature === '' || ! hash_equals($calc, $signature)) {
-            Log::warning('Woo webhook: invalid signature', ['shop_id' => $shop->id]);
-            return response('Invalid signature', 401);
-        } */
-
         $topic   = (string) $request->header('X-WC-Webhook-Topic', '');
         $event   = (string) $request->header('X-WC-Webhook-Event', '');
         $body    = json_decode($payload, true) ?: [];
@@ -66,6 +43,40 @@ class WooWebhookController extends Controller
 
         // 👉 hier kurz & non-blocking arbeiten (Queue/Job o. Ä.)
         Log::info('Woo webhook: received', ['topic' => $topic, 'event' => $event, 'shop' => $shop->id]);
+
+        // Spezieller Fall: Produkt wurde in Woo endgültig gelöscht → lokale woo_product_id nullen
+        if ($topic === 'product.deleted') {
+            $json = [];
+            try {
+                $json = $request->json()->all() ?: [];
+            } catch (\Throwable $e) {
+                // RAW-Body fallback (Woo variiert je nach Hook)
+                $raw = (string) $request->getContent();
+                try {
+                    $json = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+                } catch (\Throwable $ee) {
+                }
+            }
+            $remoteId = data_get($json, 'id') ?? data_get($json, 'payload.id');
+            if ($remoteId) {
+                /** @var \App\Models\Product|null $p */
+                $p = Product::query()->where('woo_product_id', (int) $remoteId)->first();
+                if ($p) {
+                    $p->woo_product_id = null;
+                    $p->save();
+                    Log::info('woo_id_cleared_on_remote_delete', [
+                        'product_id' => $p->id,
+                        'remote_id'  => (int) $remoteId,
+                    ]);
+                } else {
+                    Log::info('woo_delete_webhook_no_local_match', [
+                        'remote_id' => (int) $remoteId,
+                    ]);
+                }
+            } else {
+                Log::warning('woo_delete_webhook_no_id_in_payload');
+            }
+        }
 
         return response()->noContent(); // 204
     }
