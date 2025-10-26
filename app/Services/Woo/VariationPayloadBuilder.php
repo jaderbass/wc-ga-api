@@ -281,27 +281,35 @@ class VariationPayloadBuilder
   }
 
   /**
-   * Stellt sicher, dass ein Term unter einem Attribut existiert (legt ihn ggf. an).
-   *
-   * @param int    $attributeId
-   * @param string $nameOrSlug
-   * @return void
+   * Stellt sicher, dass ein Term im gegebenen Attribut existiert.
+   * Ignoriert Woo-Fehler "term_exists" (409/400), damit der Sync nicht abbricht.
    */
   private function ensureTerm(int $attributeId, string $nameOrSlug): void
   {
     $list = $this->http->get("products/attributes/{$attributeId}/terms");
     $terms = $list->successful() ? ($list->json() ?? []) : [];
     foreach ($terms as $t) {
-      if ((string)($t['name'] ?? '') === $nameOrSlug || (string)($t['slug'] ?? '') === $nameOrSlug) return;
+      if ((string)($t['name'] ?? '') === $nameOrSlug || (string)($t['slug'] ?? '') === $nameOrSlug) {
+        return; // existiert bereits
+      }
     }
-    $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
-      'name' => $nameOrSlug,
-      'slug' => $nameOrSlug,
-    ]);
-    if ($resp->successful()) {
-      Log::info('woo_term_created', ['attribute_id'=>$attributeId,'term'=>$nameOrSlug]);
-    } else {
-      Log::warning('woo_term_create_failed', ['attribute_id'=>$attributeId,'term'=>$nameOrSlug,'body'=>$resp->body()]);
+
+    try {
+      $this->http->post("products/attributes/{$attributeId}/terms", [
+        'name' => $nameOrSlug,
+        'slug' => $nameOrSlug,
+      ])->throw();
+      Log::info('woo_term_created', ['attribute_id' => $attributeId, 'term' => $nameOrSlug]);
+    } catch (\Illuminate\Http\Client\RequestException $e) {
+      $json = $e->response?->json() ?? [];
+      $code = (string) (\Illuminate\Support\Arr::get($json, 'code', ''));
+      $body = $e->response?->body();
+
+      if ($code === 'term_exists' || (\is_string($body) && str_contains($body, 'term_exists'))) {
+        Log::notice('woo_term_exists_ignored', ['attribute_id' => $attributeId, 'term' => $nameOrSlug]);
+        return;
+      }
+      throw $e;
     }
   }
 

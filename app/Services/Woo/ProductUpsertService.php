@@ -395,6 +395,8 @@ class ProductUpsertService
         'variation' => true,
         'options'   => array_values(array_unique(array_map([$this, 'normalizeTermOption'], $options))),
       ];
+
+      Log::debug('ensureParentAttributes: mapped slug', ['from' => $slug, 'to' => $mappedSlug]);
     }
 
     if (!empty($attributes)) {
@@ -479,29 +481,32 @@ class ProductUpsertService
         continue;
       }
 
-      $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
-        'name' => $slug,
-        'slug' => $slug,
-      ]);
-
-      if ($resp->successful()) {
+      try {
+        $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
+          'name' => $slug,
+          'slug' => $slug,
+        ])->throw(); // <- wirft bei 4xx/5xx
         Log::info('woo_term_created', ['attribute_id' => $attributeId, 'term' => $slug]);
-      } else {
-        // 👇 NEU: Woo erlaubt keinen Duplicate-Term; das ignorieren wir.
-        $body = $resp->body();
-        if (str_contains($body, '"term_exists"')) {
+        // frisch erstellte Terms gleich in die existing-Map aufnehmen (spart Folgedurchläufe)
+        $existing[$slug] = $slug;
+      } catch (\Illuminate\Http\Client\RequestException $e) {
+        $json = $e->response?->json() ?? [];
+        $code = (string) (\Illuminate\Support\Arr::get($json, 'code', ''));
+        $body = $e->response?->body();
+
+        // ✅ Woo meldet, dass der Begriff bereits existiert → NICHT fatal
+        if ($code === 'term_exists' || (\is_string($body) && str_contains($body, 'term_exists'))) {
           Log::notice('woo_term_exists_ignored', [
             'attribute_id' => $attributeId,
-            'term' => $slug,
+            'term'         => $slug,
           ]);
+          // als vorhanden markieren, damit wir es nicht nochmal versuchen
+          $existing[$slug] = $slug;
           continue;
         }
 
-        Log::warning('woo_term_create_failed', [
-          'attribute_id' => $attributeId,
-          'term' => $slug,
-          'body' => $body,
-        ]);
+        // alles andere weiterwerfen
+        throw $e;
       }
     }
 
