@@ -475,7 +475,9 @@ class ProductUpsertService
 
     foreach ($options as $opt) {
       $slug = $this->normalizeTermOption((string) $opt);
-      if (isset($existing[$slug])) continue;
+      if (isset($existing[$slug])) {
+        continue;
+      }
 
       $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
         'name' => $slug,
@@ -485,9 +487,24 @@ class ProductUpsertService
       if ($resp->successful()) {
         Log::info('woo_term_created', ['attribute_id' => $attributeId, 'term' => $slug]);
       } else {
-        Log::warning('woo_term_create_failed', ['attribute_id' => $attributeId, 'term' => $slug, 'body' => $resp->body()]);
+        // 👇 NEU: Woo erlaubt keinen Duplicate-Term; das ignorieren wir.
+        $body = $resp->body();
+        if (str_contains($body, '"term_exists"')) {
+          Log::notice('woo_term_exists_ignored', [
+            'attribute_id' => $attributeId,
+            'term' => $slug,
+          ]);
+          continue;
+        }
+
+        Log::warning('woo_term_create_failed', [
+          'attribute_id' => $attributeId,
+          'term' => $slug,
+          'body' => $body,
+        ]);
       }
     }
+
   }
 
   /**
