@@ -78,6 +78,53 @@ class WooWebhookController extends Controller
             }
         }
 
+        // Bei "product.updated" mit status=trash -> NICHT nullen (nur loggen)
+        if ($topic === 'product.updated') {
+            $json   = $request->json()->all() ?: [];
+            $status = data_get($json, 'status') ?? data_get($json, 'payload.status');
+            if ($status === 'trash') {
+                Log::info('woo_trash_event_ignored_for_id_clear');
+            }
+        }
+
         return response()->noContent(); // 204
     }
+
+    /**
+     * Reagiert auf WooCommerce-Webhooks und löscht die lokale Woo-ID,
+     * wenn ein Produkt **dauerhaft gelöscht** wird.
+     *
+     * @param Request $request
+     * @param int|null $id (optional, falls Woo den ID-Teil mitsendet)
+     * @return JsonResponse
+     */
+    public function handleWooDelete(Request $request, ?int $id = null): JsonResponse
+    {
+        $body = $request->getContent();
+        $data = json_decode($body, true);
+
+        // Nur bei permanentem Delete, nicht bei Papierkorb
+        $event = $request->header('X-WC-Webhook-Topic');
+        if (!str_contains($event, 'deleted')) {
+            return response()->json(['ignored' => true]);
+        }
+
+        $wooId = $data['id'] ?? $id ?? null;
+        if (!$wooId) {
+            Log::warning('WooWebhook: delete received without ID');
+            return response()->json(['status' => 'no_id'], 400);
+        }
+
+        $affected = \DB::table('products')
+            ->where('woo_product_id', $wooId)
+            ->update(['woo_product_id' => null]);
+
+        Log::info('WooWebhook: product.deleted handled', [
+            'woo_id' => $wooId,
+            'affected' => $affected,
+        ]);
+
+        return response()->json(['cleared' => $affected]);
+    }
+
 }

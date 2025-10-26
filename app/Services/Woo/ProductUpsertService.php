@@ -364,152 +364,124 @@ class ProductUpsertService
   }
 
   /**
-   * Stellt sicher, dass der Parent ein korrektes Woo-Attribut-Setup hat.
-   * - nutzt WooAttributeResolver (falls vorhanden), sonst Fallback auf DB-Varianten
-   * - setzt type='variable' und attributes[] mit options
-   * - entfernt Preisfelder am Parent (Sicherheit)
-   *
-   * @param  Product               $product
-   * @param  array<string,mixed>   $payload
-   * @return array<string,mixed>
+   * Stellt sicher, dass alle für den Parent notwendigen Woo-Attribute existieren.
+   * - mappt englische Slugs auf deutsche Woo-Attribute (pa_farbe / pa_groessen)
+   * - erzeugt Attribute + Terms falls nötig
+   * - ersetzt 'name' durch 'id' im Payload
    */
-  private function ensureParentAttributes(Product $product, array $payload): array
+  protected function ensureParentAttributes(Product $product, array $payload): array
   {
-    // Preise am Parent nie mitsenden
-    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
-
-    // 1) Bevorzugt: Resolver verwenden (falls gebunden)
+    $variantAttributes = $this->collectVariantAttributes($product);
     $attributes = [];
-    if (app()->bound(\App\Services\Woo\WooAttributeResolver::class)) {
-      /** @var mixed $resolver */
-      $resolver = app(\App\Services\Woo\WooAttributeResolver::class);
+    $pos = 0;
 
-      // Versuche diverse sinnvolle Methoden, ohne die konkrete Signatur zu erzwingen.
-      // Erwartete Rückgabe-Form bei "direkten" Methoden: array<int,array{name,options[],visible,variation,position?}>
-      // Alternativ: Map slug => options[]; wir konvertieren dann selbst zu Woo-Attributes.
-      $attributes = $this->getAttributesFromResolver($resolver, $product);
+    foreach ($variantAttributes as $slug => $options) {
+      // Debug-Hilfe
+      Log::debug('ensureParentAttributes: mapping input slug', ['slug' => $slug]);
+
+      // 🇩🇪 Slug-Übersetzung (pa_color -> pa_farbe, pa_size -> pa_groessen)
+      [$mappedSlug, $mappedLabel] = $this->mapWooAttributeSlugGerman($slug);
+
+      // Attribut-ID sicherstellen
+      $attrId = $this->ensureAttributeId($mappedSlug, $mappedLabel);
+
+      // Terms (Optionen) sicherstellen
+      $this->ensureTerms($attrId, $options);
+
+      $attributes[] = [
+        'id'        => $attrId,
+        'position'  => $pos++,
+        'visible'   => true,
+        'variation' => true,
+        'options'   => array_values(array_unique(array_map([$this, 'normalizeTermOption'], $options))),
+      ];
     }
 
-    // 2) Fallback: aus den DB-Varianten selbst aggregieren
-    if (empty($attributes)) {
-      $attrValues = $this->collectVariantAttributes($product); // Map: slug => [options...]
-      if (!empty($attrValues)) {
-        $pos = 0;
-        foreach ($attrValues as $slug => $options) {
-          if (empty($options)) {
-            continue;
-          }
-
-          // IDs + Terms sicherstellen
-          $label  = $slug === 'pa_color' ? 'Color' : ($slug === 'pa_size' ? 'Size' : $slug);
-          $attrId = $this->ensureAttributeId($slug, $label);
-          $this->ensureTerms($attrId, $options);
-          /* $item = [
-            'id'        => $attrId,
-            'position'  => $pos++,
-            'visible'   => true,
-            'variation' => true,
-            'options'   => array_values(array_unique(array_map([$this, 'normalizeTermOption'], $options))),
-          ];
-          // IDs + Terms sicherstellen, dann Parent-Attribute mit ID setzen
-          $label  = $slug === 'pa_color' ? 'Color' : ($slug === 'pa_size' ? 'Size' : ucfirst(ltrim($slug, '_')));
-          $attrId = $this->ensureAttributeId($slug, $label);
-          $this->ensureTerms($attrId, $options);
-          $item['id'] = $attrId;
-          unset($item['name']);
-          $attributes[] = $item; */
-
-          // 🇩🇪 Slug auf deutsche Woo-Attribute mappen
-          [$mappedSlug, $mappedLabel] = $this->mapWooAttributeSlugGerman($slug);
-          // IDs + Terms sicherstellen
-          $attrId = $this->ensureAttributeId($mappedSlug, $mappedLabel);
-          $this->ensureTerms($attrId, $options);
-          $attributes[] = [
-            'id'        => $attrId,
-            'position'  => $pos++,
-            'visible'   => true,
-            'variation' => true,
-            'options'   => array_values(array_unique(array_map([$this, 'normalizeTermOption'], $options))),
-          ];
-        }
-      }
-    }
-
-    // 3) Wenn Attribute vorhanden → Parent als 'variable' markieren + attributes setzen
     if (!empty($attributes)) {
-      $payload['type'] = 'variable';
       $payload['attributes'] = $attributes;
-
-      // Sichtbarkeit standardisieren (manche Themes verstecken sonst)
-      $payload['status'] = $payload['status'] ?? 'publish';
-      $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
     }
 
     return $payload;
   }
 
-
   /**
-   * 🇩🇪 Mappt eingehende (ggf. englische) Slugs auf deutsche Woo-Slugs + Label.
-   * Siehe Entsprechung im VariationPayloadBuilder.
-   *
-   * @param string $slug
-   * @return array{0:string,1:string}
+   * 🇩🇪 Mappt englische Slugs auf deutsche Woo-Slugs und Labels.
+   * Beispiel:
+   *  - pa_color  → pa_farbe
+   *  - pa_size   → pa_groessen
    */
   private function mapWooAttributeSlugGerman(string $slug): array
   {
     $s = ltrim($slug, '_');
-    $s = str_starts_with($s, 'pa_') ? $s : ('pa_' . $s);
+    $s = str_starts_with($s, 'pa_') ? $s : 'pa_' . $s;
+
     return match ($s) {
       'pa_color', 'pa_colour' => ['pa_farbe', 'Farbe'],
       'pa_size'               => ['pa_groessen', 'Größen'],
-      default => [$s, ucfirst(str_replace(['pa_', '_'], ['', ' '], $s))]
+      default => [$s, ucfirst(str_replace(['pa_', '_'], ['', ' '], $s))],
     };
   }
 
   /**
-   * Sucht/erstellt das globale Attribut (deutscher Slug).
-   * Akzeptiert sowohl 'pa_farbe' als auch 'farbe' etc.
+   * Prüft, ob das Attribut existiert, legt es sonst an.
    */
   private function ensureAttributeId(string $slug, string $label): int
   {
     $resp = $this->http->get('products/attributes');
     $list = $resp->successful() ? ($resp->json() ?? []) : [];
-    $candidates = [$slug, (str_starts_with($slug, 'pa_') ? substr($slug, 3) : $slug)];
+
+    $candidates = [$slug];
+    if (str_starts_with($slug, 'pa_')) {
+      $candidates[] = substr($slug, 3);
+    }
+
     foreach ($list as $a) {
       $found = (string) ($a['slug'] ?? '');
       if (in_array($found, $candidates, true)) {
         return (int) ($a['id'] ?? 0);
       }
     }
-    $fixedSlug = str_starts_with($slug, 'pa_') ? $slug : ('pa_' . $slug);
+
+    // nicht gefunden → neu anlegen
+    $fixedSlug = str_starts_with($slug, 'pa_') ? $slug : 'pa_' . $slug;
     $create = $this->http->post('products/attributes', [
-      'name' => $label,
-      'slug' => $fixedSlug,
-      'type' => 'select',
-      'order_by' => 'menu_order',
+      'name'         => $label,
+      'slug'         => $fixedSlug,
+      'type'         => 'select',
+      'order_by'     => 'menu_order',
       'has_archives' => false,
     ]);
+
     if (!$create->successful()) {
-      throw new \RuntimeException("Failed to create attribute '{$fixedSlug}': " . $create->body());
+      throw new \RuntimeException("Failed to create attribute {$fixedSlug}: " . $create->body());
     }
+
     $id = (int) ($create->json()['id'] ?? 0);
     Log::info('woo_attribute_created', ['slug' => $fixedSlug, 'id' => $id]);
     return $id;
   }
 
-  /** legt fehlende Terms am Attribut an */
+  /**
+   * Legt fehlende Terms für ein Attribut an.
+   */
   private function ensureTerms(int $attributeId, array $options): void
   {
-    if (!$options) return;
+    if (empty($options)) return;
+
     $list = $this->http->get("products/attributes/{$attributeId}/terms");
     $existing = $list->successful()
       ? collect($list->json() ?? [])->pluck('slug', 'slug')->all()
       : [];
+
     foreach ($options as $opt) {
-      $slug = $this->normalizeTermOption((string)$opt);
+      $slug = $this->normalizeTermOption((string) $opt);
       if (isset($existing[$slug])) continue;
-      $resp = $this->http->post("products/attributes/{$attributeId}/terms", ['name' => $slug, 'slug' => $slug]);
+
+      $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
+        'name' => $slug,
+        'slug' => $slug,
+      ]);
+
       if ($resp->successful()) {
         Log::info('woo_term_created', ['attribute_id' => $attributeId, 'term' => $slug]);
       } else {
@@ -518,12 +490,13 @@ class ProductUpsertService
     }
   }
 
-  /** einfache Normalisierung (hier: trim) */
+  /**
+   * Vereinheitlicht Schreibweise (Trim etc.)
+   */
   private function normalizeTermOption(string $val): string
   {
     return trim($val);
   }
-
 
   /**
    * Liest Parent-Attribute über den WooAttributeResolver (versch. mögliche Methodennamen).
@@ -709,4 +682,6 @@ class ProductUpsertService
 
     return $normalized;
   }
+
+  
 }
