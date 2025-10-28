@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class WooWebhookController extends Controller
 {
@@ -115,7 +116,7 @@ class WooWebhookController extends Controller
             return response()->json(['status' => 'no_id'], 400);
         }
 
-        $affected = \DB::table('products')
+        $affected = DB::table('products')
             ->where('woo_product_id', $wooId)
             ->update(['woo_product_id' => null]);
 
