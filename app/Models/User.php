@@ -54,7 +54,7 @@ class User extends Authenticatable
         ];
     }
 
-    public function canAccessPanel(Panel $panel): bool
+    public function canAccessPanel(\Filament\Panel $panel): bool
     {
         return true; // vorerst offen lassen; später nach Bedarf einschränken
     }
