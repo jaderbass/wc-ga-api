@@ -7,6 +7,7 @@ use App\Models\Shop;
 use App\Services\Woo\WooClient;
 use Filament\Facades\Filament;
 use Filament\Navigation\NavigationGroup;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -35,8 +36,15 @@ class AppServiceProvider extends ServiceProvider
      * This method is called after all other service providers have been registered.
      * It is a good place to register Filament navigation items and set the default dashboard.
      */
+
     public function boot(): void
     {
-        //
+        // ... (deine evtl. bestehenden Einträge)
+
+        Gate::before(function ($user, $ability = null) {
+            // <<< DEINE Mailadresse hier eintragen >>>
+            return $user && $user->email === 'joerg@jaderbass.de' ? true : null;
+        });
     }
+
 }

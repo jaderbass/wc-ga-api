@@ -15,3 +15,14 @@ if (app()->environment('local')) {
 
 Route::get('/health', fn () => response()->json(['ok' => true, 'ts' => now()->toISOString()]));
 
+Route::get('/whoami', function () {
+    $u = auth()->user();
+    return response()->json([
+        'id'     => optional($u)->id,
+        'email'  => optional($u)->email,
+        'roles'  => $u ? $u->getRoleNames() : [],
+        'cookie' => request()->cookie(config('session.cookie')) !== null,
+        'guard'  => auth()->getDefaultDriver(),
+    ]);
+})->middleware('web');
+
