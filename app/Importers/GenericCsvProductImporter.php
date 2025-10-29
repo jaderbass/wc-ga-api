@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Class GenericCsvProductImporter
@@ -71,9 +72,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
 
     ImportLog::debug('Active mapping snapshot', [
-      'product_keys'   => array_keys($mapping['product'] ?? []),
-      'variation_keys' => array_keys($mapping['variation'] ?? []),
-      'vf_keys'        => array_keys($mapping['variation_fields'] ?? []),
+      'product_keys'   => array_keys($this->mapping['product'] ?? []),
+      'variation_keys' => array_keys($this->mapping['variation'] ?? []),
+      'vf_keys'        => array_keys($this->mapping['variation_fields'] ?? []),
     ]);
 
 
@@ -276,12 +277,12 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
 
-    // Debug pro Feld
-    ImportLog::debug('Mapping check', [
-      'field' => $dbField,
-      'candidates' => $candidates,
-      'resolved' => $productPayload[$dbField] ?? null,
-    ]);
+    // // Debug pro Feld
+    // ImportLog::debug('Mapping check', [
+    //   'field' => $dbField,
+    //   'candidates' => $candidates,
+    //   'resolved' => $productPayload[$dbField] ?? null,
+    // ]);
 
 
 
@@ -420,28 +421,32 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importVariation(Product $product, array $row)
   {
-    $referenceKey = $this->mapping['reference'] ?? 'Reference';
-    $ref = isset($row[$referenceKey]) ? trim($row[$referenceKey]) : null;
+    // reference kann String ODER Array sein -> robust per cell()
+    $referenceSpec = $this->mapping['reference'] ?? 'Reference';
+    $ref = $this->cell($row, is_array($referenceSpec) ? $referenceSpec : [$referenceSpec]);
+    $ref = $ref !== null ? trim((string) $ref) : null;
+
     if ($ref === null || $ref === '') {
       return; // ohne SKU keine Variante
     }
 
-    // 1. Payload für die Variante aus der Mapping-Datei erstellen
+    // 1) Payload aus variation_fields (csvSpec kann String ODER Array sein)
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
-    foreach ($variationFieldsMapping as $dbField => $csvColumn) {
-      if (isset($row[$csvColumn])) {
-        $variationPayload[$dbField] = trim($row[$csvColumn]);
+    foreach ($variationFieldsMapping as $dbField => $csvSpec) {
+      $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+      if ($val !== null && $val !== '') {
+        $variationPayload[$dbField] = trim((string) $val);
       }
     }
 
-    // 2. Variante erstellen oder aktualisieren
+    // 2) Variante erstellen oder aktualisieren (bestehende Logik beibehalten)
     $variation = ProductVariation::updateOrCreate(
-      ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
+      ['product_id' => $product->id, 'sku' => $ref],
       $variationPayload
     );
 
-    // 2. Attribute über die neuen Tabellen zuweisen
+    // Attribute zuweisen
     $this->handleVariationAttributes($variation, $row);
   }
 

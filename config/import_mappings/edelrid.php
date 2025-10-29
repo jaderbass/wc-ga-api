@@ -20,7 +20,7 @@ return [
 
   // Identifikation und Gruppierung
   'reference' => 'Artikelnummer',
-  'group_by'  => ['Artikelnummer'],
+  'group_by'  => 'Artikelbezeichnung',
 
   // Basismapping (CSV → interne Zielfelder)
   'fields' => [
@@ -61,6 +61,24 @@ return [
 
     // SKU: Basisfeld (Artikelnummer) – Details siehe 'sku_compose'
     'sku'                => ['Artikelnummer'],
+  ],
+
+  /**
+   * ✅ Vom GenericCsvProductImporter erwartetes Produkt-Mapping.
+   * Wir belassen dein bestehendes 'fields' unangetastet und liefern hier nur das,
+   * was der Importer aktiv nutzt.
+   */
+  'product' => [
+    'product_number'     => ['Artikelnummer'],
+    'product_name'       => ['Artikelbezeichnung'],
+    'description'        => ['Produkt-Text', "USP´s"],
+    'short_description'  => ['Kurzbeschreibung'],
+    'ean'                => ['EAN'],
+    'weight_g'           => ['Gewicht ohne Verpackung (g)'],
+    'material'           => ['Materialzusammensetzung'],
+    'norm'               => ['DIN'],
+    'instruction_url'    => ['URL Gebrauchsanleitung'],
+    'declaration_url'    => ['URL Konformitätserklärung'],
   ],
 
   // SKU-Komposition für Varianten (Importer kann daraus eine eindeutige Varianten-SKU bauen)
@@ -112,6 +130,24 @@ return [
   'variation_fields' => [
     'Farbe Bezeichnung',
     'Größen Bezeichnung',
+  ],
+
+  /**
+   * ✅ Vom Importer erwartete Varianten-Felder (assoziativ):
+   * key = DB-Feld der Variation, value = CSV-Spalte(n)
+   */
+  'variation_fields' => [
+    'color_name' => ['Farbe Bezeichnung'],
+    'size_name'  => ['Größen Bezeichnung'],
+  ],
+
+  /**
+   * ✅ Vom Importer erwartetes Attribut-Mapping (für Pivot).
+   * key = Anzeigename des Attributes, value = CSV-Spalte(n)
+   */
+  'variation' => [
+    'Farbe' => ['Farbe Bezeichnung'],
+    'Größe' => ['Größen Bezeichnung'],
   ],
 
   // Medienzusammenführung
