@@ -410,30 +410,51 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importVariation(Product $product, array $row)
   {
-    $referenceKey = $this->mapping['reference'] ?? 'Reference';
-    $ref = isset($row[$referenceKey]) ? trim($row[$referenceKey]) : null;
-    if ($ref === null || $ref === '') {
+    // SKU/Referenz robuster ermitteln (unterstützt String ODER Array im Mapping)
+    $referenceSpec = $this->mapping['reference'] ?? ['Artikelnummer', 'Reference'];
+    $ref = $this->firstNonEmptyFromRow(
+      $row,
+      is_array($referenceSpec) ? $referenceSpec : [$referenceSpec]
+    );
+
+    $ref = $ref !== null ? trim((string) $ref) : '';
+    if ($ref === '') {
       return; // ohne SKU keine Variante
     }
 
-    // 1. Payload für die Variante aus der Mapping-Datei erstellen
+    // Payload aus variation_fields (unterstützt Einzel- oder Mehrfachspalten per cell())
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
-    foreach ($variationFieldsMapping as $dbField => $csvColumn) {
-      if (isset($row[$csvColumn])) {
-        $variationPayload[$dbField] = trim($row[$csvColumn]);
+    foreach ($variationFieldsMapping as $dbField => $csvSpec) {
+      $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+      if ($val !== null && $val !== '') {
+        $variationPayload[$dbField] = trim($val);
       }
     }
 
-    // 2. Variante erstellen oder aktualisieren
+    // DB hat Unique-Index auf `sku` (nicht auf (product_id, sku)):
+    // -> Upsert NUR über 'sku' und 'product_id' im Update-Teil setzen.
     $variation = ProductVariation::updateOrCreate(
-      ['product_id' => $product->id, 'sku' => $ref], // 👈 Upsert-Key
-      $variationPayload
+      ['sku' => $ref], // 🔑 eindeutiger Schlüssel gemäß DB-Index
+      array_merge(['product_id' => $product->id], $variationPayload)
     );
 
-    // 2. Attribute über die neuen Tabellen zuweisen
+    // Falls die SKU bereits an einem anderen Produkt hing, wird hier „umgehängt“.
+    if ($variation->wasRecentlyCreated === false && $variation->product_id !== $product->id) {
+      // Sicherheitsgurt: sicherstellen, dass produkt_id korrekt gesetzt wurde
+      $variation->product_id = $product->id;
+      $variation->save();
+
+      Log::info('Variation reattached to product', [
+        'sku' => $ref,
+        'new_product_id' => $product->id,
+      ]);
+    }
+
+    // Attribute verknüpfen
     $this->handleVariationAttributes($variation, $row);
   }
+    
 
   /**
    * Liest Varianten-Attribute aus der CSV-Zeile und verknüpft deren Werte
