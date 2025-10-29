@@ -120,7 +120,9 @@ class GenericCsvProductImporter implements CsvImporterContract
       : ((is_string($groupBy) && $groupBy !== '') ? [$groupBy] : []);
 
     // Fallbacks für Edelrid (falls Mapping unvollständig)
-    $fallbackCols = ['Artikelbezeichnung', 'Artikelnummer'];
+    // → Primär nach Artikelbezeichnung gruppieren, NICHT nach Artikelnummer (sonst zu viele Gruppen)
+    #$fallbackCols = ['Artikelbezeichnung', 'Artikelnummer'];
+    $fallbackCols = ['Artikelbezeichnung'];
 
     // Helfer: sauberer Text (entfernt Steuerz. & normalisiert Spaces)
     $clean = function (?string $value): string {
@@ -291,9 +293,77 @@ class GenericCsvProductImporter implements CsvImporterContract
     $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
     $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());
 
+    // $finalProductPayload = array_merge($productPayload, [
+    //   'product_name'    => $name,
+    //   // Achtung: diese Keys schreiben wir nur, wenn Spalten existieren (siehe unten)
+    //   'product_type'    => 'variable',
+    //   'manufacturer_id' => $this->manufacturerId,
+    //   'status'          => 'draft',
+    // ]);
+
+    // // --- Upsert schema-robust + Diagnose ---
+    // /** @var \App\Models\Product $tmpModel */
+    // $tmpModel   = app(\App\Models\Product::class);
+    // $tableName  = $tmpModel->getTable();
+    // $columns    = \Illuminate\Support\Facades\Schema::getColumnListing($tableName);
+    // $columnSet  = array_flip($columns);
+
+    // // Welche Felder KÖNNEN wir wirklich schreiben?
+    // $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
+    // $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
+
+    // // Basisdaten für Create (nur vorhandene Spalten)
+    // $baseCreate = [];
+    // foreach (
+    //   [
+    //     'slug'            => $slug,
+    //     'manufacturer_id' => $this->manufacturerId,
+    //     'product_name'    => $name,
+    //     'product_type'    => $finalProductPayload['product_type'] ?? null,
+    //     'status'          => $finalProductPayload['status'] ?? null,
+    //   ] as $col => $val
+    // ) {
+    //   if (isset($columnSet[$col]) && $val !== null) {
+    //     $baseCreate[$col] = $val;
+    //   }
+    // }
+
+    // // Produkt holen/erstellen
+    // $query = \App\Models\Product::query()->where('slug', $slug);
+    // #if ($this->manufacturerId) {
+    // #  $query->where('manufacturer_id', $this->manufacturerId);
+    // #}
+    // $product = $query->first();
+
+    // if ($product) {
+    //   $product->forceFill($writablePayload)->save();
+    // } else {
+    //   $product = \App\Models\Product::create($baseCreate);
+    //   if (!empty($writablePayload)) {
+    //     $product->forceFill($writablePayload)->save();
+    //   }
+    // }
+
+    // product_number aus Mapping oder (Fallback) aus der Gruppe ableiten
+    if (
+      (!isset($productPayload['product_number']) || trim((string)$productPayload['product_number']) === '')
+      && isset($this->mapping['reference'])
+    ) {
+      $refSpec = is_array($this->mapping['reference']) ? $this->mapping['reference'] : [$this->mapping['reference']];
+      $pn = $this->firstNonEmptyFromRow($rows->first() ?? [], $refSpec);
+      if ($pn !== null && $pn !== '') {
+        $productPayload['product_number'] = trim((string)$pn);
+      }
+    } elseif (!isset($productPayload['product_number']) || trim((string)$productPayload['product_number']) === '') {
+      // generischer Fallback, falls kein reference-Mapping existiert
+      $pn = $this->firstNonEmptyFromRow($rows->first() ?? [], ['Artikelnummer', 'Reference']);
+      if ($pn !== null && $pn !== '') {
+        $productPayload['product_number'] = trim((string)$pn);
+      }
+    }
+
     $finalProductPayload = array_merge($productPayload, [
       'product_name'    => $name,
-      // Achtung: diese Keys schreiben wir nur, wenn Spalten existieren (siehe unten)
       'product_type'    => 'variable',
       'manufacturer_id' => $this->manufacturerId,
       'status'          => 'draft',
@@ -319,6 +389,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         'product_name'    => $name,
         'product_type'    => $finalProductPayload['product_type'] ?? null,
         'status'          => $finalProductPayload['status'] ?? null,
+        'product_number'  => $finalProductPayload['product_number'] ?? null,
       ] as $col => $val
     ) {
       if (isset($columnSet[$col]) && $val !== null) {
@@ -326,12 +397,20 @@ class GenericCsvProductImporter implements CsvImporterContract
       }
     }
 
-    // Produkt holen/erstellen
-    $query = \App\Models\Product::query()->where('slug', $slug);
-    #if ($this->manufacturerId) {
-    #  $query->where('manufacturer_id', $this->manufacturerId);
-    #}
-    $product = $query->first();
+    // Produkt holen/erstellen – bevorzugt über (manufacturer_id + product_number), sonst Fallback: slug
+    $product = null;
+    $pn = $finalProductPayload['product_number'] ?? null;
+    if ($pn !== null && trim((string)$pn) !== '') {
+      $product = \App\Models\Product::query()
+        ->where('manufacturer_id', $this->manufacturerId)
+        ->where('product_number', trim((string)$pn))
+        ->first();
+    }
+    if (!$product) {
+      $product = \App\Models\Product::query()
+        ->where('slug', $slug)
+        ->first();
+    }
 
     if ($product) {
       $product->forceFill($writablePayload)->save();
@@ -410,38 +489,40 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importVariation(Product $product, array $row)
   {
-    // SKU/Referenz robuster ermitteln (unterstützt String ODER Array im Mapping)
+    // SKU/Referenz robust ermitteln
     $referenceSpec = $this->mapping['reference'] ?? ['Artikelnummer', 'Reference'];
-    $ref = $this->firstNonEmptyFromRow(
-      $row,
-      is_array($referenceSpec) ? $referenceSpec : [$referenceSpec]
-    );
-
+    $ref = $this->firstNonEmptyFromRow($row, is_array($referenceSpec) ? $referenceSpec : [$referenceSpec]);
     $ref = $ref !== null ? trim((string) $ref) : '';
+
     if ($ref === '') {
       return; // ohne SKU keine Variante
     }
 
-    // Payload aus variation_fields (unterstützt Einzel- oder Mehrfachspalten per cell())
+    // Payload aus variation_fields + prüfen, ob es überhaupt Varianten-Merkmale gibt
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
+    $hasVariantSignal = false;
+
     foreach ($variationFieldsMapping as $dbField => $csvSpec) {
       $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
       if ($val !== null && $val !== '') {
         $variationPayload[$dbField] = trim($val);
+        $hasVariantSignal = true;
       }
     }
 
-    // DB hat Unique-Index auf `sku` (nicht auf (product_id, sku)):
-    // -> Upsert NUR über 'sku' und 'product_id' im Update-Teil setzen.
+    // Wenn keine Variantenfelder befüllt → diese Zeile repräsentiert vermutlich NUR das Hauptprodukt
+    if (!$hasVariantSignal) {
+      return;
+    }
+
+    // DB-Index: unique auf `sku` → Upsert nur via sku, product_id im Update
     $variation = ProductVariation::updateOrCreate(
-      ['sku' => $ref], // 🔑 eindeutiger Schlüssel gemäß DB-Index
+      ['sku' => $ref],
       array_merge(['product_id' => $product->id], $variationPayload)
     );
 
-    // Falls die SKU bereits an einem anderen Produkt hing, wird hier „umgehängt“.
     if ($variation->wasRecentlyCreated === false && $variation->product_id !== $product->id) {
-      // Sicherheitsgurt: sicherstellen, dass produkt_id korrekt gesetzt wurde
       $variation->product_id = $product->id;
       $variation->save();
 
@@ -451,7 +532,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       ]);
     }
 
-    // Attribute verknüpfen
     $this->handleVariationAttributes($variation, $row);
   }
     
