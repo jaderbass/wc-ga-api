@@ -121,6 +121,10 @@ class ProductUpsertService
    */
   public function upsertProduct(Product $product, array $payload, bool $failHard = false): array
   {
+    // --- Parent-Attribute sicherstellen (deine vorhandene Helper-Methode) ---
+    // Mischt 'type' => 'variable' + attributes[] (variation:true, options[]) ins Payload
+    // und entfernt Preisfelder am Parent.
+    $payload = $this->ensureParentAttributes($product, $payload);
 
     // --- Name-Resolver (DB-first, Payload darf nicht übersteuern) ---
     $incoming = isset($payload['name']) ? trim((string) $payload['name']) : '';
@@ -155,6 +159,33 @@ class ProductUpsertService
     // Wir delegieren an die bestehenden HTTP-Helper, damit alle Requests
     // zentral über $this->http laufen, und normalisieren anschließend die Response.
     $remoteId = (int) ($product->woo_product_id ?? 0);
+
+    // Preflight: Wenn eine ID lokal existiert, prüfe ob sie remote wirklich existiert.
+    if ($remoteId > 0) {
+      $exists = false;
+      try {
+        $exists = $this->remoteProductExists($product, $remoteId);
+      } catch (\Throwable $e) {
+        // defensive: wenn die Probe scheitert, behandeln wie "existiert nicht"
+        Log::warning('preflight_exception', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+          'error' => $e->getMessage(),
+        ]);
+      }
+      if (!$exists) {
+        Log::warning('preflight_failed_invalid_id', [
+          'product_id' => $product->id,
+          'woo_product_id' => $remoteId,
+        ]);
+        // lokale ID löschen → Create-Pfad aktivieren
+        $product->woo_product_id = null;
+        $product->save();
+        $remoteId = 0;
+      } else {
+        Log::debug('preflight_ok', ['product_id' => $product->id, 'woo_product_id' => $remoteId]);
+      }
+    }
 
     if ($remoteId > 0) {
       // UPDATE
@@ -333,63 +364,160 @@ class ProductUpsertService
   }
 
   /**
-   * Stellt sicher, dass der Parent ein korrektes Woo-Attribut-Setup hat.
-   * - nutzt WooAttributeResolver (falls vorhanden), sonst Fallback auf DB-Varianten
-   * - setzt type='variable' und attributes[] mit options
-   * - entfernt Preisfelder am Parent (Sicherheit)
-   *
-   * @param  Product               $product
-   * @param  array<string,mixed>   $payload
-   * @return array<string,mixed>
+   * Stellt sicher, dass alle für den Parent notwendigen Woo-Attribute existieren.
+   * - mappt englische Slugs auf deutsche Woo-Attribute (pa_farbe / pa_groessen)
+   * - erzeugt Attribute + Terms falls nötig
+   * - ersetzt 'name' durch 'id' im Payload
    */
-  private function ensureParentAttributes(Product $product, array $payload): array
+  protected function ensureParentAttributes(Product $product, array $payload): array
   {
-    // Preise am Parent nie mitsenden
-    unset($payload['regular_price'], $payload['sale_price'], $payload['price']);
-
-    // 1) Bevorzugt: Resolver verwenden (falls gebunden)
+    $variantAttributes = $this->collectVariantAttributes($product);
     $attributes = [];
-    if (app()->bound(\App\Services\Woo\WooAttributeResolver::class)) {
-      /** @var mixed $resolver */
-      $resolver = app(\App\Services\Woo\WooAttributeResolver::class);
+    $pos = 0;
 
-      // Versuche diverse sinnvolle Methoden, ohne die konkrete Signatur zu erzwingen.
-      // Erwartete Rückgabe-Form bei "direkten" Methoden: array<int,array{name,options[],visible,variation,position?}>
-      // Alternativ: Map slug => options[]; wir konvertieren dann selbst zu Woo-Attributes.
-      $attributes = $this->getAttributesFromResolver($resolver, $product);
+    foreach ($variantAttributes as $slug => $options) {
+      // Debug-Hilfe
+      Log::debug('ensureParentAttributes: mapping input slug', ['slug' => $slug]);
+
+      // 🇩🇪 Slug-Übersetzung (pa_color -> pa_farbe, pa_size -> pa_groessen)
+      [$mappedSlug, $mappedLabel] = $this->mapWooAttributeSlugGerman($slug);
+
+      // Attribut-ID sicherstellen
+      $attrId = $this->ensureAttributeId($mappedSlug, $mappedLabel);
+
+      // Terms (Optionen) sicherstellen
+      $this->ensureTerms($attrId, $options);
+
+      $attributes[] = [
+        'id'        => $attrId,
+        'position'  => $pos++,
+        'visible'   => true,
+        'variation' => true,
+        'options'   => array_values(array_unique(array_map([$this, 'normalizeTermOption'], $options))),
+      ];
+
+      Log::debug('ensureParentAttributes: mapped slug', ['from' => $slug, 'to' => $mappedSlug]);
     }
 
-    // 2) Fallback: aus den DB-Varianten selbst aggregieren
-    if (empty($attributes)) {
-      $attrValues = $this->collectVariantAttributes($product); // Map: slug => [options...]
-      if (!empty($attrValues)) {
-        $pos = 0;
-        foreach ($attrValues as $slug => $options) {
-          if (empty($options)) {
-            continue;
-          }
-          $attributes[] = [
-            'name'      => $slug,                               // z. B. 'pa_size'
-            'position'  => $pos++,
-            'visible'   => true,
-            'variation' => true,
-            'options'   => array_values(array_unique($options)),
-          ];
-        }
-      }
-    }
-
-    // 3) Wenn Attribute vorhanden → Parent als 'variable' markieren + attributes setzen
     if (!empty($attributes)) {
-      $payload['type'] = 'variable';
       $payload['attributes'] = $attributes;
-
-      // Sichtbarkeit standardisieren (manche Themes verstecken sonst)
-      $payload['status'] = $payload['status'] ?? 'publish';
-      $payload['catalog_visibility'] = $payload['catalog_visibility'] ?? 'visible';
     }
 
     return $payload;
+  }
+
+  /**
+   * 🇩🇪 Mappt englische Slugs auf deutsche Woo-Slugs und Labels.
+   * Beispiel:
+   *  - pa_color  → pa_farbe
+   *  - pa_size   → pa_groessen
+   */
+  private function mapWooAttributeSlugGerman(string $slug): array
+  {
+    $s = ltrim($slug, '_');
+    $s = str_starts_with($s, 'pa_') ? $s : 'pa_' . $s;
+
+    return match ($s) {
+      'pa_color', 'pa_colour' => ['pa_farbe', 'Farbe'],
+      'pa_size'               => ['pa_groessen', 'Größen'],
+      default => [$s, ucfirst(str_replace(['pa_', '_'], ['', ' '], $s))],
+    };
+  }
+
+  /**
+   * Prüft, ob das Attribut existiert, legt es sonst an.
+   */
+  private function ensureAttributeId(string $slug, string $label): int
+  {
+    $resp = $this->http->get('products/attributes');
+    $list = $resp->successful() ? ($resp->json() ?? []) : [];
+
+    $candidates = [$slug];
+    if (str_starts_with($slug, 'pa_')) {
+      $candidates[] = substr($slug, 3);
+    }
+
+    foreach ($list as $a) {
+      $found = (string) ($a['slug'] ?? '');
+      if (in_array($found, $candidates, true)) {
+        return (int) ($a['id'] ?? 0);
+      }
+    }
+
+    // nicht gefunden → neu anlegen
+    $fixedSlug = str_starts_with($slug, 'pa_') ? $slug : 'pa_' . $slug;
+    $create = $this->http->post('products/attributes', [
+      'name'         => $label,
+      'slug'         => $fixedSlug,
+      'type'         => 'select',
+      'order_by'     => 'menu_order',
+      'has_archives' => false,
+    ]);
+
+    if (!$create->successful()) {
+      throw new \RuntimeException("Failed to create attribute {$fixedSlug}: " . $create->body());
+    }
+
+    $id = (int) ($create->json()['id'] ?? 0);
+    Log::info('woo_attribute_created', ['slug' => $fixedSlug, 'id' => $id]);
+    return $id;
+  }
+
+  /**
+   * Legt fehlende Terms für ein Attribut an.
+   */
+  private function ensureTerms(int $attributeId, array $options): void
+  {
+    if (empty($options)) return;
+
+    $list = $this->http->get("products/attributes/{$attributeId}/terms");
+    $existing = $list->successful()
+      ? collect($list->json() ?? [])->pluck('slug', 'slug')->all()
+      : [];
+
+    foreach ($options as $opt) {
+      $slug = $this->normalizeTermOption((string) $opt);
+      if (isset($existing[$slug])) {
+        continue;
+      }
+
+      try {
+        $resp = $this->http->post("products/attributes/{$attributeId}/terms", [
+          'name' => $slug,
+          'slug' => $slug,
+        ])->throw(); // <- wirft bei 4xx/5xx
+        Log::info('woo_term_created', ['attribute_id' => $attributeId, 'term' => $slug]);
+        // frisch erstellte Terms gleich in die existing-Map aufnehmen (spart Folgedurchläufe)
+        $existing[$slug] = $slug;
+      } catch (\Illuminate\Http\Client\RequestException $e) {
+        $json = $e->response?->json() ?? [];
+        $code = (string) (\Illuminate\Support\Arr::get($json, 'code', ''));
+        $body = $e->response?->body();
+
+        // ✅ Woo meldet, dass der Begriff bereits existiert → NICHT fatal
+        if ($code === 'term_exists' || (\is_string($body) && str_contains($body, 'term_exists'))) {
+          Log::notice('woo_term_exists_ignored', [
+            'attribute_id' => $attributeId,
+            'term'         => $slug,
+          ]);
+          // als vorhanden markieren, damit wir es nicht nochmal versuchen
+          $existing[$slug] = $slug;
+          continue;
+        }
+
+        // alles andere weiterwerfen
+        throw $e;
+      }
+    }
+
+  }
+
+  /**
+   * Vereinheitlicht Schreibweise (Trim etc.)
+   */
+  private function normalizeTermOption(string $val): string
+  {
+    return trim($val);
   }
 
   /**
@@ -576,4 +704,6 @@ class ProductUpsertService
 
     return $normalized;
   }
+
+  
 }
