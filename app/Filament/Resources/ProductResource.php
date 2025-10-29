@@ -109,6 +109,9 @@ class ProductResource extends Resource
               Select::make('manufacturer_id')
                 ->required()
                 ->relationship('manufacturer', 'manufacturer')
+                ->native(false)        // Tom Select statt nativer <select>
+                ->searchable()         // Typeahead-Suche aktivieren
+                ->preload()            // Optionen vorladen (besseres UX im Modal)
                 ->columnSpan(4),
 
               TextInput::make('sku')
@@ -340,20 +343,20 @@ class ProductResource extends Resource
         Tables\Actions\Action::make('importProducts')
           ->label('Import starten')
           ->form([
-          Select::make('manufacturer_id')
-            ->label('Hersteller')
-            ->placeholder('Bitte Hersteller wählen …')
-            ->relationship('manufacturer', 'manufacturer')
-            ->native(false)        // Tom Select statt nativer <select>
-            ->searchable()         // Typeahead-Suche aktivieren
-            ->preload()            // Optionen vorladen (besseres UX im Modal)
-            ->reactive()
-            ->afterStateUpdated(function ($state, callable $set) {
-              // Automatisch den Import-Typ setzen
-              $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
-              $set('sourceType', $importType);
-            })
-            ->required(),
+            Select::make('manufacturer_id')
+              ->label('Hersteller')
+              ->placeholder('Bitte Hersteller wählen …')
+              ->relationship('manufacturer', 'manufacturer')
+              ->native(false)        // Tom Select statt nativer <select>
+              ->searchable()         // Typeahead-Suche aktivieren
+              ->preload()            // Optionen vorladen (besseres UX im Modal)
+              ->reactive()
+              ->afterStateUpdated(function ($state, callable $set) {
+                // Automatisch den Import-Typ setzen
+                $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
+                $set('sourceType', $importType);
+              })
+              ->required(),
             Hidden::make('sourceType')
               ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
             // Info-Box bei API-Import
