@@ -72,9 +72,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
 
     ImportLog::debug('Active mapping snapshot', [
-      'product_keys'   => array_keys($mapping['product'] ?? []),
-      'variation_keys' => array_keys($mapping['variation'] ?? []),
-      'vf_keys'        => array_keys($mapping['variation_fields'] ?? []),
+      'product_keys'   => array_keys($this->mapping['product'] ?? []),
+      'variation_keys' => array_keys($this->mapping['variation'] ?? []),
+      'vf_keys'        => array_keys($this->mapping['variation_fields'] ?? []),
     ]);
 
 
@@ -277,12 +277,12 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
 
-    // Debug pro Feld
-    ImportLog::debug('Mapping check', [
-      'field' => $dbField,
-      'candidates' => $candidates,
-      'resolved' => $productPayload[$dbField] ?? null,
-    ]);
+    // // Debug pro Feld
+    // ImportLog::debug('Mapping check', [
+    //   'field' => $dbField,
+    //   'candidates' => $candidates,
+    //   'resolved' => $productPayload[$dbField] ?? null,
+    // ]);
 
 
 
