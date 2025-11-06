@@ -78,7 +78,8 @@ class AdminPanelProvider extends PanelProvider
             // ->brandLogo(asset('images/geoalpin-shop-favicon.svg'))
             ->brandLogo(fn () => view('components.filament-brand-logo'))
             ->brandLogoHeight('2rem')
-            ->brandName('WooCommerce-Geoalpin-API');
+            ->brandName('WooCommerce-Geoalpin-API')
+            ->authGuard('web');
             // WICHTIG: kein ->viteTheme() und kein ->vite() hier – Theme bleibt unverändert,
             // CSS-Overrides werden unten in boot() via Render-Hook eingebunden.
     }

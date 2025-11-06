@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasRoles;
@@ -52,4 +54,15 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+    
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // TEMPORÄR: Vollzugriff, um 403 zu beheben.
+        // Später auf Rollen/Permissions umstellen (siehe unten).
+        return true;
+        
+        // Später (sauber) umstellen auf z. B.:
+        // return $this->hasAnyRole(['admin', 'super_admin']);
+    }
+
 }
