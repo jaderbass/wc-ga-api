@@ -137,28 +137,21 @@ return [
   // Normalisierungen / Umrechnungen
   'transforms' => [
     // Trims
-    'product_name' => fn($v) => is_string($v) ? trim($v) : $v,
-    'description'  => fn($v) => is_string($v) ? trim($v) : $v,
+    'product_name' => [\App\Support\Import\Edelrid\Map::class, 'productName'],
+    'description'  => [\App\Support\Import\Edelrid\Map::class, 'description'],
 
     // EAN nur Ziffern
-    'ean'          => fn($v) => preg_replace('/\D+/', '', (string) $v) ?: null,
+    'ean'          => [\App\Support\Import\Edelrid\Map::class, 'ean'],
 
     // Gewicht in Gramm
-    'weight_g'     => fn($v) => V::toGrams($v),
+    'weight_g'     => [\App\Support\Import\Edelrid\Map::class, 'weightGrams'],
 
     // Roh-Dimensionen (z. B. "130 x 76") → einzelne mm-Werte
-    'dimensions_raw' => function ($v) {
-      if (!$v) return null;
-      $s = preg_replace('/[^0-9xX,.\s]/', '', (string)$v);
-      $parts = preg_split('/[xX]/', $s);
-      $parts = array_map(fn($p) => V::toMillimeters(trim($p)), $parts);
-      $parts = array_values(array_filter($parts, fn($n) => $n !== null));
-      return $parts ?: null; // z. B. [130, 76]
-    },
+    'dimensions_raw' => [\App\Support\Import\Edelrid\Map::class, 'dimensionsRaw'],
 
     // Bild- und Video-URLs normalisieren
-    'image_urls'   => fn($v) => V::normalizeUrlList($v, [',', ';', '|']),
-    'video_urls'   => fn($v) => V::normalizeUrlList($v, [',', ';', "\n"]),
+    'image_urls'   => [\App\Support\Import\Edelrid\Map::class, 'imageUrls'],
+    'video_urls'   => [\App\Support\Import\Edelrid\Map::class, 'videoUrls'],
 
     // SKU-Basis bleibt 'Artikelnummer'; falls dein Importer Row-aware-Transforms unterstützt,
     // kannst du alternativ eine Komposition direkt hier definieren:
