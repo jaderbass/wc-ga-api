@@ -44,6 +44,7 @@
         }
     },
     "scripts": {
+        "phpdoc": "php phpDocumentor.phar run",
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi",
