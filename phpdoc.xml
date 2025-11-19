@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpdocumentor
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://www.phpdoc.org/phpdoc.xsd"
+    configVersion="3"
+>
+    <paths>
+        <!-- Ausgabe direkt ins API-Webroot -->
+        <output>/usr/www/users/geoalp/api/api-docs</output>
+        <!-- Cache kann im Projekt bleiben -->
+        <cache>docs/api-cache</cache>
+    </paths>
+
+    <versions>
+        <version number="current">
+            <api>
+                <source dsn="./">
+                    <path>app</path>
+                    <path>config</path>
+                    <path>routes</path>
+                </source>
+            </api>
+        </version>
+    </versions>
+</phpdocumentor>
