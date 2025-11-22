@@ -1,5 +1,26 @@
 <?php
 
+/**
+ * Hersteller-Mapping: Edelrid
+ *
+ * Dieses Mapping sorgt dafür, dass die Edelrid-Daten nicht länger wie
+ * eine Mischung aus Kletterlatein, Excel-Akrobatik und Marketinglyrik
+ * aussehen, sondern brav in unser internes Produktmodell passen.
+ *
+ * Pfad: config/import_mappings/edelrid.php
+ *
+ * Verantwortlichkeiten:
+ * - Zuordnung der Edelrid-Felder zu unseren internen Attributen
+ * - Normalisierung von Farben, Größen, Beschreibungen
+ * - Gruppierung von Varianten (z. B. Seillänge, Farbe)
+ *
+ * Hinweis:
+ * Wenn Edelrid spontan eine Spalte umbenennt, wirst du es sofort hier merken.
+ *
+ * @mapping-source   Edelrid CSV/XML Feeds
+ * @mapping-target   InternalProductDTO
+ * @see App\Imports\ImporterForEdelrid
+ */
 use App\Support\ImportValueNormalizer as V;
 
 return [

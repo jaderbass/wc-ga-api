@@ -1,5 +1,26 @@
 <?php
 
+/**
+ * Hersteller-Mapping: Petzl
+ *
+ * Dieses Mapping zähmt die Petzl-Daten, die manchmal mehr Dokumentation
+ * enthalten als ein kompletter Kletterkurs. Am Ende bleibt das übrig,
+ * was wir wirklich brauchen.
+ *
+ * Pfad: config/import_mappings/petzl.php
+ *
+ * Verantwortlichkeiten:
+ * - Mapping von Petzl-Attributen wie Farbe, Größe, Serien
+ * - Normalisierung von Petzl-Bezeichnungen
+ * - Produktbündelung nach Varianten
+ *
+ * Fun Fact:
+ * Wenn Petzl eine „Sonderversion“ meint, meinen sie meistens „andere Farbe“.
+ *
+ * @mapping-source   Petzl CSV/XML/API
+ * @mapping-target   InternalProductDTO
+ * @see App\Imports\ImporterForPetzl
+ */
 return [
   // Feld, nach dem die Zeilen zu einem Hauptprodukt gruppiert werden.
   'group_by' => 'Product name',
