@@ -241,10 +241,19 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Erzeuge die Produkt-Payload aus dem Mapping.
-     * Zusätzlich: Diagnose-Logs je Feld, um zu sehen, welcher Kandidat greift.
+     * Nutzt primär das 'fields'-Mapping, erweitert um 'product' als Override.
+     * 'product' überschreibt ggf. Einträge aus 'fields'.
      */
-    $productMapping = $this->mapping['product'] ?? [];
+    $baseProductMapping = $this->mapping['product'] ?? [];
+    $fieldMapping       = $this->mapping['fields'] ?? [];
+
+    // Effektives Produkt-Mapping: zuerst alle Felder, dann explizite Produkt-Felder
+    $productMapping = array_merge($fieldMapping, $baseProductMapping);
     $productPayload = [];
+
+    ImportLog::debug('Edelrid product mapping keys', [
+      'keys' => array_keys($productMapping),
+    ]);
 
     foreach ($productMapping as $dbField => $csvColumn) {
       $candidates = is_array($csvColumn) ? $csvColumn : [$csvColumn];
@@ -260,21 +269,59 @@ class GenericCsvProductImporter implements CsvImporterContract
         $val = $this->firstNonEmptyFromRow($sourceRow, $candidates);
         if ($val !== null && trim((string)$val) !== '') {
           $resolved = trim((string)$val);
-          $productPayload[$dbField] = $resolved;
         }
       }
 
+      // Ausgangswert für das Feld
+      $finalForField = $resolved;
+
+      // Optional: Transform für dieses Feld anwenden
+      if (!empty($this->mapping['transforms'][$dbField])) {
+        $transform = $this->mapping['transforms'][$dbField];
+
+        // Variante: [ClassName::class, 'method']
+        if (is_array($transform) && count($transform) === 2) {
+          [$class, $method] = $transform;
+          if (class_exists($class) && method_exists($class, $method)) {
+            $finalForField = $class::$method($resolved, $sourceRow ?? []);
+          }
+        }
+
+        // Variante: Closure
+        if ($transform instanceof \Closure) {
+          $finalForField = $transform($resolved, $sourceRow ?? []);
+        }
+      }
+
+      // Transform-Ergebnis in Payload schreiben
+      if (is_array($finalForField)) {
+        // Unterscheide numerische Arrays (z. B. Liste von Bild-URLs)
+        // von assoziativen Arrays (z. B. dimensions_raw + *_mm)
+        $keys        = array_keys($finalForField);
+        $isSequential = $keys === range(0, count($finalForField) - 1);
+
+        if ($isSequential) {
+          // einfache Liste → bleibt auf dem ursprünglichen Feld
+          $productPayload[$dbField] = $finalForField;
+        } else {
+          // assoziatives Array → mehrere Felder in Payload schreiben
+          foreach ($finalForField as $key => $value) {
+            $productPayload[$key] = $value;
+          }
+        }
+      } elseif ($finalForField !== null && trim((string) $finalForField) !== '') {
+        $productPayload[$dbField] = $finalForField;
+      }
+
       // Diagnose-Log: zeigt pro Feld, welche Kandidaten probiert wurden und was rauskam
-      /**
-       * ! Mit Flag aufrufen !!!
-       */
       ImportLog::debug('Mapping check', [
         'group'      => $groupKey,
         'field'      => $dbField,
         'candidates' => $candidates,
-        'resolved'   => $resolved, // null = kein Treffer
+        'resolved'   => $resolved, // Originalwert vor Transform
       ]);
     }
+
 
 
     // // Debug pro Feld
@@ -320,6 +367,21 @@ class GenericCsvProductImporter implements CsvImporterContract
     // Welche Felder KÖNNEN wir wirklich schreiben?
     $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
     $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
+
+    ImportLog::debug('Product payload before upsert', [
+      'group'           => $groupKey,
+      'slug'            => $slug,
+      'final_payload'   => $finalProductPayload,
+      'writable_payload'=> $writablePayload,
+      'dropped_keys'    => $droppedKeys,
+    ]);
+
+    if (($finalProductPayload['product_number'] ?? null) === '717620003600') {
+    ImportLog::debug('DEBUG Bud payload', [
+        'group'         => $groupKey,
+        'final_payload' => $finalProductPayload,
+    ]);
+}
 
     // Basisdaten für Create (nur vorhandene Spalten)
     $baseCreate = [];

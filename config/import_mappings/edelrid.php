@@ -61,9 +61,6 @@ return [
     'instruction_url'    => ['URL Gebrauchsanleitung'],
     'declaration_url'    => ['URL Konformitätserklärung'],
 
-    // Maße: in der CSV taucht häufig am Ende z. B. „130 x 76“ auf → als Rohwert einlesen
-    'dimensions_raw'     => ['size'],
-
     // Medien (Bilder in mehreren Spalten; Videos ggf. als Zeilenliste)
     'image_urls'         => [
       'URL Produktbild Detailbild 0',
@@ -100,6 +97,13 @@ return [
     'norm'               => ['DIN'],
     'instruction_url'    => ['URL Gebrauchsanleitung'],
     'declaration_url'    => ['URL Konformitätserklärung'],
+
+    // Maße: in der CSV taucht häufig am Ende z. B. „130 x 76“ auf → als Rohwert einlesen
+    'dimensions_raw'     => ['size'],
+
+    'image_urls' => [
+        'URL Produktbild Detailbild 0',
+    ],
   ],
 
   // SKU-Komposition für Varianten (Importer kann daraus eine eindeutige Varianten-SKU bauen)
