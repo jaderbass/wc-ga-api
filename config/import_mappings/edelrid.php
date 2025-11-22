@@ -125,6 +125,9 @@ return [
     'Closure'                => 'pa_closure',
     'DIN'                    => 'pa_norm',
 
+    // JAderBass 2025-11-22
+    'Marke'                  => 'pa_brand',
+
     // Nachhaltigkeit/Flags
     'Climb Green'            => 'pa_climbgreen',
     '100% vegan'             => 'pa_vegan',
