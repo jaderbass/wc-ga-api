@@ -372,7 +372,13 @@ class ProductResource extends Resource
 
             FileUpload::make('csv')
               ->label('CSV-Datei')
-              ->acceptedFileTypes(['text/csv'])
+              ->acceptedFileTypes([
+                  'text/csv',
+                  'text/plain',
+                  'application/csv',
+                  'application/vnd.ms-excel',
+                  'text/x-csv',
+              ])
               ->visible(fn($get) => $get('sourceType') === 'csv')
               ->storeFiles(false),
 
