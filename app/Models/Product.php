@@ -65,7 +65,9 @@ class Product extends Model
 
     protected $guarded = ['id'];
 
-    protected $casts = [];
+    protected $casts = [
+        'image_urls' => 'array',
+    ];
 
     /**
      * Liefert die Produktvarianten (Alias für `variations()`).
