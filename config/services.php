@@ -39,5 +39,9 @@ return [
         'user' => env('SINGINGROCK_API_USER'),
         'password' => env('SINGINGROCK_API_PASSWORD'),
     ],
+    'edelrid' => [
+        // Standard: so wie die anderen Edelrid-Links in deiner CSV
+        'media_base_url' => env('EDELRID_MEDIA_BASE_URL', 'https://media.edelrid.de/images/attribut'),
+    ],
 
 ];

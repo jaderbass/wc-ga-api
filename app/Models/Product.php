@@ -162,4 +162,53 @@ class Product extends Model
 
         return $slug ?: Str::uuid()->toString();
     }
+
+    /**
+     * Liefert vollständige Bild-URLs aus dem Import.
+     *
+     * Quellen:
+     *  - Rohwerte aus der DB (image_urls)
+     *  - Fertige URLs (bleiben unverändert)
+     *  - Relative Edelrid-Dateinamen (werden mit Base-URL ergänzt)
+     *
+     * Basis-URL:
+     *  config('services.edelrid.media_base_url')
+     *  Fallback:
+     *      https://media.edelrid.de/images/attribut
+     *
+     * @return array<int,string>
+     */
+    public function getDisplayImageUrlsAttribute(): array
+    {
+        $raw = $this->image_urls ?? [];
+
+        if (! is_array($raw)) {
+            $raw = [$raw];
+        }
+
+        // Basis-URL aus Config – oder Fallback
+        $base = config('services.edelrid.media_base_url', 'https://media.edelrid.de/images/attribut');
+        $base = rtrim($base, '/');
+
+        $urls = [];
+
+        foreach ($raw as $value) {
+            $value = trim((string) $value);
+            if ($value === '') {
+                continue;
+            }
+
+            // Bereits vollständige URLs → unverändert übernehmen
+            if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
+                $urls[] = $value;
+                continue;
+            }
+
+            // Relative Dateinamen → vollständige URL erzeugen
+            $urls[] = $base . '/' . ltrim($value, '/');
+        }
+
+        return array_values(array_unique($urls));
+    }
+
 }
