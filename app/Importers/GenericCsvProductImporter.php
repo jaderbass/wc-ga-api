@@ -6,6 +6,7 @@ use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -41,6 +42,17 @@ class GenericCsvProductImporter implements CsvImporterContract
     $this->mapping = $this->loadMapping($this->mappingFile);
   }
 
+  /**
+   * Ermittelt die Author-ID für diesen Importlauf.
+   *
+   * Aktuell:
+   * - verwendet den eingeloggten Benutzer (auth()->id()).
+   * Später könnte hier noch eine explizite Zuweisung ergänzt werden.
+   */
+  protected function resolveAuthorId(): ?int
+  {
+    return auth()->id();
+  }
 
   /**
    * Importiert eine CSV-Datei, erkennt das Hersteller-Mapping automatisch an den Headern
@@ -357,6 +369,8 @@ class GenericCsvProductImporter implements CsvImporterContract
       'status'          => 'draft',
     ]);
 
+    $authorId = $this->resolveAuthorId();
+
     // --- Upsert schema-robust + Diagnose ---
     /** @var \App\Models\Product $tmpModel */
     $tmpModel   = app(\App\Models\Product::class);
@@ -377,11 +391,11 @@ class GenericCsvProductImporter implements CsvImporterContract
     ]);
 
     if (($finalProductPayload['product_number'] ?? null) === '717620003600') {
-    ImportLog::debug('DEBUG Bud payload', [
+      ImportLog::debug('DEBUG Bud payload', [
         'group'         => $groupKey,
         'final_payload' => $finalProductPayload,
-    ]);
-}
+      ]);
+    }
 
     // Basisdaten für Create (nur vorhandene Spalten)
     $baseCreate = [];
@@ -392,6 +406,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         'product_name'    => $name,
         'product_type'    => $finalProductPayload['product_type'] ?? null,
         'status'          => $finalProductPayload['status'] ?? null,
+        'author_id'       => $authorId,
       ] as $col => $val
     ) {
       if (isset($columnSet[$col]) && $val !== null) {
