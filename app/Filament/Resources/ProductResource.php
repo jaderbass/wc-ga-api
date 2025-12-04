@@ -168,17 +168,34 @@ class ProductResource extends Resource
               Checkbox::make('unit')
                 ->label('Unit')
                 ->columnSpanFull(),
-              TextInput::make('width')
-                ->helperText('Width in mm')
+              TextInput::make('dimensions_raw')
+                ->label('Rohmaß (importiert)')
+                ->helperText('Originale Herstellerangabe, z. B. "10 x 20 x 30 cm"')
+                ->columnSpan(12)
+                ->disabled(),
+
+              TextInput::make('dimension_length_mm')
+                ->label('Länge (mm)')
+                ->numeric()
+                ->helperText('Länge in Millimeter')
                 ->columnSpan(3),
-              TextInput::make('length')
-                ->helperText('Length in mm')
+
+              TextInput::make('dimension_width_mm')
+                ->label('Breite (mm)')
+                ->numeric()
+                ->helperText('Breite in Millimeter')
                 ->columnSpan(3),
-              TextInput::make('height')
-                ->helperText('Height in mm')
+
+              TextInput::make('dimension_height_mm')
+                ->label('Höhe (mm)')
+                ->numeric()
+                ->helperText('Höhe in Millimeter')
                 ->columnSpan(3),
+
               TextInput::make('weight')
-                ->helperText('Weight in g')
+                ->label('Gewicht (g)')
+                ->numeric()
+                ->helperText('Gewicht in Gramm')
                 ->columnSpan(3),
               TextInput::make('box_width')
                 ->helperText('Box width in mm')
@@ -259,89 +276,45 @@ class ProductResource extends Resource
             ]) // Grid
           ]) //schema
           ->collapsible(),
-        // BEGIN PATCH: Readonly-Section für Bilder + Edelrid-Maße
-        FormSection::make('Produktdetails (readonly)')
-      ->description('Automatisch importierte Informationen (nicht editierbar)')
+        
+        FormSection::make('Produktbilder (readonly)')
+      ->description('Produktbilder aus Herstellerdaten (nur Anzeige)')
       ->schema([
         Grid::make(12)->schema([
 
           // Bild-Galerie
           Placeholder::make('image_gallery')
-    ->label('Produktbilder')
-    ->content(function ($record) {
+        ->label('Produktbilder')
+        ->content(function ($record) {
 
-        if (! $record || empty($record->display_image_urls)) {
+          if (! $record || empty($record->display_image_urls)) {
             return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
-        }
+          }
 
-        $html = '<div class="grid grid-cols-3 gap-4">';
+          $html = '<div class="grid grid-cols-3 gap-4">';
 
-        foreach ($record->display_image_urls as $url) {
+          foreach ($record->display_image_urls as $url) {
             $urlEsc = e($url);
 
             $html .= <<<HTML
-                <div class="space-y-1">
-                    <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
-                        <img 
-                            src="{$urlEsc}" 
-                            class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
-                        />
-                    </div>
-                    <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
+              <div class="space-y-1">
+                <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
+                  <img 
+                    src="{$urlEsc}" 
+                    class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
+                  />
                 </div>
+                <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
+              </div>
             HTML;
-        }
+          }
 
-        $html .= '</div>';
+          $html .= '</div>';
 
-        return new HtmlString($html);
-    })
-    ->columnSpan(12)
-    ->disableLabel(),
-
-          // Abmessungen
-          Placeholder::make('dimensions_readonly')
-                ->label('Abmessungen')
-                ->content(function ($record) {
-                    if (! $record) {
-                        return new HtmlString('');
-                    }
-
-                    $rows = [
-                        'Rohmaß'      => $record->dimensions_raw,
-                        'Länge (mm)'  => $record->dimension_length_mm,
-                        'Breite (mm)' => $record->dimension_width_mm,
-                        'Höhe (mm)'   => $record->dimension_height_mm,
-                    ];
-
-                    $html = '<table class="text-sm w-full rounded-md overflow-hidden border border-gray-700 bg-gray-900">';
-                    foreach ($rows as $label => $val) {
-                      $val = $val ?? '–';
-
-                      $html .= "<tr>
-                          <td class='border border-gray-700 px-2 py-1 font-medium bg-gray-800 text-gray-100'>
-                              {$label}
-                          </td>
-                          <td class='border border-gray-700 px-2 py-1 text-gray-100'>
-                              {$val}
-                          </td>
-                      </tr>";
-                    }
-                    $html .= '</table>';
-
-
-                    return new HtmlString($html);
-                })
-                ->columnSpan(12)
-                ->disableLabel()
-                ->visible(fn ($record) =>
-                    $record &&
-                    ($record->dimensions_raw
-                        || $record->dimension_length_mm
-                        || $record->dimension_width_mm
-                        || $record->dimension_height_mm)
-                ),
-
+          return new HtmlString($html);
+        })
+        ->columnSpan(12)
+        ->disableLabel(),
         ]),
       ])
       ->columnSpan(12)

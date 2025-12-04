@@ -180,35 +180,50 @@ class Product extends Model
      */
     public function getDisplayImageUrlsAttribute(): array
     {
-        $raw = $this->image_urls ?? [];
+        // Rohdaten: kann Array, JSON-String oder kommagetrennter String sein
+        $raw = $this->image_urls ?? null; // Feldnamen ggf. anpassen
 
-        if (! is_array($raw)) {
-            $raw = [$raw];
+        if ($raw === null || $raw === '') {
+            return [];
         }
 
-        // Basis-URL aus Config – oder Fallback
-        $base = config('services.edelrid.media_base_url', 'https://media.edelrid.de/images/attribut');
-        $base = rtrim($base, '/');
+        if (is_string($raw)) {
+            // Versuchen, JSON zu dekodieren
+            $decoded = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $values = $decoded;
+            } else {
+                // Fallback: Komma- oder Semikolon-getrennter String
+                $values = array_map('trim', preg_split('/[;,]+/', $raw));
+            }
+        } elseif (is_array($raw)) {
+            $values = $raw;
+        } else {
+            return [];
+        }
 
         $urls = [];
 
-        foreach ($raw as $value) {
-            $value = trim((string) $value);
-            if ($value === '') {
+        foreach ($values as $val) {
+            if (! is_string($val)) {
                 continue;
             }
 
-            // Bereits vollständige URLs → unverändert übernehmen
-            if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
-                $urls[] = $value;
+            $val = trim($val);
+            if ($val === '') {
                 continue;
             }
 
-            // Relative Dateinamen → vollständige URL erzeugen
-            $urls[] = $base . '/' . ltrim($value, '/');
+            // Nur echte http/https-URLs zulassen
+            if (
+                str_starts_with($val, 'http://')
+                || str_starts_with($val, 'https://')
+            ) {
+                $urls[] = $val;
+            }
+            // Reine Dateinamen oder relative Pfade werden bewusst ignoriert
         }
 
-        return array_values(array_unique($urls));
+        return $urls;
     }
-
 }
