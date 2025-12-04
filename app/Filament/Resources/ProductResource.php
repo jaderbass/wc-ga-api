@@ -20,7 +20,7 @@ use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Support\ImportLog;
 use Filament\Forms\Form;
-use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Select;
@@ -31,6 +31,10 @@ use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Get;
+use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -40,6 +44,7 @@ use Filament\Notifications\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\HtmlString;
 
 /**
  * Class ProductResource
@@ -76,7 +81,7 @@ class ProductResource extends Resource
   {
     return $form
       ->schema([
-        Section::make('Stammdaten')
+        FormSection::make('Stammdaten')
           ->description('Grundlegende Produktinformationen')
           ->schema([
             Grid::make(12)->schema([
@@ -134,7 +139,7 @@ class ProductResource extends Resource
           ]) //schema
           ->collapsible(),
 
-        Section::make('Beschreibungen')
+        FormSection::make('Beschreibungen')
           ->description('Weiterführende Produktinformationen')
           ->schema([
             Grid::make(12)->schema([
@@ -156,7 +161,7 @@ class ProductResource extends Resource
           ]) //schema
           ->collapsible(),
 
-        Section::make('Maße')
+        FormSection::make('Maße')
           ->description('Produkt- und Verpackungsmaße')
           ->schema([
             Grid::make(12)->schema([
@@ -195,7 +200,7 @@ class ProductResource extends Resource
           ]) // schema
           ->collapsible(),
 
-        Section::make('Unterlagen')
+        FormSection::make('Unterlagen')
           ->description('Gebrauchsanweisung/Zertifizierung/Konformitätserklärung')
           ->schema([
             Grid::make(12)->schema([
@@ -226,7 +231,7 @@ class ProductResource extends Resource
           ]) //schema
           ->collapsible(),
 
-        Section::make('Author')
+        FormSection::make('Author')
           ->description('Benutzerdaten von WooCommerce')
           ->schema([
             Grid::make(12)->schema([
@@ -254,6 +259,93 @@ class ProductResource extends Resource
             ]) // Grid
           ]) //schema
           ->collapsible(),
+        // BEGIN PATCH: Readonly-Section für Bilder + Edelrid-Maße
+        FormSection::make('Produktdetails (readonly)')
+      ->description('Automatisch importierte Informationen (nicht editierbar)')
+      ->schema([
+        Grid::make(12)->schema([
+
+          // Bild-Galerie
+          Placeholder::make('image_gallery')
+    ->label('Produktbilder')
+    ->content(function ($record) {
+
+        if (! $record || empty($record->display_image_urls)) {
+            return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
+        }
+
+        $html = '<div class="grid grid-cols-3 gap-4">';
+
+        foreach ($record->display_image_urls as $url) {
+            $urlEsc = e($url);
+
+            $html .= <<<HTML
+                <div class="space-y-1">
+                    <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
+                        <img 
+                            src="{$urlEsc}" 
+                            class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
+                        />
+                    </div>
+                    <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
+                </div>
+            HTML;
+        }
+
+        $html .= '</div>';
+
+        return new HtmlString($html);
+    })
+    ->columnSpan(12)
+    ->disableLabel(),
+
+          // Abmessungen
+          Placeholder::make('dimensions_readonly')
+                ->label('Abmessungen')
+                ->content(function ($record) {
+                    if (! $record) {
+                        return new HtmlString('');
+                    }
+
+                    $rows = [
+                        'Rohmaß'      => $record->dimensions_raw,
+                        'Länge (mm)'  => $record->dimension_length_mm,
+                        'Breite (mm)' => $record->dimension_width_mm,
+                        'Höhe (mm)'   => $record->dimension_height_mm,
+                    ];
+
+                    $html = '<table class="text-sm w-full rounded-md overflow-hidden border border-gray-700 bg-gray-900">';
+                    foreach ($rows as $label => $val) {
+                      $val = $val ?? '–';
+
+                      $html .= "<tr>
+                          <td class='border border-gray-700 px-2 py-1 font-medium bg-gray-800 text-gray-100'>
+                              {$label}
+                          </td>
+                          <td class='border border-gray-700 px-2 py-1 text-gray-100'>
+                              {$val}
+                          </td>
+                      </tr>";
+                    }
+                    $html .= '</table>';
+
+
+                    return new HtmlString($html);
+                })
+                ->columnSpan(12)
+                ->disableLabel()
+                ->visible(fn ($record) =>
+                    $record &&
+                    ($record->dimensions_raw
+                        || $record->dimension_length_mm
+                        || $record->dimension_width_mm
+                        || $record->dimension_height_mm)
+                ),
+
+        ]),
+      ])
+      ->columnSpan(12)
+      ->collapsed(),
 
       ])
       ->columns(12);
@@ -545,6 +637,11 @@ class ProductResource extends Resource
     ];
   }
 
+  /**
+   * Rückgabe der Seiten/Actions (Erstellen/Bearbeiten/Anzeigen)
+   *
+   * @return array<string, mixed>
+   */
   public static function getPages(): array
   {
     return [
@@ -553,4 +650,62 @@ class ProductResource extends Resource
       'edit' => Pages\EditProduct::route('/{record}/edit'),
     ];
   }
+
+  /**
+   * Definiert die Infolist-Struktur für die Produkt-Detailansicht
+   * innerhalb des Filament Admin Panels.
+   *
+   * Aufgaben der Infolist:
+   *  - Darstellung aller Produkt-Basisdaten
+   *  - Zusätzliche Ausgabe der Edelrid-spezifischen Dimensionen
+   *  - Anzeige der Bildgalerie über display_image_urls
+   *
+   * Rückgabewert:
+   *  Ein vollständig konfiguriertes Filament\Infolists\Infolist-Objekt
+   *  mit allen Abschnitten und Einträgen (Sections, TextEntry, ImageEntry).
+   *
+   * Hinweis:
+   *  Die Methode kann erweitert werden, um weitere Hersteller-spezifische
+   *  Felder, Medien oder technische Produktparameter auszugeben.
+   *
+   * @param  \Filament\Infolists\Infolist  $infolist
+   * @return \Filament\Infolists\Infolist
+   */
+  public static function infolist(Infolist $infolist): Infolist
+  {
+      return $infolist
+          ->schema([
+              Section::make('Abmessungen')
+                  ->schema([
+                      TextEntry::make('dimensions_raw')
+                          ->label('Rohmaße')
+                          ->placeholder('-'),
+                      TextEntry::make('dimension_length_mm')
+                          ->label('Länge (mm)')
+                          ->placeholder('-'),
+                      TextEntry::make('dimension_width_mm')
+                          ->label('Breite (mm)')
+                          ->placeholder('-'),
+                      TextEntry::make('dimension_height_mm')
+                          ->label('Höhe (mm)')
+                          ->placeholder('-'),
+                  ])
+                  ->visible(fn($record) =>
+                      $record->dimensions_raw
+                      || $record->dimension_length_mm
+                      || $record->dimension_width_mm
+                      || $record->dimension_height_mm
+                  ),
+
+              Section::make('Bilder')
+                  ->schema([
+                      ImageEntry::make('display_image_urls')
+                          ->label('Produktbilder')
+                          ->height(160)
+                          ->stacked(), // Bilder untereinander statt nebeneinander
+                  ])
+                  ->visible(fn($record) => ! empty($record->display_image_urls)),
+          ]);
+  }
+
 }

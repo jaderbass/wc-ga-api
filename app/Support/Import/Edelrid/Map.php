@@ -118,9 +118,26 @@ class Map
 
 
     /**
-     * Normalisiert Bild-URL-Listen; akzeptiert Trennzeichen ',', ';', '|'.
+     * Normalisiert Bildreferenzen aus dem Edelrid-CSV-Feed.
      *
-     * @return array<int,string>
+     * Unterstützte Eingabeformate:
+     *  - Einzelne Dateinamen (z. B. "71762_360a.jpeg")
+     *  - Listen mit Trennern (",", ";", "|")
+     *  - Arrays aus mehreren CSV-Spalten
+     *  - Bereits vollständige URLs
+     *
+     * Aufgaben:
+     *  - Zerlegt kombinierte Listen (",", ";", "|")
+     *  - Trimt und bereinigt die Einträge
+     *  - Entfernt Duplikate
+     *  - Gibt IMMER ein Array zurück
+     *
+     * Hinweis:
+     *  Die Methode erzeugt noch keine echten URLs – das geschieht später
+     *  über den Accessor `getDisplayImageUrlsAttribute()`.
+     *
+     * @param  mixed  $v   Rohwert aus dem Importer (String oder Array)
+     * @return array<int,string>  Normalisierte Dateinamen bzw. URL-Strings
      */
     public static function imageUrls($v): array
     {
