@@ -68,11 +68,11 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
     ImportLog::debug('ImporterForEdelrid.handleUploadedFile ENTER', [
       'mapping_keys' => array_keys($this->mapping ?? []),
     ]);
-    
+
     ImportLog::debug('ImporterForEdelrid mapping keys', [
       'keys' => array_keys($this->mapping),
     ]);
-    
+
     $filename = uniqid('edelrid_', true) . '.csv';
     $stored   = $file->storeAs('imports', $filename);
 
@@ -108,5 +108,96 @@ class ImporterForEdelrid extends GenericCsvProductImporter implements CsvImporte
 
     // Jetzt die eigentliche Import-Logik der Elternklasse ausführen.
     parent::import($filePath);
+  }
+
+  /**
+   * Transformiert die Roh-Maßangabe in strukturierte Millimeter-Werte.
+   *
+   * Erwartete Formate z. B.:
+   * - "10 x 20 x 30 cm"
+   * - "10x20x30mm"
+   * - "10 / 20 / 30 cm"
+   *
+   * Rückgabe:
+   * - null, wenn nichts Sinnvolles geparst werden konnte
+   * - assoziatives Array mit Keys:
+   *   - dimensions_raw
+   *   - dimension_length_mm (optional)
+   *   - dimension_width_mm  (optional)
+   *   - dimension_height_mm (optional)
+   *
+   * @param string|null              $value Rohwert aus der CSV (eine Spalte)
+   * @param array<string,mixed>      $row   gesamte CSV-Zeile (falls später mehr Kontext nötig ist)
+   * @return array<string,int|string>|null
+   */
+  public static function transformDimensions(?string $value, array $row): ?array
+  {
+    if ($value === null) {
+      return null;
+    }
+
+    $raw = trim($value);
+    if ($raw === '') {
+      return null;
+    }
+
+    // Einheit bestimmen (Default mm, bei "cm" → später in mm umrechnen)
+    $unit  = 'mm';
+    $lower = mb_strtolower($raw);
+    if (str_contains($lower, 'cm')) {
+      $unit = 'cm';
+    }
+
+    // Nur Zahlen, Komma, Punkt, x, *, / und Leerzeichen behalten
+    $clean = preg_replace('/[^0-9,.\sxX*\/]/u', '', $raw) ?? '';
+
+    // Auf x, *, / splitten
+    $parts = preg_split('/[xX*\/]/', $clean);
+
+    $numbers = [];
+    foreach ($parts as $part) {
+      $part = trim($part);
+      if ($part === '') {
+        continue;
+      }
+
+      // Dezimal-Komma in Punkt umwandeln
+      $part = str_replace(',', '.', $part);
+      if (! is_numeric($part)) {
+        continue;
+      }
+
+      $num = (float) $part;
+
+      // cm → mm
+      if ($unit === 'cm') {
+        $num *= 10;
+      }
+
+      $numbers[] = (int) round($num);
+    }
+
+    // Wenn wir gar nichts parsen konnten → nur Rohwert zurückgeben
+    if ($numbers === []) {
+      return [
+        'dimensions_raw' => $raw,
+      ];
+    }
+
+    $result = [
+      'dimensions_raw' => $raw,
+    ];
+
+    if (isset($numbers[0])) {
+      $result['dimension_length_mm'] = $numbers[0];
+    }
+    if (isset($numbers[1])) {
+      $result['dimension_width_mm'] = $numbers[1];
+    }
+    if (isset($numbers[2])) {
+      $result['dimension_height_mm'] = $numbers[2];
+    }
+
+    return $result;
   }
 }

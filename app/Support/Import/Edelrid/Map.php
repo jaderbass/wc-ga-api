@@ -39,11 +39,26 @@ class Map
     }
 
     /**
-     * Normalisiert Gewicht auf Gramm (int) oder null.
+     * Normalisiert Edelrid-Gewichtsangaben auf Gramm.
+     *
+     * Kann direkt als Transform im Edelrid-Mapping verwendet werden, z. B.:
+     *
+     *   'weight' => [\App\Support\Import\Edelrid\Map::class, 'weightGrams'],
+     *
+     * Unterstützte Beispiele (abhängig von V::toGrams()):
+     * - "350"         → 350
+     * - "350 g"       → 350
+     * - "0,35 kg"     → 350
+     * - "0.35kg"      → 350
+     *
+     * @param string|null         $value Rohwert aus der CSV
+     * @param array<string,mixed> $row   komplette Zeile (aktueller Kontext, hier ungenutzt)
+     * @return int|null Gramm oder null, falls nichts Sinnvolles geparst werden konnte
      */
-    public static function weightGrams($v): ?int
+    public static function weightGrams(?string $value, array $row = []): ?int
     {
-        $g = V::toGrams($v);
+        $g = V::toGrams($value);
+
         return $g !== null ? (int) $g : null;
         // Falls V::toGrams bereits int|null liefert, ist das Cast unkritisch.
     }
