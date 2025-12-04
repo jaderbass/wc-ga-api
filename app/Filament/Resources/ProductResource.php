@@ -19,6 +19,7 @@ use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Support\ImportLog;
+use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\TextInput;
@@ -253,26 +254,49 @@ class ProductResource extends Resource
           ->schema([
             Grid::make(12)->schema([
 
-              TextInput::make('author_firstname')
-                ->label('Vorname')
-                ->maxLength(100)
+              Forms\Components\Placeholder::make('author_display')
+                ->label('Autor (Import)')
+                ->content(function ($record): string {
+                  if (! $record || ! $record->author) {
+                    return '–';
+                  }
+
+                  $user  = $record->author;
+                  $name  = trim((string) ($user->name ?? ''));
+                  $email = (string) ($user->email ?? '');
+
+                  if ($name !== '' && $email !== '') {
+                    return $name . ' (' . $email . ')';
+                  }
+
+                  if ($name !== '') {
+                    return $name;
+                  }
+
+                  if ($email !== '') {
+                    return $email;
+                  }
+
+                  return '–';
+                })
+                ->columnSpan(6),
+
+              Forms\Components\Placeholder::make('author_id_display')
+                ->label('Author-ID')
+                ->content(function ($record): string {
+                  if (! $record || ! $record->author_id) {
+                    return '–';
+                  }
+
+                  return (string) $record->author_id;
+                })
                 ->columnSpan(3),
 
-              TextInput::make('author_lastname')
-                ->label('Nachname')
-                ->maxLength(100)
-                ->columnSpan(3),
-
-              TextInput::make('author_name')
-                ->label('Benutzername')
-                ->maxLength(200)
-                ->columnSpan(3),
-
-              TextInput::make('author_mail')
-                ->label('E-Mail')
-                ->email()
-                ->maxLength(255)
-                ->columnSpan(3),
+              Forms\Components\Placeholder::make('author_hint')
+                ->label('Hinweis')
+                ->content('Der Autor wird beim ersten Import automatisch aus dem aktuell angemeldeten Benutzer gesetzt und bei späteren Aktualisierungen nicht überschrieben.')
+                ->columnSpan(12),
+              
             ]) // Grid
           ]) //schema
           ->collapsible(),
