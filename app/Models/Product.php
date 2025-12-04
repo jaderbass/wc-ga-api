@@ -57,10 +57,7 @@ class Product extends Model
         'manual_url',
         'size',
         'certification',
-        'author_firstname',
-        'author_lastname',
-        'author_name',
-        'author_mail',
+        'author_id',
     ];
 
     protected $guarded = ['id'];
@@ -68,6 +65,14 @@ class Product extends Model
     protected $casts = [
         'image_urls' => 'array',
     ];
+
+    /**
+     * Benutzer, der den Import ausgelöst hat.
+     */
+    public function author()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'author_id');
+    }
 
     /**
      * Liefert die Produktvarianten (Alias für `variations()`).
