@@ -52,8 +52,11 @@ return [
 
     'ean'                => ['EAN'],
 
+    // Maße
+    'dimensions_raw'     => ['size'],
+
     // Gewicht in g
-    'weight_g'           => ['Gewicht ohne Verpackung (g)'],
+    'weight'             => ['Gewicht ohne Verpackung (g)'],
 
     // Material/Normen/Links
     'material'           => ['Materialzusammensetzung'],
@@ -92,7 +95,7 @@ return [
     'description'        => ['Produkt-Text', "USP´s"],
     'short_description'  => ['Kurzbeschreibung'],
     'ean'                => ['EAN'],
-    'weight_g'           => ['Gewicht ohne Verpackung (g)'],
+    'weight'             => ['Gewicht ohne Verpackung (g)'],
     'material'           => ['Materialzusammensetzung'],
     'norm'               => ['DIN'],
     'instruction_url'    => ['URL Gebrauchsanleitung'],
@@ -208,7 +211,7 @@ return [
     'ean'          => [\App\Support\Import\Edelrid\Map::class, 'ean'],
 
     // Gewicht in Gramm
-    'weight_g'     => [\App\Support\Import\Edelrid\Map::class, 'weightGrams'],
+    'weight'       => [\App\Support\Import\Edelrid\Map::class, 'weightGrams'],
 
     // Roh-Dimensionen (z. B. "130 x 76") → einzelne mm-Werte
     'dimensions_raw' => [\App\Support\Import\Edelrid\Map::class, 'dimensionsRaw'],
