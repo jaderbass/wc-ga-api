@@ -164,19 +164,16 @@ class Product extends Model
     }
 
     /**
-     * Liefert vollständige Bild-URLs aus dem Import.
+     * Liefert eine bereinigte Liste von Bild-URLs zur Anzeige.
      *
-     * Quellen:
-     *  - Rohwerte aus der DB (image_urls)
-     *  - Fertige URLs (bleiben unverändert)
-     *  - Relative Edelrid-Dateinamen (werden mit Base-URL ergänzt)
+     * Quelle ist das Feld {@see Product::$image_urls}, das als Array,
+     * JSON-String oder kommagetrennter String gespeichert sein kann.
      *
-     * Basis-URL:
-     *  config('services.edelrid.media_base_url')
-     *  Fallback:
-     *      https://media.edelrid.de/images/attribut
+     * Es werden ausschließlich absolute HTTP/HTTPS-URLs zurückgegeben.
+     * Reine Dateinamen oder relative Pfade werden ignoriert – es findet
+     * keine automatische Ergänzung einer Basis-URL mehr statt.
      *
-     * @return array<int,string>
+     * @return array<int, string> Liste gültiger Bild-URLs
      */
     public function getDisplayImageUrlsAttribute(): array
     {
