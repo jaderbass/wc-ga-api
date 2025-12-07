@@ -15,13 +15,16 @@ use Illuminate\Support\Facades\Log;
 class ImporterForPetzl extends GenericCsvProductImporter
 {
   /**
-   * Konstruktor ohne Parameter (Petzl-ID fest 4, Mapping 'petzl').
+   * Konstruktor für den Petzl-Importer.
+   *
+   * @param  int  $manufacturerId  ID des Petzl-Herstellers (z.B. 4).
    */
   public function __construct(int $manufacturerId)
   {
     // Ruft den Konstruktor der Elternklasse auf und übergibt
     // den Namen der Mapping-Datei und die Hersteller-ID.
-    parent::__construct('petzl', $manufacturerId); // 'petzl' -> petzl.php, 4 -> Manufacturer ID
+    // 'petzl' verweist auf config/import_mappings/petzl.php.
+    parent::__construct('petzl', $manufacturerId);
   }
 
   /**
