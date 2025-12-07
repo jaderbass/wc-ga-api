@@ -296,31 +296,85 @@ class ProductResource extends Resource
                 ->label('Hinweis')
                 ->content('Der Autor wird beim ersten Import automatisch aus dem aktuell angemeldeten Benutzer gesetzt und bei späteren Aktualisierungen nicht überschrieben.')
                 ->columnSpan(12),
-              
+
             ]) // Grid
           ]) //schema
           ->collapsible(),
-        
+
+        FormSection::make('Hersteller-Produktdetails (readonly)')
+          ->description('Zusätzliche Stammdaten aus dem Import (nur Anzeige)')
+          ->schema([
+            Grid::make(12)->schema([
+              Placeholder::make('designation')
+                ->label('Bezeichnung')
+                ->content(fn($record) => $record?->designation ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('type')
+                ->label('Typ')
+                ->content(fn($record) => $record?->type ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('category')
+                ->label('Kategorie')
+                ->content(fn($record) => $record?->category ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('subcategory')
+                ->label('Unterkategorie')
+                ->content(fn($record) => $record?->subcategory ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('market')
+                ->label('Markt')
+                ->content(fn($record) => $record?->market ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('customs')
+                ->label('Zolltarifnummer')
+                ->content(fn($record) => $record?->customs ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('made_in')
+                ->label('Herkunft (Made in)')
+                ->content(fn($record) => $record?->made_in ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('certification')
+                ->label('Zertifizierung')
+                ->content(fn($record) => $record?->certification ?: '–')
+                ->columnSpan(6),
+
+              Placeholder::make('materials')
+                ->label('Materialien')
+                ->content(fn($record) => $record?->materials ?: '–')
+                ->columnSpan(12),
+            ]),
+          ])
+          ->columnSpan(12)
+          ->collapsible()
+          ->collapsed(),
+
         FormSection::make('Produktbilder (readonly)')
-      ->description('Produktbilder aus Herstellerdaten (nur Anzeige)')
-      ->schema([
-        Grid::make(12)->schema([
+          ->description('Produktbilder aus Herstellerdaten (nur Anzeige)')
+          ->schema([
+            Grid::make(12)->schema([
 
-          // Bild-Galerie
-          Placeholder::make('image_gallery')
-        ->label('Produktbilder')
-        ->content(function ($record) {
+              // Bild-Galerie
+              Placeholder::make('image_gallery')
+                ->label('Produktbilder')
+                ->content(function ($record) {
 
-          if (! $record || empty($record->display_image_urls)) {
-            return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
-          }
+                  if (! $record || empty($record->display_image_urls)) {
+                    return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
+                  }
 
-          $html = '<div class="grid grid-cols-3 gap-4">';
+                  $html = '<div class="grid grid-cols-3 gap-4">';
 
-          foreach ($record->display_image_urls as $url) {
-            $urlEsc = e($url);
+                  foreach ($record->display_image_urls as $url) {
+                    $urlEsc = e($url);
 
-            $html .= <<<HTML
+                    $html .= <<<HTML
               <div class="space-y-1">
                 <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
                   <img 
@@ -331,18 +385,18 @@ class ProductResource extends Resource
                 <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
               </div>
             HTML;
-          }
+                  }
 
-          $html .= '</div>';
+                  $html .= '</div>';
 
-          return new HtmlString($html);
-        })
-        ->columnSpan(12)
-        ->disableLabel(),
-        ]),
-      ])
-      ->columnSpan(12)
-      ->collapsed(),
+                  return new HtmlString($html);
+                })
+                ->columnSpan(12)
+                ->disableLabel(),
+            ]),
+          ])
+          ->columnSpan(12)
+          ->collapsed(),
 
       ])
       ->columns(12);
@@ -462,11 +516,11 @@ class ProductResource extends Resource
             FileUpload::make('csv')
               ->label('CSV-Datei')
               ->acceptedFileTypes([
-                  'text/csv',
-                  'text/plain',
-                  'application/csv',
-                  'application/vnd.ms-excel',
-                  'text/x-csv',
+                'text/csv',
+                'text/plain',
+                'application/csv',
+                'application/vnd.ms-excel',
+                'text/x-csv',
               ])
               ->visible(fn($get) => $get('sourceType') === 'csv')
               ->storeFiles(false),
@@ -670,39 +724,82 @@ class ProductResource extends Resource
    */
   public static function infolist(Infolist $infolist): Infolist
   {
-      return $infolist
+    return $infolist
+      ->schema([
+        Section::make('Abmessungen')
           ->schema([
-              Section::make('Abmessungen')
-                  ->schema([
-                      TextEntry::make('dimensions_raw')
-                          ->label('Rohmaße')
-                          ->placeholder('-'),
-                      TextEntry::make('dimension_length_mm')
-                          ->label('Länge (mm)')
-                          ->placeholder('-'),
-                      TextEntry::make('dimension_width_mm')
-                          ->label('Breite (mm)')
-                          ->placeholder('-'),
-                      TextEntry::make('dimension_height_mm')
-                          ->label('Höhe (mm)')
-                          ->placeholder('-'),
-                  ])
-                  ->visible(fn($record) =>
-                      $record->dimensions_raw
-                      || $record->dimension_length_mm
-                      || $record->dimension_width_mm
-                      || $record->dimension_height_mm
-                  ),
+            TextEntry::make('dimensions_raw')
+              ->label('Rohmaße')
+              ->placeholder('-'),
+            TextEntry::make('dimension_length_mm')
+              ->label('Länge (mm)')
+              ->placeholder('-'),
+            TextEntry::make('dimension_width_mm')
+              ->label('Breite (mm)')
+              ->placeholder('-'),
+            TextEntry::make('dimension_height_mm')
+              ->label('Höhe (mm)')
+              ->placeholder('-'),
+          ])
+          ->visible(
+            fn($record) =>
+            $record->dimensions_raw
+              || $record->dimension_length_mm
+              || $record->dimension_width_mm
+              || $record->dimension_height_mm
+          ),
 
-              Section::make('Bilder')
-                  ->schema([
-                      ImageEntry::make('display_image_urls')
-                          ->label('Produktbilder')
-                          ->height(160)
-                          ->stacked(), // Bilder untereinander statt nebeneinander
-                  ])
-                  ->visible(fn($record) => ! empty($record->display_image_urls)),
-          ]);
+        Section::make('Bilder')
+          ->schema([
+            ImageEntry::make('display_image_urls')
+              ->label('Produktbilder')
+              ->height(160)
+              ->stacked(), // Bilder untereinander statt nebeneinander
+          ])
+          ->visible(fn($record) => ! empty($record->display_image_urls)),
+
+        Section::make('Petzl-Produktdetails')
+          // nur anzeigen, wenn Hersteller Petzl ist
+          ->visible(fn(\App\Models\Product $record) => $record->manufacturer?->name === 'Petzl')
+          ->columns(2)
+          ->schema([
+            TextEntry::make('designation')
+              ->label('Bezeichnung')
+              ->placeholder('-'),
+
+            TextEntry::make('type')
+              ->label('Typ')
+              ->placeholder('-'),
+
+            TextEntry::make('category')
+              ->label('Kategorie')
+              ->placeholder('-'),
+
+            TextEntry::make('subcategory')
+              ->label('Unterkategorie')
+              ->placeholder('-'),
+
+            TextEntry::make('market')
+              ->label('Markt')
+              ->placeholder('-'),
+
+            TextEntry::make('customs')
+              ->label('Zolltarifnummer')
+              ->placeholder('-'),
+
+            TextEntry::make('made_in')
+              ->label('Herkunft (Made in)')
+              ->placeholder('-'),
+
+            TextEntry::make('certification')
+              ->label('Zertifizierung')
+              ->placeholder('-'),
+
+            TextEntry::make('materials')
+              ->label('Materialien')
+              ->columnSpanFull()
+              ->placeholder('-'),
+          ]),
+      ]);
   }
-
 }
