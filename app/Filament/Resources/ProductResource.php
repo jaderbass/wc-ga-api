@@ -302,7 +302,7 @@ class ProductResource extends Resource
           ->collapsible(),
 
         FormSection::make('Hersteller-Produktdetails (readonly)')
-          ->description('Zusätzliche Stammdaten aus dem Import (nur Anzeige)')
+          ->description('Zusätzliche Produkt-Metadaten aus Hersteller-Importen (z.B. Petzl).')
           ->schema([
             Grid::make(12)->schema([
               Placeholder::make('designation')
@@ -340,11 +340,6 @@ class ProductResource extends Resource
                 ->content(fn($record) => $record?->made_in ?: '–')
                 ->columnSpan(6),
 
-              Placeholder::make('certification')
-                ->label('Zertifizierung')
-                ->content(fn($record) => $record?->certification ?: '–')
-                ->columnSpan(6),
-
               Placeholder::make('materials')
                 ->label('Materialien')
                 ->content(fn($record) => $record?->materials ?: '–')
@@ -353,7 +348,23 @@ class ProductResource extends Resource
           ])
           ->columnSpan(12)
           ->collapsible()
-          ->collapsed(),
+          ->collapsed()
+          ->visible(function ($record): bool {
+            if (! $record) {
+              return false;
+            }
+
+            return (bool) (
+              $record->designation
+              || $record->type
+              || $record->category
+              || $record->subcategory
+              || $record->market
+              || $record->customs
+              || $record->made_in
+              || $record->materials
+            );
+          }),
 
         FormSection::make('Produktbilder (readonly)')
           ->description('Produktbilder aus Herstellerdaten (nur Anzeige)')
@@ -392,7 +403,7 @@ class ProductResource extends Resource
                   return new HtmlString($html);
                 })
                 ->columnSpan(12),
-                // ->disableLabel(),
+              // ->disableLabel(),
             ]),
           ])
           ->columnSpan(12)
