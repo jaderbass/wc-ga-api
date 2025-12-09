@@ -28,21 +28,162 @@ class ImporterForPetzl extends GenericCsvProductImporter
   }
 
   /**
-   * CSV-Import per Pfad starten (Delegation an Elternklasse).
+   * Behandelt eine hochgeladene Petzl-CSV-Datei.
    *
-   * @param  string  $filePath
-   * @return void
+   * Wir erzeugen eine separate, normalisierte CSV-Datei mit eindeutigen Header-Namen
+   * (z.B. "Unit", "Unit_2", "Unit_3", ...), und übergeben diese dann an den
+   * generischen Importer.
    */
   public function handleUploadedFile(string $filePath): void
   {
-    Log::info('Petzl-Import mit generischer Logik gestartet.', [
+    Log::info('Petzl-Import gestartet (CSV normalisieren).', [
       'file' => $filePath,
       'manufacturer_id' => $this->manufacturerId,
     ]);
 
+    $normalizedRelativePath = $this->createNormalizedCsvForPetzl($filePath);
+
+    Log::info('Petzl-Import: verwende normalisierte CSV.', [
+      'original'   => $filePath,
+      'normalized' => $normalizedRelativePath,
+    ]);
+
     // Die eigentliche Import-Logik wird von der Elternklasse gehandhabt.
-    $this->import($filePath);
+    $this->import($normalizedRelativePath);
 
     Log::info('Petzl-Import abgeschlossen.');
+  }
+
+  /**
+   * Überschreibt den generischen Import-Prozess für Petzl.
+   *
+   * - Liest die Original-CSV ein
+   * - erzeugt eine zweite CSV mit eindeutigen Header-Namen
+   *   (z.B. "Unit", "Unit_2", "Unit_3", "" -> "column_10", ...)
+   * - ruft dann den generischen Import auf dieser normalisierten Datei auf.
+   *
+   * @param  string  $filePath  Pfad, den der ImporterSelector übergibt
+   */
+  public function import(string $filePath): void
+  {
+    Log::info('Petzl-Import: starte Header-Normalisierung', [
+      'original_path' => $filePath,
+      'manufacturer_id' => $this->manufacturerId,
+    ]);
+
+    $normalizedPath = $this->createNormalizedCsvForPetzl($filePath);
+
+    Log::info('Petzl-Import: verwende normalisierte CSV für Import', [
+      'normalized_path' => $normalizedPath,
+    ]);
+
+    // Generischen Import mit der normalisierten Datei ausführen
+    parent::import($normalizedPath);
+
+    // Aufräumen, falls es wirklich eine neue Datei war
+    if ($normalizedPath !== $filePath && is_file($normalizedPath)) {
+      @unlink($normalizedPath);
+    }
+  }
+
+  /**
+   * Erzeugt eine normalisierte Kopie der CSV mit eindeutigen Header-Namen.
+   *
+   * - Löscht keine Spalten
+   * - Jeder Header wird eindeutig gemacht:
+   *   - ""        -> "column_0", "column_5", ...
+   *   - "Unit"    -> "Unit", "Unit_2", "Unit_3", ...
+   *   - "Status"  -> "Status", "Status_2", ...
+   *
+   * @param  string  $filePath  Pfad zur Original-CSV (wie vom ImporterSelector übergeben)
+   * @return string Pfad zur normalisierten CSV (oder Originalpfad bei Fehler)
+   */
+  protected function createNormalizedCsvForPetzl(string $filePath): string
+  {
+    if (!is_file($filePath) || !is_readable($filePath)) {
+      Log::warning('Petzl-Import: Original-CSV nicht lesbar, benutze Fallback.', [
+        'file' => $filePath,
+      ]);
+
+      return $filePath;
+    }
+
+    $in = fopen($filePath, 'rb');
+
+    if (!$in) {
+      Log::warning('Petzl-Import: Original-CSV konnte nicht geöffnet werden.', [
+        'file' => $filePath,
+      ]);
+
+      return $filePath;
+    }
+
+    // Header einlesen (Semikolon-CSV, fgetcsv kann Zeilenumbrüche in Quotes)
+    $header = fgetcsv($in, 0, ';');
+
+    if (!is_array($header)) {
+      fclose($in);
+      Log::warning('Petzl-Import: CSV-Header konnte nicht gelesen werden.', [
+        'file' => $filePath,
+      ]);
+
+      return $filePath;
+    }
+
+    // Header-Namen eindeutig machen
+    $seen = [];
+    $cleanHeader = [];
+
+    foreach ($header as $idx => $rawName) {
+      $name = trim((string) $rawName);
+
+      if ($name === '') {
+        $name = 'column_' . $idx;
+      }
+
+      if (!isset($seen[$name])) {
+        $seen[$name] = 1;
+        $cleanHeader[] = $name;
+      } else {
+        $seen[$name]++;
+        $cleanHeader[] = $name . '_' . $seen[$name];
+      }
+    }
+
+    Log::info('Petzl-Import: Header normalisiert.', [
+      'file' => $filePath,
+      'seen_counts' => $seen,
+    ]);
+
+    // Neue Datei im gleichen Verzeichnis: foo.csv -> foo.normalized.csv
+    $dir = dirname($filePath);
+    $base = pathinfo($filePath, PATHINFO_FILENAME);
+    $ext = pathinfo($filePath, PATHINFO_EXTENSION) ?: 'csv';
+
+    $normalizedPath = $dir . '/' . $base . '.normalized.' . $ext;
+
+    $out = fopen($normalizedPath, 'wb');
+
+    if (!$out) {
+      fclose($in);
+      Log::warning('Petzl-Import: normalisierte CSV konnte nicht geschrieben werden.', [
+        'normalized_path' => $normalizedPath,
+      ]);
+
+      return $filePath;
+    }
+
+    // neuen Header schreiben
+    fputcsv($out, $cleanHeader, ';');
+
+    // restliche Zeilen unverändert kopieren
+    while (($row = fgetcsv($in, 0, ';')) !== false) {
+      fputcsv($out, $row, ';');
+    }
+
+    fclose($in);
+    fclose($out);
+
+    return $normalizedPath;
   }
 }
