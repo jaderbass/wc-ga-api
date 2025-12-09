@@ -366,6 +366,80 @@ class ProductResource extends Resource
             );
           }),
 
+        FormSection::make('Hersteller-Maße & Gewicht (readonly)')
+          ->description('Maße und Gewicht laut Herstellerangaben (z.B. aus Petzl-Varianten).')
+          ->schema([
+            Grid::make(12)->schema([
+              Placeholder::make('manufacturer_dimensions')
+                ->label('Abmessungen (L × B × H)')
+                ->content(function ($record) {
+                  if (! $record) {
+                    return '–';
+                  }
+
+                  // erste Variante als Referenz verwenden
+                  $variation = $record->variations()->orderBy('id')->first();
+
+                  if (! $variation) {
+                    return '–';
+                  }
+
+                  // Feldnamen bei Bedarf anpassen
+                  $lengthMm = $variation->length_mm ?? null;
+                  $widthMm  = $variation->width_mm ?? null;
+                  $heightMm = $variation->height_mm ?? null;
+
+                  $parts = [];
+
+                  if ($lengthMm) {
+                    $parts[] = number_format($lengthMm / 1000, 2, ',', '') . ' m';
+                  }
+
+                  if ($widthMm) {
+                    $parts[] = number_format($widthMm / 1000, 2, ',', '') . ' m';
+                  }
+
+                  if ($heightMm) {
+                    $parts[] = number_format($heightMm / 1000, 2, ',', '') . ' m';
+                  }
+
+                  if ($parts === []) {
+                    return '–';
+                  }
+
+                  return implode(' × ', $parts);
+                })
+                ->columnSpan(6),
+
+              Placeholder::make('manufacturer_weight')
+                ->label('Gewicht (pro Variante)')
+                ->content(function ($record) {
+                  if (! $record) {
+                    return '–';
+                  }
+
+                  $variation = $record->variations()->orderBy('id')->first();
+
+                  if (! $variation) {
+                    return '–';
+                  }
+
+                  // Feldnamen bei Bedarf anpassen
+                  $weightGr = $variation->weight ?? null;
+
+                  if (! $weightGr) {
+                    return '–';
+                  }
+
+                  $kg = $weightGr / 1000;
+
+                  return number_format($kg, 2, ',', '') . ' kg';
+                })
+                ->columnSpan(6),
+            ]),
+          ])
+          ->columnSpan(12),
+
         FormSection::make('Produktbilder (readonly)')
           ->description('Produktbilder aus Herstellerdaten (nur Anzeige)')
           ->schema([
