@@ -362,7 +362,7 @@ class ProductResource extends Resource
 
               // Bild-Galerie
               Placeholder::make('image_gallery')
-                ->label('Produktbilder')
+                ->hiddenLabel()
                 ->content(function ($record) {
 
                   if (! $record || empty($record->display_image_urls)) {
@@ -391,8 +391,8 @@ class ProductResource extends Resource
 
                   return new HtmlString($html);
                 })
-                ->columnSpan(12)
-                ->disableLabel(),
+                ->columnSpan(12),
+                // ->disableLabel(),
             ]),
           ])
           ->columnSpan(12)
