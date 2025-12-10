@@ -48,10 +48,14 @@ return [
     'dimension_width_mm'  => 'Product  Width',    // zwei Leerzeichen
     'dimension_height_mm' => 'Product Height',
     'weight'              => 'Product  packed weight',
+    'box_length'          => 'Carton Length',       // Karton-Länge in m → mm
+    'box_width'           => 'Carton Width',        // Karton-Breite in m → mm
+    'box_height'          => 'Carton High',         // Karton-Höhe in m → mm
   ],
 
   'transforms' => [
 
+    // Produktmaße: Meter → Millimeter
     'dimension_length_mm' => function ($value, array $row) {
       if ($value === null || $value === '') {
         return null;
@@ -83,12 +87,45 @@ return [
       return (int) round(((float) $v) * 1000);
     },
 
+    // Produktgewicht: kg → g
     'weight' => function ($value, array $row) {
       if ($value === null || $value === '') {
         return null;
       }
 
       // kg → g (2,10 → 2100)
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+
+    // Carton-Maße: Meter → Millimeter
+    'box_length' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+    'box_width' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+    'box_height' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
       $v = str_replace(',', '.', (string) $value);
 
       return (int) round(((float) $v) * 1000);
