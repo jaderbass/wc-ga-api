@@ -3,6 +3,7 @@
 namespace App\Imports\Manufacturer;
 
 use App\Models\Product;
+use App\Models\Manufacturer;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 
@@ -19,6 +20,25 @@ use Illuminate\Support\Facades\Http;
  */
 class ImporterForSingingRock
 {
+    public function __construct(
+        private ?Manufacturer $manufacturer = null,
+        private ?int $manufacturerId = null,
+    ) {
+        if (!$this->manufacturer && $this->manufacturerId) {
+            $this->manufacturer = Manufacturer::find($this->manufacturerId);
+        } elseif ($this->manufacturer && !$this->manufacturerId) {
+            $this->manufacturerId = $this->manufacturer->id;
+        }
+    }
+
+    private function getManufacturerId(): int
+    {
+        // Fallback 3 nur als letzte Rettung – idealerweise brauchst du den nie mehr
+        return $this->manufacturerId
+            ?? $this->manufacturer?->id
+            ?? 3;
+    }
+
     /**
      * Verarbeitet eine hochgeladene CSV-Datei und speichert Produkte.
      *
@@ -117,13 +137,34 @@ class ImporterForSingingRock
             'importer' => self::class,
             'url' => $url,
             'model' => Product::class,
+            'manufacturer_id' => $this->manufacturer?->id,
         ]);
 
         try {
-            $response = Http::timeout(30)->get($url);
+            $client = Http::timeout(30);
+
+            if ($this->manufacturer) {
+                // Variante 1: Basic Auth (user/pass)
+                if ($this->manufacturer->api_user && $this->manufacturer->api_password) {
+                    $client = $client->withBasicAuth(
+                        $this->manufacturer->api_user,
+                        $this->manufacturer->api_password
+                    );
+                }
+
+                // Variante 2: Bearer-Token
+                if ($this->manufacturer->api_token && !$this->manufacturer->api_user && !$this->manufacturer->api_password) {
+                    $client = $client->withToken($this->manufacturer->api_token);
+                }
+            }
+
+            $response = $client->get($url);
 
             if ($response->failed()) {
-                Log::error('Fehler beim Abrufen der API-Daten', ['status' => $response->status()]);
+                Log::error('Fehler beim Abrufen der API-Daten', [
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
                 return;
             }
 
@@ -180,7 +221,7 @@ class ImporterForSingingRock
             'box_length' => $row['box_length'] ?? null,
             'box_height' => $row['box_height'] ?? null,
             'weight' => $row['weight'] ?? null,
-            'manufacturer_id' => 3,
+            'manufacturer_id' => $this->getManufacturerId(),
             'slug' => $row['description'] ?? uniqid('produkt-'),
             'status' => 'draft',
         ];
@@ -204,7 +245,7 @@ class ImporterForSingingRock
             'short_description' => $this->normalizeValue($row['SHORT_DESCRIPTION'] ?? null, true), // HTML behalten
             'unit' => $this->normalizeValue($row['UNIT'] ?? null),
             'weight' => $this->normalizeValue($row['WEIGHT'] ?? null),
-            'manufacturer_id' => 3,
+            'manufacturer_id' => $this->getManufacturerId(),
             'slug' => $this->normalizeValue($row['ARTICLE'] ?? uniqid('produkt-')),
             'status' => 'draft',
         ];

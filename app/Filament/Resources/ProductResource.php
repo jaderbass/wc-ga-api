@@ -617,7 +617,14 @@ class ProductResource extends Resource
               ->storeFiles(false),
           ])
           ->action(function (array $data) {
-            if (in_array($data['sourceType'], ['csv', 'xml']) && empty($data[$data['sourceType']])) {
+            $manufacturerId = (int)($data['manufacturer_id'] ?? 0);
+            $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
+
+            // Fallback: Wenn im Formular nichts gesetzt ist, nimm den Import-Typ aus der Hersteller-Tabelle
+            $sourceType = $data['sourceType'] ?? $manufacturer->import_type ?? 'csv';
+
+            // CSV/XML: Datei ist Pflicht
+            if (in_array($sourceType, ['csv', 'xml'], true) && empty($data[$sourceType] ?? null)) {
               Notification::make()
                 ->title('Bitte wählen Sie eine Datei für den Import aus.')
                 ->danger()
@@ -625,28 +632,63 @@ class ProductResource extends Resource
               return;
             }
 
-            $source = match ($data['sourceType']) {
-              'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
-              'api'        => $data['api_url'],
-            };
-
-            Log::info('Import gestartet', [
-              'manufacturer_id' => $data['manufacturer_id'],
-              'sourceType'      => $data['sourceType'],
-              'source'          => $source,
-            ]);
-
             try {
-              if (in_array($data['sourceType'] ?? '', ['csv', 'xml'], true) && empty($data[$data['sourceType']])) {
-                Notification::make()->title('Bitte Datei wählen')->danger()->send();
+              // Source je nach Typ bestimmen
+              $source = match ($sourceType) {
+                'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$sourceType]),
+                'api'        => $manufacturer->api_url,
+                default      => null,
+              };
+
+              // Bei API muss eine URL in den Stammdaten hinterlegt sein
+              if ($sourceType === 'api' && empty($source)) {
+                Notification::make()
+                  ->title('Keine API-URL hinterlegt')
+                  ->body('Für diesen Hersteller ist keine API-URL in den Stammdaten hinterlegt.')
+                  ->danger()
+                  ->send();
                 return;
               }
 
-              $source = match ($data['sourceType']) {
-                'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$data['sourceType']]),
-                'api'        => $data['api_url'] ?? null,
-                default      => null,
-              };
+              if ($sourceType === 'csv') {
+                $fullPath = is_string($source) ? storage_path("app/{$source}") : null;
+
+                // schlanke Debug-Infos, nur wenn IMPORT_DEBUG=true
+                ImportLog::debug('[PR] csv: path', [
+                  'is_string' => is_string($fullPath),
+                  'exists'    => is_string($fullPath) ? file_exists($fullPath) : false,
+                ]);
+
+                $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
+                ImportLog::debug('[PR] csv: importer', ['class' => get_debug_type($importer)]);
+
+                \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
+                Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
+                return;
+              }
+
+              // XML / API
+              $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
+              ImportLog::debug('[PR] xml/api: importer', ['class' => get_debug_type($importer)]);
+
+              \App\Services\ImporterSelector::handleImport($importer, $sourceType, $source);
+
+              Notification::make()->title('Import gestartet')->success()->send();
+            } catch (\Throwable $e) {
+              Log::error('ACTION_EXCEPTION', [
+                'msg'  => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+              ]);
+              Notification::make()->title('Import fehlgeschlagen')->body($e->getMessage())->danger()->send();
+
+              if (config('app.debug')) {
+                throw $e;
+              }
+            }
+
+            try {
+
 
               if (($data['sourceType'] ?? '') === 'csv') {
                 $fullPath = is_string($source) ? storage_path("app/{$source}") : null;
