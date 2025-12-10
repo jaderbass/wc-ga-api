@@ -44,13 +44,20 @@ return [
     'made_in'        => 'Made in',
     'certification'  => 'CERTIFICATION',
     'materials'      => 'MATERIALS',
+
+    // Maße / Gewicht Produkt
     'dimension_length_mm' => 'Product length',
     'dimension_width_mm'  => 'Product  Width',    // zwei Leerzeichen
     'dimension_height_mm' => 'Product Height',
     'weight'              => 'Product  packed weight',
+
+    // Kartonmaße
     'box_length'          => 'Carton Length',       // Karton-Länge in m → mm
     'box_width'           => 'Carton Width',        // Karton-Breite in m → mm
     'box_height'          => 'Carton High',         // Karton-Höhe in m → mm
+
+    // 👉 Trigger für Transform:
+    'dimensions_raw'      => 'Product length',
   ],
 
   'transforms' => [
@@ -129,6 +136,76 @@ return [
       $v = str_replace(',', '.', (string) $value);
 
       return (int) round(((float) $v) * 1000);
+    },
+
+    'dimensions_raw' => function ($resolved, array $row) {
+      // Hilfsfunktion: CSV-Wert → float
+      $toFloat = function ($raw) {
+        if ($raw === null || $raw === '') {
+          return null;
+        }
+        $norm = str_replace(',', '.', (string) $raw);
+        if (!is_numeric($norm)) {
+          return null;
+        }
+        return (float) $norm;
+      };
+
+      // Maße (Header-Namen wie nach der Normalisierung)
+      $lenF = $toFloat($row['Product length']         ?? null); // m
+      $widF = $toFloat($row['Product  Width']         ?? null); // m (2 Leerzeichen)
+      $heiF = $toFloat($row['Product Height']         ?? null); // m
+
+      $dimParts = [];
+
+      if ($lenF !== null) {
+        $dimParts[] = number_format($lenF, 2, ',', '') . ' m';
+      }
+      if ($widF !== null) {
+        $dimParts[] = number_format($widF, 2, ',', '') . ' m';
+      }
+      if ($heiF !== null) {
+        $dimParts[] = number_format($heiF, 2, ',', '') . ' m';
+      }
+
+      $dimStr = $dimParts ? implode(' × ', $dimParts) : null;
+
+      // Gewicht: robusten Key-Finder verwenden
+      $weightRaw = null;
+      foreach (array_keys($row) as $key) {
+        // Wir suchen nach irgendwas, das "Product", "packed" und "weight" enthält
+        $lower = mb_strtolower($key);
+        if (
+          str_contains($lower, 'product') &&
+          str_contains($lower, 'packed') &&
+          str_contains($lower, 'weight')
+        ) {
+          $weightRaw = $row[$key];
+          break;
+        }
+      }
+
+      $wtF = $toFloat($weightRaw); // kg
+
+      $wtStr = null;
+      if ($wtF !== null) {
+        $wtStr = number_format($wtF, 2, ',', '') . ' kg';
+      }
+
+      // Kombinieren
+      if ($dimStr && $wtStr) {
+        return $dimStr . ' / ' . $wtStr;
+      }
+
+      if ($dimStr) {
+        return $dimStr;
+      }
+
+      if ($wtStr) {
+        return $wtStr;
+      }
+
+      return null;
     },
   ],
 
