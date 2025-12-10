@@ -6,10 +6,9 @@ use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Models\Product;
 use App\Models\ProductVariation;
-use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Class GenericCsvProductImporter
@@ -51,7 +50,9 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function resolveAuthorId(): ?int
   {
-    return auth()->id();
+    $user = Auth::user();
+
+    return $user?->id;
   }
 
   /**
@@ -507,14 +508,57 @@ class GenericCsvProductImporter implements CsvImporterContract
       return; // ohne SKU keine Variante
     }
 
-    // 1) Payload aus variation_fields (csvSpec kann String ODER Array sein)
+    // 1) Payload aus variation_fields
+    // Unterstützte Formate:
+    // - 'field' => 'CSV-Spalte'
+    // - 'field' => ['CSV-Spalte 1', 'CSV-Spalte 2']
+    // - 'field' => [
+    //       'columns'   => 'CSV-Spalte' ODER ['CSV-Spalte 1', 'CSV-Spalte 2'],
+    //       'transform' => Closure ODER [Class::class, 'method'],
+    //   ]
     $variationPayload = [];
     $variationFieldsMapping = $this->mapping['variation_fields'] ?? [];
+
     foreach ($variationFieldsMapping as $dbField => $csvSpec) {
-      $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
-      if ($val !== null && $val !== '') {
-        $variationPayload[$dbField] = trim((string) $val);
+      $rawValue = null;
+
+      // Neue strukturierte Variante: ['columns' => ..., 'transform' => ...]
+      if (is_array($csvSpec) && (array_key_exists('columns', $csvSpec) || array_key_exists('column', $csvSpec))) {
+        $cols = $csvSpec['columns'] ?? $csvSpec['column'];
+        $candidates = is_array($cols) ? $cols : [$cols];
+        $rawValue = $this->cell($row, $candidates);
+      } else {
+        // Alte Variante: String ODER Array von Strings
+        $candidates = is_array($csvSpec) ? $csvSpec : [$csvSpec];
+        $rawValue = $this->cell($row, $candidates);
       }
+
+      if ($rawValue === null || $rawValue === '') {
+        continue;
+      }
+
+      // Basiswert ggf. trimmen, wenn String
+      $finalValue = is_string($rawValue) ? trim($rawValue) : $rawValue;
+
+      // Optional: Transform aus dem Mapping anwenden (nur bei strukturiertem Mapping)
+      if (is_array($csvSpec) && array_key_exists('transform', $csvSpec)) {
+        $transform = $csvSpec['transform'];
+
+        // Variante: [ClassName::class, 'method']
+        if (is_array($transform) && count($transform) === 2) {
+          [$class, $method] = $transform;
+          if (class_exists($class) && method_exists($class, $method)) {
+            $finalValue = $class::$method($finalValue, $row);
+          }
+        }
+
+        // Variante: Closure
+        if ($transform instanceof \Closure) {
+          $finalValue = $transform($finalValue, $row);
+        }
+      }
+
+      $variationPayload[$dbField] = $finalValue;
     }
 
     // 2) Variante erstellen oder aktualisieren (bestehende Logik beibehalten)

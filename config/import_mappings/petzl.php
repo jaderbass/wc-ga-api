@@ -44,37 +44,116 @@ return [
     'made_in'        => 'Made in',
     'certification'  => 'CERTIFICATION',
     'materials'      => 'MATERIALS',
+    'dimension_length_mm' => 'Product length',
+    'dimension_width_mm'  => 'Product  Width',    // zwei Leerzeichen
+    'dimension_height_mm' => 'Product Height',
+    'weight'              => 'Product  packed weight',
+  ],
+
+  'transforms' => [
+
+    'dimension_length_mm' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      // "0.37" oder "0,37" → Meter → Millimeter
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+    'dimension_width_mm' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+    'dimension_height_mm' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
+
+    'weight' => function ($value, array $row) {
+      if ($value === null || $value === '') {
+        return null;
+      }
+
+      // kg → g (2,10 → 2100)
+      $v = str_replace(',', '.', (string) $value);
+
+      return (int) round(((float) $v) * 1000);
+    },
   ],
 
   // Mapping für die spezifischen Felder einer Produktvariante.
   // Diese werden in der `product_variations` Tabelle gespeichert.
   // Achtung: die Keys hier müssen zu deinen DB-Feldern / DTO-Feldern passen.
   'variation_fields' => [
-    'sku'         => 'Reference',
-    'ean'         => 'EAN Code',
-    'weight'      => 'Product packed weight', // Rohgewicht (z.B. "2,21")
-    'weight_unit' => 'Unit_weight',           // z.B. "KG"
+    'sku' => 'Reference',
 
-    // Produkt-Abmessungen (Rohwerte + Einheiten)
-    'length'      => 'Product length',        // z.B. "0,37"
-    'length_unit' => 'Unit_length',           // z.B. "M"
-    'width'       => 'Product Width',
-    'width_unit'  => 'Unit_width',
-    'height'      => 'Product Height',
-    'height_unit' => 'Unit_height',
+    'ean' => 'EAN Code',
 
-    // Verpackungsebene Karton (optional, falls du das später nutzen willst)
-    'carton_qty'      => 'Qty Carton',
-    'carton_length'   => 'Carton Length',
-    'carton_width'    => 'Carton Width',
-    'carton_height'   => 'Carton High',
+    'weight' => [
+      'columns' => 'Product  packed weight', // kg
+      'transform' => function ($value) {
+        if ($value === null || $value === '') {
+          return null;
+        }
+        // "2.21" oder "2,21" → kg → g
+        $v = str_replace(',', '.', (string) $value);
 
-    // Palette (ebenfalls optional, aber im CSV vorhanden)
-    'palett_qty'      => 'Palett Quantity',
-    'palett_length'   => 'Palett Length',
-    'palett_width'    => 'Palett Width',
-    'palett_height'   => 'Palett Heigh',
+        return (int) round(((float) $v) * 1000);
+      },
+    ],
+
+    'length_mm' => [
+      'columns' => 'Product length', // m
+      'transform' => function ($value) {
+        if ($value === null || $value === '') {
+          return null;
+        }
+        $v = str_replace(',', '.', (string) $value);
+
+        return (int) round(((float) $v) * 1000); // m → mm
+      },
+    ],
+
+    'width_mm' => [
+      'columns' => 'Product  Width', // m, Achtung: zwei Spaces
+      'transform' => function ($value) {
+        if ($value === null || $value === '') {
+          return null;
+        }
+        $v = str_replace(',', '.', (string) $value);
+
+        return (int) round(((float) $v) * 1000); // m → mm
+      },
+    ],
+
+    'height_mm' => [
+      'columns' => 'Product Height', // m
+      'transform' => function ($value) {
+        if ($value === null || $value === '') {
+          return null;
+        }
+        $v = str_replace(',', '.', (string) $value);
+
+        return (int) round(((float) $v) * 1000); // m → mm
+      },
+    ],
   ],
+
+
 
   // Mapping für die Attribute der Varianten (z.B. Farbe, Größe).
   // Daraus werden die Attribute und Attributwerte erstellt.

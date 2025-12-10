@@ -135,7 +135,10 @@ class ImporterForPetzl extends GenericCsvProductImporter
     $cleanHeader = [];
 
     foreach ($header as $idx => $rawName) {
-      $name = trim((string) $rawName);
+      // Zeilenumbrüche im Header entfernen, damit z.B.
+      // "Product  packed\nweight" → "Product  packed weight" wird.
+      $cleanRaw = str_replace(["\r", "\n"], ' ', (string) $rawName);
+      $name = trim($cleanRaw);
 
       if ($name === '') {
         $name = 'column_' . $idx;
