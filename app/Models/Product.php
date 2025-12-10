@@ -64,6 +64,13 @@ class Product extends Model
 
     protected $casts = [
         'image_urls' => 'array',
+        'dimension_length_mm' => 'integer',
+        'dimension_width_mm'  => 'integer',
+        'dimension_height_mm' => 'integer',
+        'weight'              => 'integer',
+        'box_length'          => 'integer',
+        'box_width'           => 'integer',
+        'box_height'          => 'integer',
     ];
 
     /**
