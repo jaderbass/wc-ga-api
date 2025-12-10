@@ -16,11 +16,20 @@ class ProductVariation extends Model
     'sale_price',
     'stock_quantity',
     'stock_status',
+    // Maße & Gewicht aus Petzl (und anderen Herstellern)
+    'weight',     // in Gramm
+    'length_mm',  // in Millimetern
+    'width_mm',
+    'height_mm',
   ];
 
   protected $casts = [
     'attributes_json' => 'array',
     'manage_stock'    => 'bool',
+    'weight'    => 'integer',
+    'length_mm' => 'integer',
+    'width_mm'  => 'integer',
+    'height_mm' => 'integer',
   ];
 
 
