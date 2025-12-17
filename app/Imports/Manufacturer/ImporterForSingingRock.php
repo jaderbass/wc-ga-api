@@ -4,6 +4,7 @@ namespace App\Imports\Manufacturer;
 
 use App\Models\Product;
 use App\Models\Manufacturer;
+use App\Support\Import\SingingRock\Map;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 
@@ -196,7 +197,12 @@ class ImporterForSingingRock
 
             Log::info('API-Import abgeschlossen', ['importierte_zeilen' => $rowCount]);
         } catch (\Throwable $e) {
-            Log::error('Allgemeiner Fehler beim API-Import', ['exception' => $e->getMessage()]);
+            Log::error('Allgemeiner Fehler beim API-Import', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+                'trace'   => $e->getTraceAsString(),
+            ]);
         }
     }
 
@@ -236,18 +242,38 @@ class ImporterForSingingRock
      */
     private function mapXmlRow(array $row): array
     {
+
+        $description = $this->normalizeValue($row['DESCRIPTION'] ?? null, true);
+
+        // Harness-Size-Tabelle (HTML) erzeugen
+        $harnessTableHtml = Map::harnessSizeTableHtml($row);
+
+        // Tabelle an Description anhängen (nur wenn vorhanden)
+        $description = Map::appendHtmlBlock(
+            $description,
+            $harnessTableHtml,
+            'Size table'
+        );
+
+        $norms = Map::normsDisplay($row);
+
+        $materials = Map::materialsDisplay($row['MATERIAL_COMPOSITION'] ?? null);
+
         return [
-            'product_name' => $this->normalizeValue($row['ARTICLE_NAME'] ?? 'Unbenanntes Produkt'),
-            'product_number' => $this->normalizeValue($row['ARTICLE'] ?? null),
-            'description' => $this->normalizeValue($row['ARTICLE_NAME'] ?? null),
-            'eancode' => $this->normalizeValue($row['EAN'] ?? null),
-            'description' => $this->normalizeValue($row['DESCRIPTION'] ?? null, true), // HTML behalten
-            'short_description' => $this->normalizeValue($row['SHORT_DESCRIPTION'] ?? null, true), // HTML behalten
-            'unit' => $this->normalizeValue($row['UNIT'] ?? null),
-            'weight' => $this->normalizeValue($row['WEIGHT'] ?? null),
-            'manufacturer_id' => $this->getManufacturerId(),
-            'slug' => $this->normalizeValue($row['ARTICLE'] ?? uniqid('produkt-')),
-            'status' => 'draft',
+            'product_name'          => $this->normalizeValue($row['ARTICLE_NAME'] ?? 'Unbenanntes Produkt'),
+            'product_number'        => $this->normalizeValue($row['ARTICLE'] ?? null),
+            'description'           => $description,
+            'eancode'               => $this->normalizeValue($row['EAN'] ?? null),
+            'short_description'     => $this->normalizeValue($row['SHORT_DESCRIPTION'] ?? null, true),
+            'unit'                  => $this->normalizeValue($row['UNIT'] ?? null),
+            'weight'                => $this->normalizeValue($row['WEIGHT'] ?? null),
+
+            'norms'                 => $norms !== '' ? $norms : null,
+
+            'manufacturer_id'       => $this->getManufacturerId(),
+            'slug'                  => $this->normalizeValue($row['ARTICLE'] ?? uniqid('produkt-')),
+            'status'                => 'draft',
+            'materials'             => $materials !== '' ? $materials : null,
         ];
     }
 
@@ -260,11 +286,46 @@ class ImporterForSingingRock
      * @param bool $allowHtml Ob HTML beibehalten werden soll
      * @return string|null
      */
-    private function normalizeValue($value, bool $allowHtml = false): ?string
+    private function normalizeValue(mixed $value, bool $allowHtml = false): ?string
     {
-        if (is_array($value)) {
-            return implode(', ', array_filter(array_map(fn($v) => is_string($v) ? $v : '', $value)));
+        if ($value === null) {
+            return null;
         }
-        return $value ? ($allowHtml ? (string)$value : trim(strip_tags((string)$value))) : null;
+
+        // Singing Rock XML can return arrays (e.g. CATEGORIES/CATEGORY)
+        if (is_array($value)) {
+            // Wenn es ein Array aus Scalars ist: zu String zusammenziehen
+            $flat = [];
+
+            array_walk_recursive($value, static function ($v) use (&$flat): void {
+                if ($v === null) {
+                    return;
+                }
+
+                $v = trim((string) $v);
+
+                if ($v !== '') {
+                    $flat[] = $v;
+                }
+            });
+
+            if ($flat === []) {
+                return null;
+            }
+
+            // Dedupe + join (wahlweise anderes Trennzeichen)
+            $flat = array_values(array_unique($flat));
+
+            return implode(' | ', $flat);
+        }
+
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        // deine bestehende Logik (HTML erlauben etc.)
+        return $value;
     }
 }
