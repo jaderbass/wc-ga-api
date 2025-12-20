@@ -96,10 +96,49 @@ class GenericCsvProductImporter implements CsvImporterContract
   {
     $csv = \League\Csv\Reader::createFromPath($filePath, 'r');
     $csv->setDelimiter(';');
-    $csv->setHeaderOffset(0);
     $csv->skipEmptyRecords();
 
-    // 1) Header + Records lesen
+    // Aliens-CSV kann doppelte Header-Spalten enthalten.
+    // League\Csv wirft dann "The header record contains duplicate column names."
+    // Lösung: Header-Zeile manuell lesen, Duplikate eindeutig machen, Records selbst kombinieren.
+    $rows = iterator_to_array($csv->getRecords()); // liefert numerische Arrays, weil kein HeaderOffset gesetzt
+
+    $headers = array_shift($rows) ?? [];
+    $headers = array_map(fn($h) => is_string($h) ? trim($h) : (string) $h, $headers);
+
+    $makeUniqueHeaders = function (array $headers): array {
+      $seen = [];
+      $out = [];
+
+      foreach ($headers as $h) {
+        $base = $h;
+        if ($base === '') {
+          $base = 'column';
+        }
+
+        if (!isset($seen[$base])) {
+          $seen[$base] = 1;
+          $out[] = $base;
+          continue;
+        }
+
+        $seen[$base]++;
+        $out[] = $base . '_' . $seen[$base];
+      }
+
+      return $out;
+    };
+
+    $headers = $makeUniqueHeaders($headers);
+
+    $records = [];
+    foreach ($rows as $row) {
+      $row = array_values($row);
+      $row = array_pad($row, count($headers), null);
+      $row = array_slice($row, 0, count($headers));
+
+      $records[] = array_combine($headers, $row);
+    }
 
     // League\Csv bricht ab, wenn Header-Spaltennamen doppelt sind.
     // Aliens-CSV enthält Duplikate (z. B. "Kombinationsmenge", "Dateiname des Anhangs").
