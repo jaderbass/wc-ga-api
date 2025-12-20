@@ -688,45 +688,6 @@ class ProductResource extends Resource
               }
             }
 
-            try {
-
-
-              if (($data['sourceType'] ?? '') === 'csv') {
-                $fullPath = is_string($source) ? storage_path("app/{$source}") : null;
-
-                // schlanke Debug-Infos, nur wenn IMPORT_DEBUG=true
-                ImportLog::debug('[PR] csv: path', [
-                  'is_string' => is_string($fullPath),
-                  'exists'    => is_string($fullPath) ? file_exists($fullPath) : false,
-                ]);
-
-                $importer = \App\Services\ImporterSelector::forManufacturer((int) $data['manufacturer_id']);
-                ImportLog::debug('[PR] csv: importer', ['class' => get_debug_type($importer)]);
-
-                \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
-                Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
-                return;
-              }
-
-              // XML / API
-              $importer = \App\Services\ImporterSelector::forManufacturer((int) $data['manufacturer_id']);
-              ImportLog::debug('[PR] xml/api: importer', ['class' => get_debug_type($importer)]);
-              \App\Services\ImporterSelector::handleImport($importer, (string) $data['sourceType'], $source);
-
-              Notification::make()->title('Import gestartet')->success()->send();
-            } catch (\Throwable $e) {
-              Log::error('ACTION_EXCEPTION', [
-                'msg'  => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-              ]);
-              Notification::make()->title('Import fehlgeschlagen')->body($e->getMessage())->danger()->send();
-
-              // Nur in der Entwicklungsphase:
-              if (config('app.debug')) {
-                throw $e; // zeigt dir im Filament-Iframe den Trace
-              }
-            }
           }),
       ])
       ->bulkActions([
