@@ -617,7 +617,25 @@ class ProductResource extends Resource
               ->visible(fn($get) => $get('sourceType') === 'xml')
               ->storeFiles(false),
           ])
-          ->action(function (array $data, Tables\Actions\Action $action) {
+          ->action(function (array $data, $livewire, Tables\Actions\Action $action) {
+            $closeModal = function () use ($livewire) {
+              // Filament/Livewire unterscheiden je nach Kontext die Unmount-Methoden
+              foreach (['unmountTableAction', 'unmountAction', 'unmountFormComponentAction'] as $method) {
+                if (is_object($livewire) && method_exists($livewire, $method)) {
+                  $livewire->{$method}();
+                  return;
+                }
+              }
+
+              // Notnagel: mountedTableAction state leeren (wirkt in vielen 3.x Setups)
+              if (is_object($livewire) && property_exists($livewire, 'mountedTableAction')) {
+                $livewire->mountedTableAction = null;
+              }
+              if (is_object($livewire) && property_exists($livewire, 'mountedTableActionsData')) {
+                $livewire->mountedTableActionsData = [];
+              }
+            };
+
             $manufacturerId = (int)($data['manufacturer_id'] ?? 0);
             $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
 
@@ -630,6 +648,9 @@ class ProductResource extends Resource
                 ->title('Bitte wählen Sie eine Datei für den Import aus.')
                 ->danger()
                 ->send();
+
+              $action->halt();
+              $closeModal();
               return;
             }
 
@@ -648,7 +669,9 @@ class ProductResource extends Resource
                   ->danger()
                   ->send();
 
+
                 $action->halt();
+                $closeModal();
                 return;
               }
 
@@ -658,6 +681,9 @@ class ProductResource extends Resource
                   ->body('Die Datei konnte nicht gespeichert werden.')
                   ->danger()
                   ->send();
+
+                $action->halt();
+                $closeModal();
                 return;
               }
 
@@ -673,15 +699,18 @@ class ProductResource extends Resource
                 $payloadSource
               )->afterResponse();
 
-              Notification::make()
+              /* Notification::make()
                 ->title('Import gestartet')
                 ->body('Der Import läuft im Hintergrund. Du kannst die Seite verlassen.')
                 ->success()
-                ->send();
+                ->send(); */
 
-              $action->success();   // signalisiert Livewire "fertig"
-              $action->cancel();    // schließt Modal zuverlässig
+              $action->success();                 // nutzt successNotificationTitle()
+              if (method_exists($livewire, 'unmountTableAction')) {
+                $livewire->unmountTableAction();
+              }    // Modal schließen + Spinner stop
 
+              $closeModal();
               return;
             } catch (\Throwable $e) {
               Log::error('ACTION_EXCEPTION', [
@@ -690,13 +719,17 @@ class ProductResource extends Resource
                 'line' => $e->getLine(),
               ]);
 
-              Notification::make()
+              /* Notification::make()
                 ->title('Import fehlgeschlagen')
                 ->body($e->getMessage())
                 ->danger()
-                ->send();
+                ->send(); */
 
-              $action->failure();
+              $action->failure();                 // Filament Failure-Notification
+              $closeModal();
+              if (method_exists($livewire, 'unmountTableAction')) {
+                $livewire->unmountTableAction();
+              }    // Modal schließen + Spinner stop
               if (config('app.debug')) {
                 throw $e;
               }
@@ -704,7 +737,8 @@ class ProductResource extends Resource
           })
           ->closeModalByClickingAway(false)
           ->modalSubmitActionLabel('Import starten')
-          ->successNotificationTitle('Import gestartet'),
+          ->successNotificationTitle('Import gestartet')
+          ->closeModalOnSuccess(),
       ])
       ->bulkActions([
         BulkActionGroup::make([
