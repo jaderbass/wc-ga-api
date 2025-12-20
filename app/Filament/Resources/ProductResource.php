@@ -637,12 +637,11 @@ class ProductResource extends Resource
               // Source je nach Typ bestimmen
               $source = match ($sourceType) {
                 'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$sourceType]),
-                'api'        => $manufacturer->api_url,
-                default      => null,
+                'api'        => (string) $manufacturer->api_url,
+                default      => '',
               };
 
-              // Bei API muss eine URL in den Stammdaten hinterlegt sein
-              if ($sourceType === 'api' && empty($source)) {
+              if ($sourceType === 'api' && $source === '') {
                 Notification::make()
                   ->title('Keine API-URL hinterlegt')
                   ->body('Für diesen Hersteller ist keine API-URL in den Stammdaten hinterlegt.')
@@ -651,43 +650,51 @@ class ProductResource extends Resource
                 return;
               }
 
-              if ($sourceType === 'csv') {
-                $fullPath = is_string($source) ? storage_path("app/{$source}") : null;
-
-                // schlanke Debug-Infos, nur wenn IMPORT_DEBUG=true
-                ImportLog::debug('[PR] csv: path', [
-                  'is_string' => is_string($fullPath),
-                  'exists'    => is_string($fullPath) ? file_exists($fullPath) : false,
-                ]);
-
-                $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
-                ImportLog::debug('[PR] csv: importer', ['class' => get_debug_type($importer)]);
-
-                \App\Services\ImporterSelector::handleImport($importer, 'csv', $fullPath);
-                Notification::make()->title('CSV-Import abgeschlossen')->success()->send();
+              if ($sourceType !== 'api' && $source === '') {
+                Notification::make()
+                  ->title('Import-Quelle fehlt')
+                  ->body('Die Datei konnte nicht gespeichert werden.')
+                  ->danger()
+                  ->send();
                 return;
               }
 
-              // XML / API
-              $importer = \App\Services\ImporterSelector::forManufacturer($manufacturerId);
-              ImportLog::debug('[PR] xml/api: importer', ['class' => get_debug_type($importer)]);
+              // Für CSV/XML: echten absoluten Pfad übergeben
+              $payloadSource = $sourceType === 'api'
+                ? $source
+                : storage_path("app/{$source}");
 
-              \App\Services\ImporterSelector::handleImport($importer, $sourceType, $source);
+              // Job NACH Response laufen lassen (verhindert 500 durch lange Request)
+              \App\Jobs\RunManufacturerImportJob::dispatch(
+                $manufacturerId,
+                $sourceType,
+                $payloadSource
+              )->afterResponse();
 
-              Notification::make()->title('Import gestartet')->success()->send();
+              Notification::make()
+                ->title('Import gestartet')
+                ->body('Der Import läuft im Hintergrund. Du kannst die Seite verlassen.')
+                ->success()
+                ->send();
+
+              return;
             } catch (\Throwable $e) {
               Log::error('ACTION_EXCEPTION', [
                 'msg'  => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
               ]);
-              Notification::make()->title('Import fehlgeschlagen')->body($e->getMessage())->danger()->send();
+
+              Notification::make()
+                ->title('Import fehlgeschlagen')
+                ->body($e->getMessage())
+                ->danger()
+                ->send();
 
               if (config('app.debug')) {
                 throw $e;
               }
             }
-
           }),
       ])
       ->bulkActions([
