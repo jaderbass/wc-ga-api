@@ -705,12 +705,8 @@ class ProductResource extends Resource
                 ->success()
                 ->send(); */
 
-              $action->success();                 // nutzt successNotificationTitle()
-              if (method_exists($livewire, 'unmountTableAction')) {
-                $livewire->unmountTableAction();
-              }    // Modal schließen + Spinner stop
-
-              $closeModal();
+              $action->success();   // zeigt "Import gestartet" (via successNotificationTitle)
+              $action->cancel();    // schließt Modal + stoppt Spinner zuverlässig (Filament 3.4)
               return;
             } catch (\Throwable $e) {
               Log::error('ACTION_EXCEPTION', [
@@ -725,11 +721,10 @@ class ProductResource extends Resource
                 ->danger()
                 ->send(); */
 
-              $action->failure();                 // Filament Failure-Notification
-              $closeModal();
-              if (method_exists($livewire, 'unmountTableAction')) {
-                $livewire->unmountTableAction();
-              }    // Modal schließen + Spinner stop
+              $action->failure();
+              $action->cancel(); // Modal zu, Spinner aus
+              return;
+              
               if (config('app.debug')) {
                 throw $e;
               }
