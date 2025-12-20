@@ -617,7 +617,7 @@ class ProductResource extends Resource
               ->visible(fn($get) => $get('sourceType') === 'xml')
               ->storeFiles(false),
           ])
-          ->action(function (array $data) {
+          ->action(function (array $data, Tables\Actions\Action $action) {
             $manufacturerId = (int)($data['manufacturer_id'] ?? 0);
             $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
 
@@ -647,6 +647,8 @@ class ProductResource extends Resource
                   ->body('Für diesen Hersteller ist keine API-URL in den Stammdaten hinterlegt.')
                   ->danger()
                   ->send();
+
+                $action->halt();
                 return;
               }
 
@@ -677,6 +679,9 @@ class ProductResource extends Resource
                 ->success()
                 ->send();
 
+              $action->success();   // signalisiert Livewire "fertig"
+              $action->cancel();    // schließt Modal zuverlässig
+
               return;
             } catch (\Throwable $e) {
               Log::error('ACTION_EXCEPTION', [
@@ -691,11 +696,15 @@ class ProductResource extends Resource
                 ->danger()
                 ->send();
 
+              $action->failure();
               if (config('app.debug')) {
                 throw $e;
               }
             }
-          }),
+          })
+          ->closeModalByClickingAway(false)
+          ->modalSubmitActionLabel('Import starten')
+          ->successNotificationTitle('Import gestartet'),
       ])
       ->bulkActions([
         BulkActionGroup::make([
