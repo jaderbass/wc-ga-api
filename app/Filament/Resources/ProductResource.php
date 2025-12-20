@@ -737,8 +737,7 @@ class ProductResource extends Resource
           })
           ->closeModalByClickingAway(false)
           ->modalSubmitActionLabel('Import starten')
-          ->successNotificationTitle('Import gestartet')
-          ->closeModalOnSuccess(),
+          ->successNotificationTitle('Import gestartet'),
       ])
       ->bulkActions([
         BulkActionGroup::make([
