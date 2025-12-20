@@ -6,6 +6,11 @@ use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Models\ProductMeta;
+use App\Models\ProductAttribute;
+use App\Models\ProductAttributeValue;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -53,6 +58,26 @@ class GenericCsvProductImporter implements CsvImporterContract
     $user = Auth::user();
 
     return $user?->id;
+  }
+
+  /**
+   * Liest ein optionales Steuer-Flag aus dem Import-Mapping.
+   *
+   * Wird genutzt, um herstellerspezifisches Verhalten
+   * (z. B. Aliens: SKU-Prefixe, Auto-Features, Lookup-Strategie)
+   * ohne harte If-Abfragen im Code zu steuern.
+   *
+   * Beispiel:
+   *   $this->flag('auto_features', false)
+   *
+   * @param string $key
+   * @param mixed  $default
+   * @return mixed
+   */
+  protected function flag(string $key, mixed $default = null): mixed
+  {
+    $flags = $this->mapping['flags'] ?? [];
+    return is_array($flags) && array_key_exists($key, $flags) ? $flags[$key] : $default;
   }
 
   /**
@@ -335,17 +360,6 @@ class GenericCsvProductImporter implements CsvImporterContract
       ]);
     }
 
-
-
-    // // Debug pro Feld
-    // ImportLog::debug('Mapping check', [
-    //   'field' => $dbField,
-    //   'candidates' => $candidates,
-    //   'resolved' => $productPayload[$dbField] ?? null,
-    // ]);
-
-
-
     // Fallback: Shortdescription aus Description (max 255, HTML raus)
     if (
       (!array_key_exists('short_description', $productPayload) ||
@@ -416,10 +430,32 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     // Produkt holen/erstellen
-    $query = \App\Models\Product::query()->where('slug', $slug);
-    #if ($this->manufacturerId) {
-    #  $query->where('manufacturer_id', $this->manufacturerId);
-    #}
+    $productLookupBy = (string) ($this->flag('product_lookup_by', 'slug') ?? 'slug');
+
+    $query = \App\Models\Product::query();
+
+    if ($productLookupBy === 'sku') {
+      // Für Aliens: Parent-SKU = Prefix + Produkt-ID
+      $productIdSpec = $this->mapping['group_by'] ?? null;
+      $productIdCol  = is_array($productIdSpec) ? ($productIdSpec[0] ?? null) : $productIdSpec;
+      $aliensProductId = $productIdCol ? $this->firstNonEmptyFromRow($rows->first() ?? [], [$productIdCol]) : null;
+      $aliensProductId = $aliensProductId !== null ? trim((string) $aliensProductId) : null;
+
+      $productSkuPrefix = (string) ($this->flag('product_sku_prefix', '') ?? '');
+      $prefixedSku = ($productSkuPrefix !== '' && $aliensProductId) ? $productSkuPrefix . $aliensProductId : null;
+
+      if ($prefixedSku) {
+        $query->where('sku', $prefixedSku);
+        // stellen wir sicher, dass SKU im Payload gesetzt ist
+        $writablePayload['sku'] = $prefixedSku;
+      } else {
+        // Fallback auf slug
+        $query->where('slug', $slug);
+      }
+    } else {
+      $query->where('slug', $slug);
+    }
+    
     $product = $query->first();
 
     if ($product) {
@@ -437,6 +473,84 @@ class GenericCsvProductImporter implements CsvImporterContract
       'product_number'  => $product->product_number,
       'ean'             => $product->external_url,
     ]);
+
+    /**
+     * Speichert Aliens-Feature-Spalten automatisch als product_meta.
+     *
+     * Unterstützt:
+     * - Alle Spalten mit Prefix "Feature:"
+     * - Zusätzlich strukturierte Triples:
+     *   - Feature Name
+     *   - Feature Value
+     *   - Feature Position
+     *
+     * Die Daten werden bewusst nicht normalisiert,
+     * sondern 1:1 aus der CSV übernommen, um maximale
+     * Nachverfolgbarkeit zum Lieferantenfeed zu behalten.
+     */
+    if ($this->flag('auto_features', false) === true) {
+      foreach ($rows as $row) {
+        foreach ($row as $colName => $raw) {
+          if (!is_string($colName)) continue;
+
+          $col = trim($colName);
+          if (!str_starts_with($col, 'Feature:')) {
+            continue;
+          }
+
+          $val = is_string($raw) ? trim($raw) : (string) $raw;
+          $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
+          $val = trim($val);
+
+          if ($val === '') continue;
+
+          $featureName = trim(substr($col, strlen('Feature:')));
+          $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
+          $featureName = trim($featureName);
+
+          if ($featureName === '') continue;
+
+          ProductMeta::updateOrCreate(
+            [
+              'product_id'   => $product->id,
+              'variation_id' => null,
+              'scope'        => 'product',
+              'key'          => 'feature.' . Str::slug($featureName, '_'),
+            ],
+            ['value' => $val]
+          );
+        }
+
+        // Feature Name/Value/Position als JSON-Liste (sofern befüllt)
+        $fn = $row['Feature Name'] ?? null;
+        $fv = $row['Feature Value'] ?? null;
+        $fp = $row['Feature Position'] ?? null;
+
+        $fn = is_string($fn) ? trim($fn) : null;
+        $fv = is_string($fv) ? trim($fv) : null;
+        $fp = is_string($fp) ? trim($fp) : null;
+
+        if (($fn ?? '') !== '' || ($fv ?? '') !== '' || ($fp ?? '') !== '') {
+          $payload = [
+            [
+              'name' => $fn,
+              'value' => $fv,
+              'position' => $fp !== null && $fp !== '' ? (int) $fp : null,
+            ],
+          ];
+
+          ProductMeta::updateOrCreate(
+            [
+              'product_id'   => $product->id,
+              'variation_id' => null,
+              'scope'        => 'product',
+              'key'          => 'features.list_json',
+            ],
+            ['value' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+          );
+        }
+      }
+    }
 
     // --- Varianten importieren ---
     $skipped = 0;
@@ -505,8 +619,11 @@ class GenericCsvProductImporter implements CsvImporterContract
     $ref = $ref !== null ? trim((string) $ref) : null;
 
     if ($ref === null || $ref === '') {
-      return; // ohne SKU keine Variante
+      return; // ohne Referenz keine Variante
     }
+
+    $variationSkuPrefix = (string) ($this->flag('variation_sku_prefix', '') ?? '');
+    $variationSku = $variationSkuPrefix !== '' ? $variationSkuPrefix . $ref : $ref;
 
     // 1) Payload aus variation_fields
     // Unterstützte Formate:
@@ -563,7 +680,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // 2) Variante erstellen oder aktualisieren (bestehende Logik beibehalten)
     $variation = ProductVariation::updateOrCreate(
-      ['product_id' => $product->id, 'sku' => $ref],
+      ['product_id' => $product->id, 'sku' => $variationSku],
       $variationPayload
     );
 
@@ -609,6 +726,82 @@ class GenericCsvProductImporter implements CsvImporterContract
     if (! empty($attributeValueIds)) {
       $variation->attributeValues()->sync($attributeValueIds);
     }
+
+    /**
+     * Speichert Aliens-Feature-Spalten automatisch als product_meta.
+     *
+     * Unterstützt:
+     * - Alle Spalten mit Prefix "Feature:"
+     * - Zusätzlich strukturierte Triples:
+     *   - Feature Name
+     *   - Feature Value
+     *   - Feature Position
+     *
+     * Die Daten werden bewusst nicht normalisiert,
+     * sondern 1:1 aus der CSV übernommen, um maximale
+     * Nachverfolgbarkeit zum Lieferantenfeed zu behalten.
+     */
+    if ($this->flag('auto_attribute_groups', false) === true) {
+      foreach ($row as $colName => $raw) {
+        if (!is_string($colName)) {
+          continue;
+        }
+
+        $colNameClean = trim($colName);
+        if (!str_starts_with($colNameClean, 'Attribute Group:')) {
+          continue;
+        }
+
+        $value = is_string($raw) ? trim($raw) : (string) $raw;
+        $value = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $value) ?? $value;
+        $value = trim($value);
+
+        if ($value === '') {
+          continue;
+        }
+
+        $attributeDisplayName = trim(substr($colNameClean, strlen('Attribute Group:')));
+        $attributeDisplayName = preg_replace('/\s+/u', ' ', $attributeDisplayName) ?? $attributeDisplayName;
+        $attributeDisplayName = trim($attributeDisplayName);
+
+        if ($attributeDisplayName === '') {
+          continue;
+        }
+
+        // Kombi-Group (mit "|") erstmal roh ablegen (kann später separat behandelt werden)
+        if (str_contains($attributeDisplayName, '|')) {
+          ProductMeta::updateOrCreate(
+            [
+              'product_id'   => $variation->product_id,
+              'variation_id' => $variation->id,
+              'scope'        => 'variation',
+              'key'          => 'attribute_group_raw.' . Str::slug($attributeDisplayName, '_'),
+            ],
+            ['value' => $value]
+          );
+          continue;
+        }
+
+        $attributeSlug = Str::slug($attributeDisplayName);
+
+        $attribute = ProductAttribute::firstOrCreate(
+          ['slug' => $attributeSlug],
+          ['name' => $attributeDisplayName]
+        );
+
+        $attributeValue = ProductAttributeValue::firstOrCreate(
+          ['attribute_id' => $attribute->id, 'slug' => Str::slug($value)],
+          ['value' => $value]
+        );
+
+        $attributeValueIds[] = $attributeValue->id;
+      }
+
+      if (! empty($attributeValueIds)) {
+        $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
+      }
+    }
+
   }
 
 
