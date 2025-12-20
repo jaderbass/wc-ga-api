@@ -100,8 +100,55 @@ class GenericCsvProductImporter implements CsvImporterContract
     $csv->skipEmptyRecords();
 
     // 1) Header + Records lesen
-    $records = iterator_to_array($csv->getRecords());
-    $headers = $csv->getHeader();
+
+    // League\Csv bricht ab, wenn Header-Spaltennamen doppelt sind.
+    // Aliens-CSV enthält Duplikate (z. B. "Kombinationsmenge", "Dateiname des Anhangs").
+    // Daher: Duplikate eindeutig machen (suffix _2, _3, ...), bevor Records gelesen werden.
+    $makeUniqueHeaders = function (array $headers): array {
+      $seen = [];
+      $out = [];
+
+      foreach ($headers as $h) {
+        $base = is_string($h) ? trim($h) : (string) $h;
+        $key  = $base;
+
+        if (!isset($seen[$base])) {
+          $seen[$base] = 1;
+          $out[] = $key;
+          continue;
+        }
+
+        $seen[$base]++;
+
+        // z. B. "Kombinationsmenge_2"
+        $key = $base . '_' . $seen[$base];
+        $out[] = $key;
+      }
+
+      return $out;
+    };
+
+    $uniqueHeaders = $makeUniqueHeaders($headers);
+
+    // Reader neu mit eindeutigen Headern konfigurieren:
+    $csv->setHeaderOffset(null); // wir lesen die Zeilen "raw"
+    $rowsRaw = iterator_to_array($csv->getRecords());
+
+    // 1. Zeile ist Header, Rest sind Daten
+    array_shift($rowsRaw);
+
+    // Records wieder als associative Arrays aufbauen
+    $records = [];
+    foreach ($rowsRaw as $row) {
+      // falls Zeilenlänge nicht passt, defensiv auffüllen/abschneiden
+      $row = array_values($row);
+      $row = array_pad($row, count($uniqueHeaders), null);
+      $row = array_slice($row, 0, count($uniqueHeaders));
+
+      $records[] = array_combine($uniqueHeaders, $row);
+    }
+
+    $headers = $uniqueHeaders;
 
     ImportLog::debug('CSV Header', [
       'count'   => count($headers),
