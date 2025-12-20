@@ -607,6 +607,7 @@ class ProductResource extends Resource
                 'application/vnd.ms-excel',
                 'text/x-csv',
               ])
+              ->maxSize(25000) // KB => 25 MB
               ->visible(fn($get) => $get('sourceType') === 'csv')
               ->storeFiles(false),
 
