@@ -300,13 +300,27 @@ class GenericCsvProductImporter implements CsvImporterContract
       'count_groups' => $grouped->count(),
     ]);
 
-    // 6) Gruppen importieren (Transaktion)
-    DB::transaction(function () use ($grouped) {
-      foreach ($grouped as $groupKey => $rows) {
-        ImportLog::debug('Import group', ['groupKey' => $groupKey, 'rows' => $rows->count()]);
-        $this->importProductGroup($groupKey, $rows);
+    // 6) Gruppen importieren (Transaktion nur pro Gruppe)
+    // Hintergrund: Bei großen Imports kann die Request abbrechen (Timeout/Fatal).
+    // Eine globale Transaktion würde dann ALLES rollbacken.
+    foreach ($grouped as $groupKey => $rows) {
+      ImportLog::debug('Import group', [
+        'groupKey' => $groupKey,
+        'rows'     => $rows->count(),
+      ]);
+
+      try {
+        DB::transaction(function () use ($groupKey, $rows) {
+          $this->importProductGroup($groupKey, $rows);
+        });
+      } catch (\Throwable $e) {
+        Log::error('Import group failed', [
+          'groupKey'  => $groupKey,
+          'rows'      => $rows->count(),
+          'exception' => $e->getMessage(),
+        ]);
       }
-    });
+    }
   }
 
   /**
