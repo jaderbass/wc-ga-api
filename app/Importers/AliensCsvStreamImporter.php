@@ -5,6 +5,7 @@ namespace App\Importers;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Support\ImportLog;
+use App\Support\ImportValueNormalizer;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -144,6 +145,33 @@ class AliensCsvStreamImporter
     }
 
     $payload = $this->mapProductPayload($row);
+
+    if (array_key_exists('weight_g', $payload)) {
+      $payload['weight_g'] = ImportValueNormalizer::toGrams($payload['weight_g']) ?? 0;
+    }
+
+    if (array_key_exists('length_mm', $payload)) {
+      $payload['length_mm'] = ImportValueNormalizer::toMillimeters($payload['length_mm']) ?? 0;
+    }
+
+    if (array_key_exists('width_mm', $payload)) {
+      $payload['width_mm'] = ImportValueNormalizer::toMillimeters($payload['width_mm']) ?? 0;
+    }
+
+    if (array_key_exists('height_mm', $payload)) {
+      $payload['height_mm'] = ImportValueNormalizer::toMillimeters($payload['height_mm']) ?? 0;
+    }
+
+    // Optional: falls du diese Felder überhaupt befüllst (die sind nullable)
+    if (array_key_exists('dimension_length_mm', $payload)) {
+      $payload['dimension_length_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_length_mm']);
+    }
+    if (array_key_exists('dimension_width_mm', $payload)) {
+      $payload['dimension_width_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_width_mm']);
+    }
+    if (array_key_exists('dimension_height_mm', $payload)) {
+      $payload['dimension_height_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_height_mm']);
+    }
 
     // deterministischer slug: Aliens SEO-URL oder fallback productId
     $slug = $payload['slug'] ?? null;
