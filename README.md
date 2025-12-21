@@ -181,6 +181,16 @@ Verarbeitung:
 
 ---
 
+## Eigene Artisan-Commands
+
+| Kommando | Was es tut |
+|----------|------------|
+| `php artisan import:smoke-aliens --manufacturer=1 --file=/usr/home/geoalp/wc-ga-api/storage/app/imports/DEINE.csv --author=1` und `php artisan queue:work database --queue=imports -v` | Smoke-Test für Dispatch (Queue) |
+| `php artisan import:smoke-aliens-sync --manufacturer=1 --file=/usr/home/geoalp/wc-ga-api/storage/app/imports/DEINE.csv --author=1` | Smoke-Test: Sync (ohne Queue) ✅✅ (bestes Debugging) |
+| `php artisan products:purge --force` | Datenbank `products`- und `product_*`-Tabellen komplett leeren |
+| `php artisan products:purge --manufacturer=1 --force` | Datenbank wie oben aber nur für einen bestimmten Hersteller leeren (hier Aliens mit der ID 1) |
+
+
 ## 🧰 Entwickler-Tools
 
 | Zweck | Pfad |
