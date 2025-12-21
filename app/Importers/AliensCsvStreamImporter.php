@@ -155,60 +155,58 @@ class AliensCsvStreamImporter
     $payload['manufacturer_id'] = $this->manufacturerId;
     $payload['author_id'] = Auth::id();
 
-    $product = DB::transaction(function () use ($payload, $productId): Product {
-      // 1) Erst versuchen wir das Produkt über Meta eindeutig zu finden
-      $product = Product::query()
-        ->where('manufacturer_id', $payload['manufacturer_id'])
-        ->whereHas('meta', function ($q) use ($productId) {
-          $q->where('scope', 'product')
-            ->where('key', 'aliens_product_id')
-            ->whereNull('variation_id')
-            ->where('value', $productId);
-        })
-        ->first();
+    // 1) Produkt primär über Meta finden (ohne Transaktion)
+    $product = Product::query()
+      ->where('manufacturer_id', $payload['manufacturer_id'])
+      ->whereHas('meta', function ($q) use ($productId) {
+        $q->where('scope', 'product')
+          ->where('key', 'aliens_product_id')
+          ->whereNull('variation_id')
+          ->where('value', $productId);
+      })
+      ->first();
 
-      // 2) Wenn gefunden: updaten (aber slug NICHT zwangsweise überschreiben)
-      if ($product instanceof Product) {
-        $filtered = $this->filterExistingColumns(Product::class, $payload);
+    if ($product instanceof Product) {
+      // UPDATE-Pfad: kein Transaction-Overhead
+      $filtered = $this->filterExistingColumns(Product::class, $payload);
 
-        // slug bewusst rausnehmen, damit du dir keine URLs "kaputt updatest"
-        unset($filtered['slug']);
+      // slug nicht zwangsupdaten (stabil halten)
+      unset($filtered['slug']);
 
-        $product->forceFill($filtered)->save();
+      $product->forceFill($filtered)->save();
+    } else {
+      // CREATE-Pfad: nur hier Transaktion
+      $product = DB::transaction(function () use ($payload, $productId): Product {
+        $product = Product::query()->firstOrCreate(
+          [
+            'manufacturer_id' => $payload['manufacturer_id'],
+            'slug'            => $payload['slug'],
+          ],
+          [
+            'manufacturer_id' => $payload['manufacturer_id'],
+            'slug'            => $payload['slug'],
+            'product_name'    => $payload['product_name'] ?? null,
+            'author_id'       => $payload['author_id'],
+          ]
+        );
 
-        // Meta sicherstellen (falls mal fehlt)
+        $product->forceFill($this->filterExistingColumns(Product::class, $payload))->save();
+
+        // Meta beim Create-Pfad atomar setzen
         $product->meta()->updateOrCreate(
           ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
           ['value' => $productId]
         );
 
         return $product;
-      }
+      });
+    }
 
-      // 3) Wenn NICHT gefunden: neu anlegen (hier darf slug greifen)
-      $product = Product::query()->firstOrCreate(
-        [
-          // wichtig: nicht nur slug (sonst Hersteller-übergreifende Kollision möglich)
-          'manufacturer_id' => $payload['manufacturer_id'],
-          'slug'            => $payload['slug'],
-        ],
-        [
-          'manufacturer_id' => $payload['manufacturer_id'],
-          'slug'            => $payload['slug'],
-          'product_name'    => $payload['product_name'] ?? null,
-          'author_id'       => $payload['author_id'],
-        ]
-      );
-
-      $product->forceFill($this->filterExistingColumns(Product::class, $payload))->save();
-
-      $product->meta()->updateOrCreate(
-        ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
-        ['value' => $productId]
-      );
-
-      return $product;
-    });
+    // 2) Meta sicherstellen (idempotent) – auch für Update-Pfad
+    $product->meta()->updateOrCreate(
+      ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
+      ['value' => $productId]
+    );
 
     $counter++;
 
