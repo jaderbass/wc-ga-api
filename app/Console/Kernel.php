@@ -20,6 +20,7 @@ class Kernel extends ConsoleKernel
     \App\Console\Commands\WooPingCommand::class,
     \App\Console\Commands\WooResetMappingsCommand::class,
     \App\Console\Commands\MakeImportMapping::class,
+    \App\Console\Commands\SmokeTestAliensImportCommand::class,
   ];
 
   /**
