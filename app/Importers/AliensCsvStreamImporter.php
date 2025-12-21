@@ -155,14 +155,46 @@ class AliensCsvStreamImporter
     $payload['manufacturer_id'] = $this->manufacturerId;
     $payload['author_id'] = Auth::id();
 
-    // Wir benutzen die Produkt-ID als "product_number" NICHT, weil bei dir product_number die Referenz ist.
-    // Daher speichern wir Produkt-ID als Meta, um sie eindeutig wiederzufinden.
-    DB::transaction(function () use (&$product, $payload, $productId) {
+    $product = DB::transaction(function () use ($payload, $productId): Product {
+      // 1) Erst versuchen wir das Produkt über Meta eindeutig zu finden
+      $product = Product::query()
+        ->where('manufacturer_id', $payload['manufacturer_id'])
+        ->whereHas('meta', function ($q) use ($productId) {
+          $q->where('scope', 'product')
+            ->where('key', 'aliens_product_id')
+            ->whereNull('variation_id')
+            ->where('value', $productId);
+        })
+        ->first();
+
+      // 2) Wenn gefunden: updaten (aber slug NICHT zwangsweise überschreiben)
+      if ($product instanceof Product) {
+        $filtered = $this->filterExistingColumns(Product::class, $payload);
+
+        // slug bewusst rausnehmen, damit du dir keine URLs "kaputt updatest"
+        unset($filtered['slug']);
+
+        $product->forceFill($filtered)->save();
+
+        // Meta sicherstellen (falls mal fehlt)
+        $product->meta()->updateOrCreate(
+          ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
+          ['value' => $productId]
+        );
+
+        return $product;
+      }
+
+      // 3) Wenn NICHT gefunden: neu anlegen (hier darf slug greifen)
       $product = Product::query()->firstOrCreate(
-        ['slug' => $payload['slug']],
         [
-          'slug'            => $payload['slug'],
+          // wichtig: nicht nur slug (sonst Hersteller-übergreifende Kollision möglich)
           'manufacturer_id' => $payload['manufacturer_id'],
+          'slug'            => $payload['slug'],
+        ],
+        [
+          'manufacturer_id' => $payload['manufacturer_id'],
+          'slug'            => $payload['slug'],
           'product_name'    => $payload['product_name'] ?? null,
           'author_id'       => $payload['author_id'],
         ]
@@ -170,11 +202,12 @@ class AliensCsvStreamImporter
 
       $product->forceFill($this->filterExistingColumns(Product::class, $payload))->save();
 
-      // Produkt-ID als Meta (damit wir später eindeutig suchen können)
       $product->meta()->updateOrCreate(
         ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
         ['value' => $productId]
       );
+
+      return $product;
     });
 
     $counter++;
