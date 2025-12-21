@@ -8,27 +8,41 @@ use Illuminate\Console\Command;
 class SmokeTestAliensImportSyncCommand extends Command
 {
   protected $signature = 'import:smoke-aliens-sync
-    {--manufacturer=1 : Manufacturer ID (default: 1)}
-    {--file= : Absolute path to CSV file (required)}
-    {--author=1 : Author/User ID (default: 1)}';
+    {--manufacturer=1 : Manufacturer ID}
+    {--file= : Absolute path to CSV file (optional, defaults to latest import)}
+    {--author=1 : Author/User ID}';
 
   protected $description = 'Smoke test: run Aliens import synchronously (no queue)';
 
   public function handle(): int
   {
     $manufacturerId = (int) $this->option('manufacturer');
-    $file = (string) $this->option('file');
     $authorId = (int) $this->option('author');
+    $fileOption = $this->option('file');
 
-    if ($file === '') {
-      $this->error('Missing --file option (absolute path).');
-      return self::FAILURE;
+    if ($fileOption) {
+      $file = (string) $fileOption;
+      if (!is_file($file) || !is_readable($file)) {
+        $this->error("File not accessible: {$file}");
+        return self::FAILURE;
+      }
+    } else {
+      $importDir = storage_path('app/imports');
+      $files = glob($importDir . '/*.csv');
+
+      if (!$files) {
+        $this->error('No CSV files found in storage/app/imports');
+        return self::FAILURE;
+      }
+
+      // neueste Datei nehmen
+      usort($files, fn($a, $b) => filemtime($b) <=> filemtime($a));
+      $file = $files[0];
+
+      $this->info('No --file given, using latest CSV:');
+      $this->line($file);
     }
 
-    if (!is_file($file) || !is_readable($file)) {
-      $this->error("File not accessible: {$file}");
-      return self::FAILURE;
-    }
 
     $this->info('Resolving importer...');
     $importer = ImporterSelector::forManufacturer($manufacturerId);
