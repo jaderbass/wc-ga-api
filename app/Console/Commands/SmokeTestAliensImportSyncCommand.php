@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Imports\ImporterSelector;
+use App\Services\ImporterSelector;
 use Illuminate\Console\Command;
 
 class SmokeTestAliensImportSyncCommand extends Command
