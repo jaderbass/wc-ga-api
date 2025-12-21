@@ -38,7 +38,7 @@ class ImporterSelector
     /**
      * ! Über Flag steuern !!!
      */
-    
+
     ImportLog::debug('ImporterSelector resolving', [
       'manufacturer_id'   => $m->id,
       'manufacturer_name' => $m->manufacturer ?? null,
@@ -66,7 +66,7 @@ class ImporterSelector
             manufacturerId: (int) $m->id,
           );
         } else {
-          $instance = new \App\Importers\GenericCsvProductImporter(
+          $instance = new \App\Importers\AliensCsvStreamImporter(
             mappingFile: 'aliens',
             manufacturerId: (int) $m->id
           );
