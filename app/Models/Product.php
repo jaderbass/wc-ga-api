@@ -235,4 +235,9 @@ class Product extends Model
 
         return $urls;
     }
+
+    public function meta(): HasMany
+    {
+        return $this->hasMany(\App\Models\ProductMeta::class);
+    }
 }
