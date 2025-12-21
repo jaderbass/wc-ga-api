@@ -42,6 +42,7 @@ use Filament\Tables\Table;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -674,12 +675,14 @@ class ProductResource extends Resource
               'exists'          => $exists,
             ]);
 
+            $authorId = Auth::id();
 
             // 🔥 Job starten – sonst nichts
             \App\Jobs\RunManufacturerImportJob::dispatch(
               $manufacturerId,
               $sourceType,
-              $payloadSource
+              $payloadSource,
+              $authorId
             )
               ->onConnection(config('queue.default', 'database'))
               ->onQueue('imports');
