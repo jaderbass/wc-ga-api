@@ -6,7 +6,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
-use Illuminate\Support\Facades\Auth;
+use App\Support\Concerns\HasImportAuthor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use League\Csv\Reader;
@@ -27,6 +27,8 @@ use League\Csv\Reader;
  */
 class AliensCsvStreamImporter
 {
+  use HasImportAuthor;
+  
   protected array $mapping;
 
   public function __construct(
@@ -181,7 +183,7 @@ class AliensCsvStreamImporter
 
     $payload['slug'] = $slug;
     $payload['manufacturer_id'] = $this->manufacturerId;
-    $payload['author_id'] = Auth::id();
+    $payload['author_id'] = $this->resolveAuthorId();
 
     // 1) Produkt primär über Meta finden (ohne Transaktion)
     $product = Product::query()
