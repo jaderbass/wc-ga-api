@@ -6,6 +6,7 @@ use League\Csv\Reader;
 use Illuminate\Support\Facades\Log;
 use App\Helpers\CsvHeaderMapper;
 use App\Helpers\CsvValueSanitizer;
+use App\Support\Concerns\HasImportAuthor;
 
 /**
  * Basisklasse für CSV-Importe.
@@ -17,6 +18,8 @@ use App\Helpers\CsvValueSanitizer;
  */
 abstract class BaseCsvImporter
 {
+  use HasImportAuthor;
+  
   /**
    * Gibt den Eloquent-Modellklassennamen zurück, auf den der Import zielt.
    *
