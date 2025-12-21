@@ -617,32 +617,13 @@ class ProductResource extends Resource
               ->visible(fn($get) => $get('sourceType') === 'xml')
               ->storeFiles(false),
           ])
-          ->action(function (array $data, $livewire, Tables\Actions\Action $action) {
-            $closeModal = function () use ($livewire) {
-              // Filament/Livewire unterscheiden je nach Kontext die Unmount-Methoden
-              foreach (['unmountTableAction', 'unmountAction', 'unmountFormComponentAction'] as $method) {
-                if (is_object($livewire) && method_exists($livewire, $method)) {
-                  $livewire->{$method}();
-                  return;
-                }
-              }
-
-              // Notnagel: mountedTableAction state leeren (wirkt in vielen 3.x Setups)
-              if (is_object($livewire) && property_exists($livewire, 'mountedTableAction')) {
-                $livewire->mountedTableAction = null;
-              }
-              if (is_object($livewire) && property_exists($livewire, 'mountedTableActionsData')) {
-                $livewire->mountedTableActionsData = [];
-              }
-            };
-
-            $manufacturerId = (int)($data['manufacturer_id'] ?? 0);
+          ->action(function (array $data, Tables\Actions\Action $action) {
+            $manufacturerId = (int) $data['manufacturer_id'];
             $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
 
-            // Fallback: Wenn im Formular nichts gesetzt ist, nimm den Import-Typ aus der Hersteller-Tabelle
             $sourceType = $data['sourceType'] ?? $manufacturer->import_type ?? 'csv';
 
-            // CSV/XML: Datei ist Pflicht
+            // Pflichtprüfung
             if (in_array($sourceType, ['csv', 'xml'], true) && empty($data[$sourceType] ?? null)) {
               Notification::make()
                 ->title('Bitte wählen Sie eine Datei für den Import aus.')
@@ -650,89 +631,63 @@ class ProductResource extends Resource
                 ->send();
 
               $action->halt();
-              $closeModal();
               return;
             }
 
-            try {
-              // Source je nach Typ bestimmen
-              $source = match ($sourceType) {
-                'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$sourceType]),
-                'api'        => (string) $manufacturer->api_url,
-                default      => '',
-              };
+            // Quelle bestimmen
+            $source = match ($sourceType) {
+              'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$sourceType]),
+              'api'        => (string) $manufacturer->api_url,
+              default      => null,
+            };
 
-              if ($sourceType === 'api' && $source === '') {
-                Notification::make()
-                  ->title('Keine API-URL hinterlegt')
-                  ->body('Für diesen Hersteller ist keine API-URL in den Stammdaten hinterlegt.')
-                  ->danger()
-                  ->send();
-
-
-                $action->halt();
-                $closeModal();
-                return;
-              }
-
-              if ($sourceType !== 'api' && $source === '') {
-                Notification::make()
-                  ->title('Import-Quelle fehlt')
-                  ->body('Die Datei konnte nicht gespeichert werden.')
-                  ->danger()
-                  ->send();
-
-                $action->halt();
-                $closeModal();
-                return;
-              }
-
-              // Für CSV/XML: echten absoluten Pfad übergeben
-              $payloadSource = $sourceType === 'api'
-                ? $source
-                : storage_path("app/{$source}");
-
-              // Job NACH Response laufen lassen (verhindert 500 durch lange Request)
-              \App\Jobs\RunManufacturerImportJob::dispatch(
-                $manufacturerId,
-                $sourceType,
-                $payloadSource
-              )->afterResponse();
-
-              /* Notification::make()
-                ->title('Import gestartet')
-                ->body('Der Import läuft im Hintergrund. Du kannst die Seite verlassen.')
-                ->success()
-                ->send(); */
-
-              $action->success();   // zeigt "Import gestartet" (via successNotificationTitle)
-              $action->cancel();    // schließt Modal + stoppt Spinner zuverlässig (Filament 3.4)
-              return;
-            } catch (\Throwable $e) {
-              Log::error('ACTION_EXCEPTION', [
-                'msg'  => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-              ]);
-
-              /* Notification::make()
-                ->title('Import fehlgeschlagen')
-                ->body($e->getMessage())
+            if (! $source) {
+              Notification::make()
+                ->title('Import-Quelle fehlt')
                 ->danger()
-                ->send(); */
+                ->send();
 
-              $action->failure();
-              $action->cancel(); // Modal zu, Spinner aus
+              $action->halt();
               return;
-              
-              if (config('app.debug')) {
-                throw $e;
-              }
             }
+
+            $payloadSource = $sourceType === 'api'
+              ? $source
+              : storage_path("app/{$source}");
+
+            Log::info('Import dispatch', [
+              'manufacturerId' => $manufacturerId,
+              'sourceType' => $sourceType,
+              'source' => $source,
+              'payloadSource' => $payloadSource,
+              'queue' => config('queue.default'),
+            ]);
+
+            $exists = ($sourceType !== 'api') ? file_exists($payloadSource) : null;
+
+            Log::info('Import source prepared', [
+              'manufacturer_id' => $manufacturerId,
+              'source_type'     => $sourceType,
+              'source'          => $source,
+              'payloadSource'   => $payloadSource,
+              'exists'          => $exists,
+            ]);
+
+
+            // 🔥 Job starten – sonst nichts
+            \App\Jobs\RunManufacturerImportJob::dispatch(
+              $manufacturerId,
+              $sourceType,
+              $payloadSource
+            );
+
+            // ✅ DAS ist entscheidend
+            $action->success();
           })
+          ->successNotificationTitle('Import gestartet')
           ->closeModalByClickingAway(false)
-          ->modalSubmitActionLabel('Import starten')
-          ->successNotificationTitle('Import gestartet'),
+          ->modalSubmitActionLabel('Import starten'),
+
       ])
       ->bulkActions([
         BulkActionGroup::make([
