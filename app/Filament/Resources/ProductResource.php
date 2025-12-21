@@ -657,10 +657,11 @@ class ProductResource extends Resource
 
             Log::info('Import dispatch', [
               'manufacturerId' => $manufacturerId,
-              'sourceType' => $sourceType,
-              'source' => $source,
-              'payloadSource' => $payloadSource,
-              'queue' => config('queue.default'),
+              'sourceType'     => $sourceType,
+              'source'         => $source,
+              'payloadSource'  => $payloadSource,
+              'connection'     => config('queue.default'),
+              'queue_name'     => 'imports',
             ]);
 
             $exists = ($sourceType !== 'api') ? file_exists($payloadSource) : null;
@@ -679,7 +680,9 @@ class ProductResource extends Resource
               $manufacturerId,
               $sourceType,
               $payloadSource
-            );
+            )
+              ->onConnection(config('queue.default', 'database'))
+              ->onQueue('imports');
 
             // ✅ DAS ist entscheidend
             $action->success();
