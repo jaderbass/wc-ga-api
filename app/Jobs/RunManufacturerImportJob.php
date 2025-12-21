@@ -27,11 +27,13 @@ class RunManufacturerImportJob implements ShouldQueue
    * @param int    $manufacturerId
    * @param string $sourceType   csv|xml|api
    * @param string $source       Pfad (csv/xml) oder URL (api)
+   * @param ?int   $authorId
    */
   public function __construct(
     public int $manufacturerId,
     public string $sourceType,
-    public string $source
+    public string $source,
+    public ?int $authorId = null,
   ) {}
 
   /**
@@ -73,6 +75,9 @@ class RunManufacturerImportJob implements ShouldQueue
       ]);
 
       ImporterSelector::handleImport($importer, $this->sourceType, $this->source);
+      if (method_exists($importer, 'setAuthorId')) {
+        $importer->setAuthorId($this->authorId);
+      }
 
       Log::info('Import job finished', [
         'manufacturer_id' => $this->manufacturerId,
