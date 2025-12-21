@@ -7,10 +7,26 @@ use Illuminate\Support\Arr;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductImage;
+use App\Support\Concerns\HasImportAuthor;
 use Illuminate\Support\Facades\DB;
 
 abstract class BaseImporter
 {
+  use HasImportAuthor;
+  
+  protected ?int $authorId = null;
+
+  public function setAuthorId(?int $authorId): static
+  {
+    $this->authorId = $authorId;
+    return $this;
+  }
+
+  protected function resolveAuthorId(): int
+  {
+    return $this->authorId ?? 1;
+  }
+
   /**
    * Muss vom Kind-Importer implementiert werden:
    * - Spaltenzuordnung / Tag-Zuordnung
