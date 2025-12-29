@@ -76,6 +76,10 @@ class RunManufacturerImportJob implements ShouldQueue
 
       $importer = ImporterSelector::forManufacturer($this->manufacturerId);
 
+      if ($this->runId && method_exists($importer, 'setRunId')) {
+        $importer->setRunId($this->runId);
+      }
+
       ImportLog::debug('[JOB] importer', [
         'manufacturer_id' => $this->manufacturerId,
         'class'           => get_debug_type($importer),
@@ -98,7 +102,7 @@ class RunManufacturerImportJob implements ShouldQueue
         'manufacturer_id' => $this->manufacturerId,
         'source_type'     => $this->sourceType,
       ]);
-      
+
     } catch (\Throwable $e) {
       Log::error('Import job failed', [
         'manufacturer_id' => $this->manufacturerId,
