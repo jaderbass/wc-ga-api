@@ -30,6 +30,7 @@ class ImportRunEventsController extends Controller
         echo 'data: ' . json_encode([
           'id' => $fresh->id,
           'status' => $fresh->status,
+          'processed_rows' => (int) $fresh->processed_rows,
           'finished_at' => optional($fresh->finished_at)->toIso8601String(),
           'error_message' => $fresh->error_message,
         ]) . "\n\n";
