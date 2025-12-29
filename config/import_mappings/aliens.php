@@ -65,6 +65,11 @@ return [
         'description'       => ['Beschreibung'],
         'short_description' => ['Kurzbeschreibung'],
         'external_url'      => ['Produkt-URL'],
+        'type'              => ['Feature: Typ'],
+        'materials'         => ['Feature: Material'],
+        'norms'             => ['Feature: Normen'],
+        // optional, falls vorhanden:
+        // 'made_in'   => ['Hergestellt in'],
 
         // Maße/Gewicht (kommen bei Aliens oft 0/leer – Transform setzt nur bei >0)
         'width_mm'          => ['Breite'],
@@ -208,6 +213,20 @@ return [
             $name = trim($name);
             return $name !== '' ? \Illuminate\Support\Str::slug($name) : null;
         },
+
+        // Punkte-Trenner in Kommas umwandeln
+        // ! nur wenn benötigt!
+        // 'norms' => function ($v) {
+        //     if ($v === null) return null;
+        //     $s = trim((string) $v);
+        //     if ($s === '') return null;
+
+        //     $s = str_replace(['•', '·', '|'], ',', $s);
+        //     $s = preg_replace('/\s*,\s*/', ', ', $s);
+        //     $s = preg_replace('/\s+/', ' ', $s);
+
+        //     return trim($s, " ,");
+        // },
     ],
 
 ];
