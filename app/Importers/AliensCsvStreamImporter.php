@@ -4,6 +4,7 @@ namespace App\Importers;
 
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Models\ImportRun;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
 use App\Support\Concerns\HasImportAuthor;
@@ -30,6 +31,8 @@ class AliensCsvStreamImporter
   use HasImportAuthor;
   
   protected array $mapping;
+  protected ?string $runId = null;
+
 
   public function __construct(
     protected string $mappingFile = 'aliens',
@@ -37,6 +40,16 @@ class AliensCsvStreamImporter
   ) {
     $this->mapping = $this->loadMapping($this->mappingFile);
   }
+
+  /**
+   * Setter-Methode für $runId
+   */
+  public function setRunId(?string $runId): static
+  {
+    $this->runId = $runId;
+    return $this;
+  }
+
 
   /**
    * Führt den CSV-Import (streamed) aus.
@@ -121,6 +134,18 @@ class AliensCsvStreamImporter
       // Variation upsert
       $this->upsertVariation($product, $assoc, (string) $combinationId);
       $importedVariations++;
+
+      if ($this->runId && ($importedVariations % 100 === 0)) {
+        ImportRun::whereKey($this->runId)->update([
+          'processed_rows' => $importedVariations,
+        ]);
+      }
+    }
+
+    if ($this->runId) {
+      ImportRun::whereKey($this->runId)->update([
+        'processed_rows' => $importedVariations,
+      ]);
     }
 
     Log::info('Aliens CSV import finished (streamed)', [
