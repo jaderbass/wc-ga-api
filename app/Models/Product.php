@@ -285,7 +285,12 @@ class Product extends Model
         $metaRows = $this->meta()
             ->where('scope', 'product')
             ->whereNull('variation_id')
-            ->whereIn('key', array_keys($labelMap))
+            ->where(function ($q) use ($labelMap) {
+                $q->whereIn('key', array_keys($labelMap))
+                    ->orWhere('key', 'like', 'feature.%bruchlast%')
+                    ->orWhere('key', 'like', 'feature.%festigkeit%')
+                    ->orWhere('key', 'like', 'feature.%kn%');
+            })
             ->get(['key', 'value']);
 
         foreach ($metaRows as $row) {
