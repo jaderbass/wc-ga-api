@@ -677,12 +677,22 @@ class ProductResource extends Resource
 
             $authorId = Auth::id();
 
+            $run = ImportRun::create([
+              'id'              => (string) Str::uuid(),
+              'manufacturer_id' => $manufacturerId,
+              'source_type'     => $sourceType,
+              'source'          => $payloadSource,
+              'author_id'       => Auth::id(),
+              'status'          => 'queued',
+            ]);
+
             // 🔥 Job starten – sonst nichts
             \App\Jobs\RunManufacturerImportJob::dispatch(
               $manufacturerId,
               $sourceType,
               $payloadSource,
-              $authorId
+              $run->author_id,
+              $run->id,
             )
               ->onConnection(config('queue.default', 'database'))
               ->onQueue('imports');
