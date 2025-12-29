@@ -593,8 +593,15 @@ class GenericCsvProductImporter implements CsvImporterContract
         foreach ($row as $colName => $raw) {
           if (!is_string($colName)) continue;
 
-          $col = trim($colName);
-          if (!str_starts_with($col, 'Feature:')) {
+          $col = is_string($colName) ? $colName : '';
+          $col = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $col) ?? $col;
+          $col = trim($col);
+
+          // toleranter: "Feature:" oder "Feature :"
+          $colNorm = preg_replace('/\s+/u', ' ', $col) ?? $col;
+          $colNorm = str_replace('Feature :', 'Feature:', $colNorm);
+
+          if (!str_starts_with($colNorm, 'Feature:')) {
             continue;
           }
 
@@ -604,7 +611,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
           if ($val === '') continue;
 
-          $featureName = trim(substr($col, strlen('Feature:')));
+          $featureName = trim(substr($colNorm, strlen('Feature:')));
           $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
           $featureName = trim($featureName);
 
