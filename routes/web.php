@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\ImportRunEventsController;
 
 /*
 Route::get('/', function () {
@@ -32,3 +33,5 @@ Route::get('/whoami', function () {
     ]);
 })->middleware('web');
 
+Route::get('/imports/runs/{run}/events', [ImportRunEventsController::class, 'show'])
+    ->middleware(['web', 'auth']);
