@@ -30,6 +30,7 @@ use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Get;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
@@ -246,7 +247,33 @@ class ProductResource extends Resource
                 ->label('Zertifizierung')
                 ->maxLength(255)
                 ->columnSpan(3),
-            ]) // Grid
+            ]), // Grid
+            Repeater::make('technical_attributes_readonly')
+              ->label('Technische Angaben (Import)')
+              ->helperText('Readonly: aus importierten Attributen (z. B. Normen, Bruchlast, Material, Farbe, Typ).')
+              ->schema([
+                TextInput::make('key')
+                  ->label('Attribut')
+                  ->disabled()
+                  ->dehydrated(false),
+
+                TextInput::make('value')
+                  ->label('Wert')
+                  ->disabled()
+                  ->dehydrated(false),
+              ])
+              ->columns(2)
+              ->disabled()
+              ->dehydrated(false)
+              ->afterStateHydrated(function ($component, $state, $record) {
+                if (! $record) {
+                  $component->state([]);
+                  return;
+                }
+
+                // kommt aus Product::technicalAttributesKv()
+                $component->state($record->technicalAttributesKv());
+              }),
           ]) //schema
           ->collapsible(),
 
