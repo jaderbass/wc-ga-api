@@ -240,4 +240,55 @@ class Product extends Model
     {
         return $this->hasMany(\App\Models\ProductMeta::class);
     }
+
+    public function attributeValues(): HasMany
+    {
+        // Tabelle: product_attribute_values
+        // FK-Spalte auf dieser Tabelle muss product_id sein.
+        return $this->hasMany(\App\Models\ProductAttributeValue::class, 'product_id');
+    }
+
+    /**
+     * Key->Value-Liste für UI-Ausgabe (z. B. Normen, Bruchlast, Material, Farbe …).
+     * Gruppiert gleiche Attribute und fasst mehrere Werte zusammen.
+     *
+     * @return array<int, array{key:string, value:string}>
+     */
+    public function technicalAttributesKv(): array
+    {
+        $rows = $this->attributeValues()
+            ->with(['attribute']) // nutzt attribute_id (ist bei dir korrekt)
+            ->get();
+
+        $grouped = [];
+
+        foreach ($rows as $row) {
+            $key = $row->attribute?->name
+                ?? $row->attribute?->label
+                ?? $row->attribute?->slug
+                ?? '—';
+
+            $value = $row->value ?? null;
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $grouped[$key] ??= [];
+            $grouped[$key][] = (string) $value;
+        }
+
+        $out = [];
+
+        foreach ($grouped as $key => $values) {
+            $values = array_values(array_unique(array_filter($values)));
+            $out[] = [
+                'key' => (string) $key,
+                'value' => implode(', ', $values),
+            ];
+        }
+
+        return $out;
+    }
+
 }
