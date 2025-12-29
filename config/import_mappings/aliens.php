@@ -54,6 +54,32 @@ return [
         'variation_sku_prefix'  => 'ALIENS-V-',
     ],
 
+    'feature_meta_whitelist' => [
+        'Feature: Normen' => 'norms',
+        'Feature: Typ' => 'type',
+        'Feature: Material' => 'materials',
+        'Feature: Farbe' => 'color',
+
+        // Bruchlast/Festigkeit (Aliens hat viele Varianten, nimm die wichtigsten)
+        'Feature: Mindestbruchlast [kN]' => 'min_break_load_kn',
+        'Feature: Mindestbruchlast geschlossen [kN]' => 'break_load_closed_kn',
+        'Feature: Mindestbruchlast offen [kN]' => 'break_load_open_kn',
+        'Feature: Mindestbruchlast quer [kN]' => 'break_load_cross_kn',
+        'Feature: Mindestbruchlast längs [kN]' => 'break_load_long_kn',
+        'Feature: Festigkeit / Bruchlast / Belastbarkeit [kN]' => 'break_load_kn',
+
+        // Seil / Normstürze / Fangstoß (Beispiele)
+        'Feature: Anzahl Normstürze [UIAA]' => 'uiaa_falls',
+        'Feature: Max. Fangstoß [kN]' => 'max_impact_force_kn',
+        'Feature: Statische Dehnung [%]' => 'static_elongation_pct',
+        'Feature: Dynamische Dehnung [%]' => 'dynamic_elongation_pct',
+        'Feature: Mantelverschiebung [%]' => 'sheath_slippage_pct',
+
+        // Maße / Durchmesser
+        'Feature: Durchmesser [mm]' => 'diameter_mm',
+        'Feature: Breite [mm]' => 'width_mm_feature',
+    ],
+
     /**
      * Produkt-Mapping (CSV → products.*)
      * Hinweis: Nur Felder die als Spalten existieren und sinnvoll sind.
@@ -212,6 +238,31 @@ return [
             $name = (string)($row['Produktname'] ?? '');
             $name = trim($name);
             return $name !== '' ? \Illuminate\Support\Str::slug($name) : null;
+        },
+
+        '_build_feature_meta' => function ($v, array $row = [], array $mapping = []) {
+            // $mapping ist je nach Importer evtl. nicht verfügbar – falls nicht, lass es weg
+            $whitelist = $mapping['feature_meta_whitelist'] ?? [];
+
+            $meta = [];
+
+            foreach ($whitelist as $csvHeader => $metaKey) {
+                $val = $row[$csvHeader] ?? null;
+
+                if ($val === null) {
+                    continue;
+                }
+
+                $val = is_string($val) ? trim($val) : $val;
+                if ($val === '' || $val === '0') {
+                    // bei manchen Features ist 0 sinnvoll – wenn du 0 behalten willst, entferne '|| $val === "0"'
+                    continue;
+                }
+
+                $meta[$metaKey] = $val;
+            }
+
+            return $meta;
         },
 
         // Punkte-Trenner in Kommas umwandeln
