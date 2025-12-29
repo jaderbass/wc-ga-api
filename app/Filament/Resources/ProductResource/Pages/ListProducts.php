@@ -19,6 +19,10 @@ class ListProducts extends ListRecords
         ];
     }
 
+    /**
+     * Registert den SSE/Livewire-Listener für "Import fertig" auf der Produktliste.
+     * Ziel: Nach Abschluss eines Hintergrund-Imports genau EINEN Reload auslösen.
+     */
     public function mount(): void
     {
         parent::mount();
@@ -26,41 +30,59 @@ class ListProducts extends ListRecords
         \Filament\Support\Facades\FilamentView::registerRenderHook(
             \Filament\View\PanelsRenderHook::BODY_END,
             fn() => <<<'HTML'
-<!-- dein JS snippet hier -->
- <script>
-document.addEventListener('livewire:init', () => {
-  // nur einmal registrieren
-  if (window.__gaImportSseProductsBound) return;
-  window.__gaImportSseProductsBound = true;
+<script>
+(function () {
+  // Debug: zeigt dir, ob dieses Script überhaupt auf der Seite ankommt
+  console.log('[import-ui] listener script loaded');
 
-  Livewire.on('import-run-started', (payload) => {
-    const runId = payload?.runId;
-    if (!runId) return;
-
-    // falls eine alte Verbindung offen ist -> schließen
-    if (window.__gaImportEventSource) {
-      window.__gaImportEventSource.close();
+  function bind() {
+    if (typeof Livewire === 'undefined') {
+      console.warn('[import-ui] Livewire not available');
+      return;
     }
 
-    const url = `/imports/runs/${runId}/events`;
-    const es = new EventSource(url);
-    window.__gaImportEventSource = es;
+    // nur einmal binden
+    if (window.__gaImportSseProductsBound) return;
+    window.__gaImportSseProductsBound = true;
 
-    es.addEventListener('status', (ev) => {
-      const data = JSON.parse(ev.data || '{}');
-      if (!data.status) return;
+    Livewire.on('import-run-started', (payload) => {
+      console.log('[import-ui] import-run-started', payload);
 
-      if (data.status === 'done' || data.status === 'failed') {
-        es.close();
-        window.location.reload(); // genau EINMAL
+      const runId = payload?.runId;
+      if (!runId) return;
+
+      // alte Verbindung schließen
+      if (window.__gaImportEventSource) {
+        window.__gaImportEventSource.close();
       }
-    });
 
-    es.addEventListener('error', () => {
-      es.close();
+      const url = `/imports/runs/${runId}/events`;
+      const es = new EventSource(url);
+      window.__gaImportEventSource = es;
+
+      es.addEventListener('status', (ev) => {
+        const data = JSON.parse(ev.data || '{}');
+        if (!data.status) return;
+
+        if (data.status === 'done' || data.status === 'failed') {
+          es.close();
+          window.location.reload();
+        }
+      });
+
+      es.addEventListener('error', () => {
+        es.close();
+      });
     });
-  });
-});
+  }
+
+  // Wenn Livewire schon da ist: sofort binden. Wenn nicht: beim init binden.
+  if (typeof Livewire !== 'undefined') {
+    bind();
+  } else {
+    document.addEventListener('livewire:init', bind, { once: true });
+  }
+})();
 </script>
 HTML
         );
