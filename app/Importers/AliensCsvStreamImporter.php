@@ -42,7 +42,15 @@ class AliensCsvStreamImporter
   }
 
   /**
-   * Setter-Methode für $runId
+   * Setzt die Import-Run-ID für Progress-Tracking.
+   *
+   * Wird vom RunManufacturerImportJob gesetzt, um diesem Importer
+   * den zugehörigen ImportRun zuzuordnen. Ermöglicht das laufende
+   * Aktualisieren von processed_rows während eines Streaming-Imports
+   * sowie das Anzeigen des Fortschritts im UI via SSE.
+   *
+   * @param  string|null  $runId  UUID des ImportRuns oder null, wenn kein Tracking gewünscht ist.
+   * @return static
    */
   public function setRunId(?string $runId): static
   {
