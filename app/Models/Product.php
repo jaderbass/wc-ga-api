@@ -10,6 +10,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Str;
 
 
@@ -241,13 +242,6 @@ class Product extends Model
         return $this->hasMany(\App\Models\ProductMeta::class);
     }
 
-    public function attributeValues(): HasMany
-    {
-        // Tabelle: product_attribute_values
-        // FK-Spalte auf dieser Tabelle muss product_id sein.
-        return $this->hasMany(\App\Models\ProductAttributeValue::class, 'product_id');
-    }
-
     /**
      * Key->Value-Liste für UI-Ausgabe (z. B. Normen, Bruchlast, Material, Farbe …).
      * Gruppiert gleiche Attribute und fasst mehrere Werte zusammen.
@@ -256,37 +250,123 @@ class Product extends Model
      */
     public function technicalAttributesKv(): array
     {
-        $rows = $this->attributeValues()
-            ->with(['attribute']) // nutzt attribute_id (ist bei dir korrekt)
-            ->get();
+        $out = [];
 
-        $grouped = [];
+        // 1) Direkte Produktfelder (schnell + stabil)
+        $direct = [
+            'Typ' => $this->type,
+            'Material' => $this->materials,
+            'Normen' => $this->norms,
+            'Zertifizierung' => $this->certification,
+            'Herkunft' => $this->made_in,
+            'Größe' => $this->size,
+        ];
 
-        foreach ($rows as $row) {
-            $key = $row->attribute?->name
-                ?? $row->attribute?->label
-                ?? $row->attribute?->slug
-                ?? '—';
+        $labelMap = [
+            'feature.normen' => 'Normen',
+            'feature.material' => 'Material',
+            'feature.typ' => 'Typ',
+            'feature.farbe' => 'Farbe',
 
-            $value = $row->value ?? null;
+            'feature.festigkeit_bruchlast_belastbarkeit_kn' => 'Bruchlast / Festigkeit [kN]',
+            'feature.mindestbruchlast_kn' => 'Mindestbruchlast [kN]',
+            'feature.mindestbruchlast_geschlossen_kn' => 'Mindestbruchlast geschlossen [kN]',
+            'feature.mindestbruchlast_offen_kn' => 'Mindestbruchlast offen [kN]',
+            'feature.mindestbruchlast_quer_kn' => 'Mindestbruchlast quer [kN]',
+            'feature.mindestbruchlast_laengs_kn' => 'Mindestbruchlast längs [kN]',
+
+            'feature.max_fangstoss_kn' => 'Max. Fangstoß [kN]',
+            'feature.anzahl_normstuerze_uiaa' => 'Anzahl Normstürze [UIAA]',
+            'feature.statische_dehnung' => 'Statische Dehnung',
+            'feature.dynamische_dehnung' => 'Dynamische Dehnung',
+            'feature.durchmesser_mm' => 'Durchmesser [mm]',
+        ];
+
+        $metaRows = $this->meta()
+            ->where('scope', 'product')
+            ->whereNull('variation_id')
+            ->whereIn('key', array_keys($labelMap))
+            ->get(['key', 'value']);
+
+        foreach ($metaRows as $row) {
+            $k = (string) $row->key;
+            $v = $row->value;
+
+            if ($v === null || $v === '') {
+                continue;
+            }
+
+            if (is_string($v)) {
+                $v = trim($v);
+            }
+
+            $out[] = [
+                'key' => $labelMap[$k] ?? $k,
+                'value' => is_scalar($v) ? (string) $v : json_encode($v),
+            ];
+        }
+
+        foreach ($direct as $key => $value) {
+            $value = is_string($value) ? trim($value) : $value;
 
             if ($value === null || $value === '') {
                 continue;
             }
 
-            $grouped[$key] ??= [];
-            $grouped[$key][] = (string) $value;
-        }
-
-        $out = [];
-
-        foreach ($grouped as $key => $values) {
-            $values = array_values(array_unique(array_filter($values)));
             $out[] = [
-                'key' => (string) $key,
-                'value' => implode(', ', $values),
+                'key' => $key,
+                'value' => (string) $value,
             ];
         }
+
+        // 2) Meta-Felder (hier landen idealerweise Bruchlast, EN-Normen, UIAA, etc.)
+        // Nur product-scope, ohne variation_id
+        $metaRows = $this->meta()
+            ->where('scope', 'product')
+            ->whereNull('variation_id')
+            ->get(['key', 'value']);
+
+        // Optional: nur relevante Meta-Keys zeigen (Whitelist)
+        // Wenn du erstmal alles sehen willst: $allowedKeys = null;
+        $allowedKeys = null;
+
+        foreach ($metaRows as $row) {
+            $k = (string) $row->key;
+            $v = $row->value;
+
+            if ($allowedKeys !== null && ! in_array($k, $allowedKeys, true)) {
+                continue;
+            }
+
+            if ($v === null || $v === '') {
+                continue;
+            }
+
+            // JSON in Meta hübsch machen (falls Values als JSON gespeichert werden)
+            if (is_string($v)) {
+                $trim = trim($v);
+                $decoded = json_decode($trim, true);
+
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    if (is_array($decoded)) {
+                        $v = implode(', ', array_map(
+                            fn($x) => is_scalar($x) ? (string) $x : json_encode($x),
+                            $decoded
+                        ));
+                    } elseif (is_scalar($decoded)) {
+                        $v = (string) $decoded;
+                    }
+                }
+            }
+
+            $out[] = [
+                'key' => $k,
+                'value' => is_scalar($v) ? (string) $v : json_encode($v),
+            ];
+        }
+
+        // Optional: nach key sortieren
+        usort($out, fn($a, $b) => strcasecmp($a['key'], $b['key']));
 
         return $out;
     }
