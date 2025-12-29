@@ -41,11 +41,12 @@ use Filament\Tables\Table;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\HtmlString;
+use Livewire\Component as LivewireComponent;
 
 /**
  * Class ProductResource
@@ -617,7 +618,7 @@ class ProductResource extends Resource
               ->visible(fn($get) => $get('sourceType') === 'xml')
               ->storeFiles(false),
           ])
-          ->action(function (array $data, Tables\Actions\Action $action) {
+          ->action(function (array $data, Tables\Actions\Action $action, \Livewire\Component $livewire) {
             $manufacturerId = (int) $data['manufacturer_id'];
             $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
 
@@ -695,6 +696,8 @@ class ProductResource extends Resource
             )
               ->onConnection(config('queue.default', 'database'))
               ->onQueue('imports');
+
+            $livewire->dispatch('import-run-started', runId: $run->id);
 
             // ✅ DAS ist entscheidend
             $action->success();
