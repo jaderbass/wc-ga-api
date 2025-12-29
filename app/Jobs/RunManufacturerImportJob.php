@@ -34,6 +34,7 @@ class RunManufacturerImportJob implements ShouldQueue
     public string $sourceType,
     public string $source,
     public ?int $authorId = null,
+    public ?string $runId = null,
   ) {}
 
   /**
@@ -54,6 +55,13 @@ class RunManufacturerImportJob implements ShouldQueue
    */
   public function handle(): void
   {
+    if ($this->runId) {
+      \App\Models\ImportRun::whereKey($this->runId)->update([
+        'status' => 'running',
+        'started_at' => now(),
+      ]);
+    }
+
     try {
       Log::info('Import job started', [
         'manufacturer_id' => $this->manufacturerId,
@@ -79,10 +87,18 @@ class RunManufacturerImportJob implements ShouldQueue
         $importer->setAuthorId($this->authorId);
       }
 
+      if ($this->runId) {
+        \App\Models\ImportRun::whereKey($this->runId)->update([
+          'status' => 'done',
+          'finished_at' => now(),
+        ]);
+      }
+
       Log::info('Import job finished', [
         'manufacturer_id' => $this->manufacturerId,
         'source_type'     => $this->sourceType,
       ]);
+      
     } catch (\Throwable $e) {
       Log::error('Import job failed', [
         'manufacturer_id' => $this->manufacturerId,
@@ -92,6 +108,14 @@ class RunManufacturerImportJob implements ShouldQueue
         'file'            => $e->getFile(),
         'line'            => $e->getLine(),
       ]);
+
+      if ($this->runId) {
+        \App\Models\ImportRun::whereKey($this->runId)->update([
+          'status' => 'failed',
+          'error_message' => $e->getMessage(),
+          'finished_at' => now(),
+        ]);
+      }
 
       throw $e; // wichtig: damit Laravel es als failed job markieren kann
     }
