@@ -4,10 +4,12 @@ namespace App\Importers;
 
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Models\ProductMeta;
 use App\Models\ImportRun;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
 use App\Support\Concerns\HasImportAuthor;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use League\Csv\Reader;
@@ -138,6 +140,8 @@ class AliensCsvStreamImporter
         $productCacheMax,
         $importedProducts
       );
+
+      $this->upsertProductFeaturesMeta($product, $assoc);
 
       // Variation upsert
       $this->upsertVariation($product, $assoc, (string) $combinationId);
@@ -447,5 +451,78 @@ class AliensCsvStreamImporter
     }
 
     throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
+  }
+
+  private function upsertProductFeaturesMeta(Product $product, array $assoc): void
+  {
+    // Optional: Whitelist (empfohlen)
+    $allowed = [
+      'Normen',
+      'Typ',
+      'Material',
+      'Farbe',
+
+      'Festigkeit / Bruchlast / Belastbarkeit [kN]',
+      'Mindestbruchlast [kN]',
+      'Mindestbruchlast geschlossen [kN]',
+      'Mindestbruchlast offen [kN]',
+      'Mindestbruchlast quer [kN]',
+      'Mindestbruchlast längs [kN]',
+      'Lastaufnahme [kN]',
+      'Max. Fangstoß [kN]',
+      'Anzahl Normstürze [UIAA]',
+      'Durchmesser [mm]',
+    ];
+
+    foreach ($assoc as $colName => $raw) {
+      if (!is_string($colName)) {
+        continue;
+      }
+
+      // Header normalisieren (BOM/Whitespace/Sonderzeichen)
+      $col = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $colName) ?? $colName;
+      $col = trim($col);
+      $col = preg_replace('/\s+/u', ' ', $col) ?? $col;
+      $col = str_replace('Feature :', 'Feature:', $col);
+
+      if (!str_starts_with($col, 'Feature:')) {
+        continue;
+      }
+
+      $val = is_string($raw) ? trim($raw) : (string) $raw;
+      $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
+      $val = trim($val);
+
+      if ($val === '') {
+        continue;
+      }
+
+      $featureName = trim(substr($col, strlen('Feature:')));
+      $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
+      $featureName = trim($featureName);
+
+      if ($featureName === '') {
+        continue;
+      }
+
+      // Whitelist anwenden (wenn du erstmal alles willst: diesen Block entfernen)
+      if (!in_array($featureName, $allowed, true)) {
+        continue;
+      }
+
+      $metaKey = 'feature.' . Str::slug($featureName, '_');
+
+      ProductMeta::updateOrCreate(
+        [
+          'product_id' => $product->id,
+          'variation_id' => null,
+          'scope' => 'product',
+          'key' => $metaKey,
+        ],
+        [
+          'value' => $val,
+        ]
+      );
+    }
   }
 }
