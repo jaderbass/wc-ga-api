@@ -437,6 +437,33 @@ class AliensCsvStreamImporter
       $out[$dbField] = $val;
     }
 
+    // --- Beginn Einfügen: Attribute Group:* in attributes_json übernehmen ---
+    $attrs = [];
+
+    foreach ($row as $k => $v) {
+      if (!is_string($k)) {
+        continue;
+      }
+
+      $key = trim($k);
+      if (!str_starts_with($key, 'Attribute Group:')) {
+        continue;
+      }
+
+      $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+      if ($val === null || $val === '') {
+        continue;
+      }
+
+      $attrs[$key] = $val;
+    }
+
+    if ($attrs !== []) {
+      $payload['attributes_json'] = $attrs;
+    }
+    // --- Ende Einfügen ---
+
+
     return $out;
   }
 
