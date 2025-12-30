@@ -875,8 +875,9 @@ class AliensCsvStreamImporter
 
       $col = trim($colName);
 
-      // typische Spalten: "Bild 1", "Bild 2", "Image 1", "Image 2", "Produktbild 1", ...
-      $isImageColumn = (bool) preg_match('/^(bild|image|produktbild)\s*\d+/i', $col);
+      // Aliens ist hier uneinheitlich: "Bild", "Bilder", "Image URL", "Hauptbild", ...
+      $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col)
+        || (bool) preg_match('/\burl\b/i', $col);
 
       if (!$isImageColumn) {
         continue;
@@ -887,12 +888,22 @@ class AliensCsvStreamImporter
         continue;
       }
 
-      // nur echte URLs übernehmen
-      if (!preg_match('~^https?://~i', $val)) {
-        continue;
-      }
+      // Manche Zellen enthalten mehrere URLs (Komma / Whitespace / Newlines)
+      $parts = preg_split('/[\s,;\n\r]+/u', $val) ?: [];
 
-      $urls[] = $val;
+      foreach ($parts as $part) {
+        $part = trim($part);
+        if ($part === '') {
+          continue;
+        }
+
+        // akzeptiere nur http(s) und typische Bild-Endungen (oder image CDN ohne Endung)
+        if (!preg_match('~^https?://~i', $part)) {
+          continue;
+        }
+
+        $urls[] = $part;
+      }
     }
 
     $urls = array_values(array_unique($urls));
