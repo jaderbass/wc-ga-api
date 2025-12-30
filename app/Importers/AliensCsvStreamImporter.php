@@ -124,10 +124,15 @@ class AliensCsvStreamImporter
       $assoc = $this->combineRow($headers, $row);
 
       $productId = $this->cell($assoc, ['Produkt-ID']);
+      
       $combinationId = $this->cell($assoc, ['Kombination-ID']);
+      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
+      $combinationRef = is_string($combinationRef)
+        ? trim($combinationRef)
+        : (is_numeric($combinationRef) ? (string) $combinationRef : null);
 
-      // Ohne IDs macht die Zeile keinen Sinn
-      if ($productId === null || $productId === '' || $combinationId === null || $combinationId === '') {
+      // Ohne Produkt-ID macht die Zeile keinen Sinn
+      if ($productId === null || $productId === '') {
         continue;
       }
 
@@ -141,11 +146,19 @@ class AliensCsvStreamImporter
         $importedProducts
       );
 
+      // Features immer übernehmen (auch aus Feature-only Zeilen)
       $this->upsertProductFeaturesMeta($product, $assoc);
 
-      // Variation upsert
-      $this->upsertVariation($product, $assoc, (string) $combinationId);
-      $importedVariations++;
+      // Nur echte Variantenzeilen upserten (PrestaShop: erkennbar an Kombinations-Referenz)
+      if ($combinationRef !== null && $combinationRef !== '') {
+        // Falls Kombination-ID leer ist, fallback auf Referenz (für upsertVariation-Fallback)
+        $combinationIdSafe = ($combinationId !== null && $combinationId !== '')
+          ? (string) $combinationId
+          : (string) $combinationRef;
+
+        $this->upsertVariation($product, $assoc, $combinationIdSafe);
+        $importedVariations++;
+      }
 
       if ($this->runId && ($importedVariations % 100 === 0)) {
         ImportRun::whereKey($this->runId)->update([
