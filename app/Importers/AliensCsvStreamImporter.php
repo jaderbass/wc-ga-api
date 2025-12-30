@@ -683,6 +683,20 @@ class AliensCsvStreamImporter
       return $html;
     }
 
+    // 1b) CMS-Icon-Boxen (z.B. Keylock.png) in Text-Links umwandeln (kein <img> mehr)
+    $iconPattern = '~<div[^>]*>\s*<a\s+href="([^"]+)"[^>]*>\s*<img[^>]*src="[^"]*/img/cms/([^"/]+)\.png"[^>]*?(?:title="([^"]*)")?[^>]*>\s*</a>\s*</div>~i';
+
+    $htmlWithTokens = preg_replace_callback($iconPattern, static function (array $m): string {
+      $href  = $m[1] ?? '#';
+      $file  = $m[2] ?? 'icon';
+      $title = $m[3] ?? '';
+
+      $label = trim($title) !== '' ? trim($title) : $file;
+
+      // rel noopener für target=_blank
+      return '<a class="alien-icon" href="' . $href . '" target="_blank" rel="noopener noreferrer">' . e($label) . '</a>';
+    }, $htmlWithTokens);
+
     // 2) Alles nach dem ersten Token als "Step"-Blöcke wrappen
     $parts  = explode($token, $htmlWithTokens);
     $before = array_shift($parts);
