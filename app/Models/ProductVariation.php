@@ -32,8 +32,49 @@ class ProductVariation extends Model
     'height_mm' => 'integer',
   ];
 
+  // Anzeige-Name für Filament
+  public function getDisplayNameAttribute(): string
+  {
+    $sku = (string) ($this->sku ?? '');
 
- /*  protected $casts = [
+    $attrs = $this->attributes_json ?? [];
+
+    if (!is_array($attrs)) {
+      $attrs = [];
+    }
+
+    // Aliens relevante Attribute Groups (kannst du jederzeit erweitern)
+    $keys = [
+      'Attribute Group: Farbe',
+      'Attribute Group: Karabinerfarbe',
+      'Attribute Group: Schlingenlänge | Farbe',
+      'Attribute Group: Karabinerverschluß',
+      'Attribute Group: Karabinerversion',
+      'Attribute Group: Schlingenmaterial',
+      'Attribute Group: Größe',
+      'Attribute Group: Länge',
+    ];
+
+    $parts = [];
+
+    foreach ($keys as $k) {
+      $v = $attrs[$k] ?? null;
+
+      if (is_string($v)) {
+        $v = trim($v);
+        if ($v !== '') {
+          $parts[] = $v;
+        }
+      }
+    }
+
+    $parts = array_values(array_unique($parts));
+
+    return $parts ? ($sku . ' – ' . implode(' / ', $parts)) : $sku;
+  }
+
+
+  /*  protected $casts = [
     // Die 'attributes' Spalte wird nicht mehr als JSON gecastet, da sie entfernt wird.
   ]; */
 

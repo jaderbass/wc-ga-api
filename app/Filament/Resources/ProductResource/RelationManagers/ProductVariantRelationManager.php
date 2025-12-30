@@ -54,8 +54,11 @@ class ProductVariantRelationManager extends RelationManager
       ->columns([
         Tables\Columns\TextColumn::make('sku')
           ->label('SKU')
-          ->searchable()
-          ->toggleable(),
+          ->toggleable(isToggledHiddenByDefault: true),
+
+        Tables\Columns\TextColumn::make('display_name')
+          ->label('Variante')
+          ->searchable(),
 
         Tables\Columns\TextColumn::make('name')
           ->label('Variantenname')
