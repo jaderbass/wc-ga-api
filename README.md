@@ -189,6 +189,7 @@ Verarbeitung:
 | `php artisan import:smoke-aliens-sync --manufacturer=1 --file=/usr/home/geoalp/wc-ga-api/storage/app/imports/DEINE.csv --author=1` | Smoke-Test: Sync (ohne Queue) ✅✅ (bestes Debugging)<br>Die Datei mit `ls -lt storage/app/imports \| head` suchen (oberste Datei ist es) |
 | `php artisan products:purge --force` | Datenbank `products`- und `product_*`-Tabellen komplett leeren |
 | `php artisan products:purge --manufacturer=1 --force` | Datenbank wie oben aber nur für einen bestimmten Hersteller leeren (hier Aliens mit der ID 1) |
+| `php artisan aliens:images:download --manufacturerId=123 --limit=5`<br>`php artisan aliens:images:download --manufacturerId=123 --force` | Führt einen Bilder Download nach `storage/public` durch
 
 
 ## 🧰 Entwickler-Tools
