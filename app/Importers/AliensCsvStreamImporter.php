@@ -113,6 +113,9 @@ class AliensCsvStreamImporter
     $productCacheOrder = [];
     $productCacheMax = 500;
 
+    $currentProductId = null;
+    $currentProduct = null;
+
     foreach ($rows as $row) {
       $rowIndex++;
 
@@ -123,71 +126,77 @@ class AliensCsvStreamImporter
 
       $assoc = $this->combineRow($headers, $row);
 
-      // Debug: Welche Keys/Werte kommen für Kombinations-Referenz wirklich an? ---
-      if ((string) ($this->cell($assoc, ['Produkt-ID']) ?? '') === '58') {
-        $keys = array_keys($assoc);
+      // --- Debug: Varianten-Zeilen sichtbar machen ---
+      $debugRef = $this->cell($assoc, ['Kombinations-Referenz']);
 
-        $interestingKeys = array_values(array_filter($keys, function ($k) {
-          return is_string($k) && (
-            str_contains($k, 'Kombinations-Referenz')
-            || str_contains($k, 'Kombination-ID')
-            || str_contains($k, 'Feature Name')
-            || str_contains($k, 'Feature Value')
-          );
-        }));
-
-        Log::info('Aliens stream debug: keys/values', [
-          'interesting_keys' => $interestingKeys,
-          'kombination_id' => $this->cell($assoc, ['Kombination-ID']),
-          'kombinations_ref' => $this->cell($assoc, ['Kombinations-Referenz']),
-          'feature_name' => $this->cell($assoc, ['Feature Name']),
-          'feature_value' => $this->cell($assoc, ['Feature Value']),
+      if ($debugRef !== null && str_starts_with($debugRef, '400/12-')) {
+        Log::info('Aliens stream debug: variation row', [
+          'product_id_cell' => $this->cell($assoc, ['Produkt-ID']),
+          'kombination_id'  => $this->cell($assoc, ['Kombination-ID']),
+          'kombinations_ref' => $debugRef,
+          'feature_name'    => $this->cell($assoc, ['Feature Name']),
+          'feature_value'   => $this->cell($assoc, ['Feature Value']),
+          'color_attr'      => $this->cell($assoc, [
+            'Attribute Group: Farbe',
+            'Attribute Group: Karabinerfarbe',
+            'Attribute Group: Schlingenlänge | Farbe',
+          ]),
         ]);
       }
 
-      // --- Beginn Ersetzen: Feature-Zeilen vs. Varianten-Zeilen sauber unterscheiden ---
+      // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
       $productId = $this->cell($assoc, ['Produkt-ID']);
-      $combinationId = $this->cell($assoc, ['Kombination-ID']);
 
+      $combinationId  = $this->cell($assoc, ['Kombination-ID']);
       $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
-      $featureName = $this->cell($assoc, ['Feature Name']);
-      $featureValue = $this->cell($assoc, ['Feature Value']);
 
-      // Ohne Produkt-ID macht die Zeile keinen Sinn
-      if ($productId === null || $productId === '') {
+      $featureName     = $this->cell($assoc, ['Feature Name']);
+      $featureValue    = $this->cell($assoc, ['Feature Value']);
+      $featurePosition = $this->cell($assoc, ['Feature Position']);
+
+      // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
+      if ($productId !== null && $productId !== '') {
+        $currentProductId = (string) $productId;
+
+        $currentProduct = $this->getOrUpsertProduct(
+          $assoc,
+          $currentProductId,
+          $productCache,
+          $productCacheOrder,
+          $productCacheMax,
+          $importedProducts
+        );
+      }
+
+      // Ohne aktives Parent können wir nichts zuordnen
+      if ($currentProduct === null) {
         continue;
       }
 
-      // Parent upsert (cached)
-      $product = $this->getOrUpsertProduct(
-        $assoc,
-        (string) $productId,
-        $productCache,
-        $productCacheOrder,
-        $productCacheMax,
-        $importedProducts
-      );
+      // 2) Features immer übernehmen (Hauptzeile + Feature-only Zeilen)
+      $this->upsertProductFeaturesMeta($currentProduct, $assoc);
 
-      // Feature-Zeile? -> nur Meta, keine Variation
-      $isFeatureRow = (($featureName ?? '') !== '' || ($featureValue ?? '') !== '');
+      // 3) Feature-only Zeile? (nur Feature Name/Value/Position, keine Kombi-Daten) -> keine Variation
+      $isFeatureOnlyRow =
+        (($featureName ?? '') !== '' || ($featureValue ?? '') !== '' || ($featurePosition ?? '') !== '')
+        && (($combinationId ?? '') === '')
+        && (($combinationRef ?? '') === '');
 
-      // Features immer übernehmen (auch aus Feature-only Zeilen)
-      $this->upsertProductFeaturesMeta($product, $assoc);
-
-      if ($isFeatureRow) {
+      if ($isFeatureOnlyRow) {
         continue;
       }
 
-      // Ab hier: echte Variantenzeile
-      if ($combinationRef !== null && $combinationRef !== '') {
-        $combinationIdSafe = ($combinationId !== null && $combinationId !== '')
+      // 4) Varianten-Zeile: Kombinations-Referenz (oder ID) vorhanden -> Variation upsert
+      $hasVariationIdentity = (($combinationRef ?? '') !== '' || ($combinationId ?? '') !== '');
+
+      if ($hasVariationIdentity) {
+        $combinationIdSafe = (($combinationId ?? '') !== '')
           ? (string) $combinationId
           : (string) $combinationRef;
 
-        $this->upsertVariation($product, $assoc, $combinationIdSafe);
+        $this->upsertVariation($currentProduct, $assoc, $combinationIdSafe);
         $importedVariations++;
       }
-      // --- Ende Ersetzen ---
 
       if ($this->runId && ($importedVariations % 100 === 0)) {
         ImportRun::whereKey($this->runId)->update([
