@@ -535,7 +535,7 @@ class ProductResource extends Resource
                     if (is_array($paths)) {
                       foreach ($paths as $path) {
                         if (is_string($path) && $path !== '') {
-                          $localUrls[] = Storage::url($path);
+                          $localUrls[] = asset($path);
                         }
                       }
                     }
