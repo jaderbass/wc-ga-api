@@ -430,6 +430,15 @@ class AliensCsvStreamImporter
     return $out;
   }
 
+  /**
+   * Baut das Variation-Payload anhand des Import-Mappings.
+   *
+   * Zusätzlich werden dynamische "Attribute Group:*"-Spalten gesammelt
+   * und als JSON in `attributes_json` gespeichert.
+   *
+   * @param  array  $row  Assoziative CSV-Zeile
+   * @return array        DB-taugliches Variation-Payload
+   */
   protected function mapVariationPayload(array $row): array
   {
     $map = $this->mapping['variation_fields'] ?? [];
@@ -473,7 +482,16 @@ class AliensCsvStreamImporter
     return $out;
   }
 
-  // cell() tolerant für unique header suffixe (__2, __3, ...) ---
+  /**
+   * Liefert den ersten nicht-leeren Wert aus der CSV-Zeile für einen Satz möglicher Headernamen.
+   *
+   * Unterstützt Aliens-spezifische Duplicate-Header, die durch `makeUniqueHeaders()`
+   * suffixiert werden (z. B. "Header__2", "Header__3", ...).
+   *
+   * @param  array  $row         Assoziative CSV-Zeile
+   * @param  array  $candidates  Mögliche Headernamen (in Prioritätsreihenfolge)
+   * @return string|null         Getrimmter Wert oder null, wenn nicht vorhanden/leer
+   */
   protected function cell(array $row, array $candidates): ?string
   {
     // 1) exakte Matches (wie bisher)
@@ -515,7 +533,15 @@ class AliensCsvStreamImporter
 
     return null;
   }
-
+  /**
+   * Macht CSV-Header eindeutig.
+   *
+   * Aliens kann Header doppelt liefern. Doppelte Header werden durch Suffixe
+   * eindeutig gemacht (z. B. "Foo", "Foo_2", "Foo_3", ...).
+   *
+   * @param  array  $headers  Roh-Headerliste
+   * @return array            Eindeutige Headerliste
+   */
   protected function makeUniqueHeaders(array $headers): array
   {
     $seen = [];
@@ -537,6 +563,16 @@ class AliensCsvStreamImporter
     return $out;
   }
 
+  /**
+   * Kombiniert Headerliste + numerische CSV-Zeile zu einer assoziativen Zeile.
+   *
+   * - Falls Header/Zeilenlänge differieren, wird tolerant aufgefüllt.
+   * - String-Werte werden am Ende getrimmt.
+   *
+   * @param  array  $headers  Eindeutige Headerliste
+   * @param  array  $row      Numerische CSV-Zeile
+   * @return array            Assoziative CSV-Zeile
+   */
   protected function combineRow(array $headers, array $row): array
   {
     $assoc = [];
@@ -557,6 +593,18 @@ class AliensCsvStreamImporter
     return $assoc;
   }
 
+  /**
+   * Filtert ein Payload auf tatsächlich vorhandene Spalten des Ziel-Models.
+   *
+   * Schützt vor SQL-Fehlern, wenn ein Mapping Felder enthält, die (noch) nicht
+   * als DB-Spalten existieren.
+   *
+   * Hinweis: nutzt Schema::getColumnListing() zur Laufzeit.
+   *
+   * @param  string  $modelClass  FQCN des Eloquent-Models
+   * @param  array   $payload     Ungefiltertes Payload
+   * @return array               Payload nur mit existierenden DB-Spalten
+   */
   protected function filterExistingColumns(string $modelClass, array $payload): array
   {
     $model = app($modelClass);
@@ -567,6 +615,16 @@ class AliensCsvStreamImporter
     return array_intersect_key($payload, $set);
   }
 
+  /**
+   * Aktualisiert die LRU-Reihenfolge für einen Cache-Key.
+   *
+   * Entfernt den Key aus seiner aktuellen Position und hängt ihn ans Ende,
+   * sodass er als "zuletzt benutzt" gilt.
+   *
+   * @param  string  $key    Cache-Key
+   * @param  array   $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
+   * @return void
+   */
   protected function touchCacheKey(string $key, array &$order): void
   {
     $pos = array_search($key, $order, true);
@@ -577,6 +635,17 @@ class AliensCsvStreamImporter
     }
   }
 
+  /**
+   * Entfernt die ältesten Einträge aus dem Cache, bis die Maximalgröße eingehalten ist.
+   *
+   * Arbeitet zusammen mit `$order` (LRU-light). Entfernt Keys vom Anfang der Order-Liste
+   * und löscht die entsprechenden Cache-Einträge.
+   *
+   * @param  array  $cache  Referenz auf den Cache (key => Product)
+   * @param  array  $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
+   * @param  int    $max    Maximal erlaubte Cache-Größe
+   * @return void
+   */
   protected function evictCacheIfNeeded(array &$cache, array &$order, int $max): void
   {
     while (count($order) > $max) {
@@ -587,6 +656,18 @@ class AliensCsvStreamImporter
     }
   }
 
+  /**
+   * Lädt ein Import-Mapping (product / variation_fields) für den Importer.
+   *
+   * Reihenfolge:
+   * 1) config("import_mappings.{name}")
+   * 2) Fallback auf Datei: config/import_mappings/{name}.php
+   *
+   * @param  string  $name  Mapping-Slug (z. B. "aliens")
+   * @return array          Mapping-Array
+   *
+   * @throws \RuntimeException Wenn kein Mapping gefunden wird oder kein Array zurückgibt
+   */
   protected function loadMapping(string $name): array
   {
     $fromConfig = config("import_mappings.{$name}");
@@ -606,6 +687,18 @@ class AliensCsvStreamImporter
     throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
   }
 
+  /**
+   * Schreibt Feature:* Spalten aus der CSV als product_meta (feature.*).
+   *
+   * - Erkennt Spalten mit Prefix "Feature:"
+   * - Normalisiert Header (BOM/Whitespace) und Werte
+   * - Optional per Whitelist eingeschränkt
+   * - Speichert als key "feature.{slug}" im product_meta (scope=product)
+   *
+   * @param  Product  $product  Ziel-Produkt
+   * @param  array    $assoc    Assoziative CSV-Zeile
+   * @return void
+   */
   private function upsertProductFeaturesMeta(Product $product, array $assoc): void
   {
     // Optional: Whitelist (empfohlen)
