@@ -395,6 +395,17 @@ class AliensCsvStreamImporter
       $out[$dbField] = $val;
     }
 
+    // Beginn Einfügen
+    if (isset($out['description'])) {
+      $out['description'] = $this->normalizeAliensHtml((string) $out['description']);
+    }
+
+    if (isset($out['short_description'])) {
+      $out['short_description'] = $this->normalizeAliensHtml((string) $out['short_description']);
+    }
+    // Ende Einfügen
+
+
     // Fallback short_description
     if (
       (!isset($out['short_description']) || trim((string) $out['short_description']) === '')
@@ -654,4 +665,51 @@ class AliensCsvStreamImporter
       );
     }
   }
+
+  // Beginn Einfügen
+  private function normalizeAliensHtml(?string $html): ?string
+  {
+    if (!$html) {
+      return $html;
+    }
+
+    // 1) Die "Nummern-Bildchen"-Boxen in einen Token umwandeln
+    $token = '<!--ALIEN_STEP-->';
+    $pattern = '~<div[^>]*>\s*<a[^>]*>\s*<img[^>]*Individuelle_Nummerierung\.png[^>]*>\s*</a>\s*</div>~i';
+
+    $htmlWithTokens = preg_replace($pattern, $token, $html);
+
+    if (!$htmlWithTokens || !str_contains($htmlWithTokens, $token)) {
+      return $html;
+    }
+
+    // 2) Alles nach dem ersten Token als "Step"-Blöcke wrappen
+    $parts  = explode($token, $htmlWithTokens);
+    $before = array_shift($parts);
+
+    $steps = [];
+    foreach ($parts as $part) {
+      $part = trim($part);
+      if ($part === '') {
+        continue;
+      }
+      $steps[] = $part;
+    }
+
+    if ($steps === []) {
+      // Token war da, aber kein Inhalt dahinter
+      return $before;
+    }
+
+    $wrappedSteps = '<div class="alien-steps">'
+      . implode('', array_map(
+        static fn(string $step) => '<div class="alien-step">' . $step . '</div>',
+        $steps
+      ))
+      . '</div>';
+
+    return $before . $wrappedSteps;
+  }
+  // Ende Einfügen
+
 }
