@@ -55,8 +55,6 @@ class DownloadAliensImagesCommand extends Command
       return self::SUCCESS;
     }
 
-    $disk = Storage::disk('public');
-
     $processed = 0;
     $downloaded = 0;
     $skipped = 0;
@@ -83,9 +81,9 @@ class DownloadAliensImagesCommand extends Command
         continue;
       }
 
-      $baseDir = $this->buildBaseDir($product->manufacturer_id, $product->id);
-      if (!$disk->exists($baseDir)) {
-        $disk->makeDirectory($baseDir);
+      $baseDir = public_path($this->buildBaseDir($product->manufacturer_id, $product->id));
+      if (!is_dir($baseDir)) {
+        mkdir($baseDir, 0755, true);
       }
 
       $localPaths = [];
@@ -125,11 +123,13 @@ class DownloadAliensImagesCommand extends Command
           }
 
           $filename = $this->makeFilenameFromUrl($url, $contentType);
-          $relativePath = $baseDir . '/' . $filename;
+          $relativeWebPath = $this->buildBaseDir($product->manufacturer_id, $product->id) . '/' . $filename;
+          $absolutePath = $baseDir . '/' . $filename;
 
-          $disk->put($relativePath, $response->body());
+          file_put_contents($absolutePath, $response->body());
 
-          $localPaths[] = $relativePath;
+          // wir speichern jetzt den WEB-Pfad (ohne /storage), z.B. products/aliens/...
+          $localPaths[] = $relativeWebPath;
           $downloaded++;
         } catch (\Throwable $e) {
           $failed++;
