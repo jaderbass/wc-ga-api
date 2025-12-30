@@ -126,24 +126,6 @@ class AliensCsvStreamImporter
 
       $assoc = $this->combineRow($headers, $row);
 
-      // --- Debug: Varianten-Zeilen sichtbar machen ---
-      $debugRef = $this->cell($assoc, ['Kombinations-Referenz']);
-
-      if ($debugRef !== null && str_starts_with($debugRef, '400/12-')) {
-        Log::info('Aliens stream debug: variation row', [
-          'product_id_cell' => $this->cell($assoc, ['Produkt-ID']),
-          'kombination_id'  => $this->cell($assoc, ['Kombination-ID']),
-          'kombinations_ref' => $debugRef,
-          'feature_name'    => $this->cell($assoc, ['Feature Name']),
-          'feature_value'   => $this->cell($assoc, ['Feature Value']),
-          'color_attr'      => $this->cell($assoc, [
-            'Attribute Group: Farbe',
-            'Attribute Group: Karabinerfarbe',
-            'Attribute Group: Schlingenlänge | Farbe',
-          ]),
-        ]);
-      }
-
       // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
       $productId = $this->cell($assoc, ['Produkt-ID']);
 
