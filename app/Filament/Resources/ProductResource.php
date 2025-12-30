@@ -516,32 +516,62 @@ class ProductResource extends Resource
                 ->hiddenLabel()
                 ->content(function ($record) {
 
-                  if (! $record || empty($record->display_image_urls)) {
+                  if (! $record) {
+                    return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
+                  }
+
+                  // Beginn Einfügen: lokale Bilder (aliens_image_paths) bevorzugen
+                  $pathsMeta = $record->meta()
+                    ->where('scope', 'product')
+                    ->where('key', 'aliens_image_paths')
+                    ->whereNull('variation_id')
+                    ->first();
+
+                  $localUrls = [];
+
+                  if ($pathsMeta && is_string($pathsMeta->value) && trim($pathsMeta->value) !== '') {
+                    $paths = json_decode($pathsMeta->value, true);
+
+                    if (is_array($paths)) {
+                      foreach ($paths as $path) {
+                        if (is_string($path) && $path !== '') {
+                          $localUrls[] = Storage::url($path);
+                        }
+                      }
+                    }
+                  }
+
+                  $urls = $localUrls !== [] ? $localUrls : ($record->display_image_urls ?? []);
+                  // Ende Einfügen
+
+                  if (empty($urls)) {
                     return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
                   }
 
                   $html = '<div class="grid grid-cols-3 gap-4">';
 
-                  foreach ($record->display_image_urls as $url) {
+                  foreach ($urls as $url) {
                     $urlEsc = e($url);
 
                     $html .= <<<HTML
-              <div class="space-y-1">
-                <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
-                  <img 
-                    src="{$urlEsc}" 
-                    class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
-                  />
-                </div>
-                <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
-              </div>
-            HTML;
+      <div class="space-y-1">
+        <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
+          <img 
+            src="{$urlEsc}" 
+            class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
+            loading="lazy"
+          />
+        </div>
+        <div class="text-xs text-gray-500 break-all">{$urlEsc}</div>
+      </div>
+    HTML;
                   }
 
                   $html .= '</div>';
 
                   return new HtmlString($html);
                 })
+
                 ->columnSpan(12),
               // ->disableLabel(),
             ]),
