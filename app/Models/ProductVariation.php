@@ -21,6 +21,9 @@ class ProductVariation extends Model
     'length_mm',  // in Millimetern
     'width_mm',
     'height_mm',
+    // Attribute und EAN aus Aliens
+    'attributes_json',
+    'ean',
   ];
 
   protected $casts = [
