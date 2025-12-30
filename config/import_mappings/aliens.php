@@ -48,6 +48,7 @@ return [
         // Zusätzliche automatische Verarbeitung:
         'auto_attribute_groups' => true,
         'auto_features'         => true,
+        'debug_features'        => true,
 
         // Präfixe
         'product_sku_prefix'    => 'ALIENS-P-',

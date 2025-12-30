@@ -589,7 +589,20 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Nachverfolgbarkeit zum Lieferantenfeed zu behalten.
      */
     if ($this->flag('auto_features', false) === true) {
+      Log::info('Aliens auto_features: enabled', [
+        'mapping_flags' => $this->mapping['flags'] ?? null,
+        'rows_count' => is_countable($rows) ? count($rows) : null,
+      ]);
       foreach ($rows as $row) {
+        if (($this->flag('debug_features', false) === true)) {
+          $keys = array_keys($row);
+          $sample = array_slice($keys, 0, 80);
+
+          Log::info('Aliens auto_features: row keys sample', [
+            'keys_count' => count($keys),
+            'sample' => $sample,
+          ]);
+        }
         foreach ($row as $colName => $raw) {
           if (!is_string($colName)) continue;
 
@@ -616,6 +629,17 @@ class GenericCsvProductImporter implements CsvImporterContract
           $featureName = trim($featureName);
 
           if ($featureName === '') continue;
+
+          if (($this->flag('debug_features', false) === true)) {
+            Log::info('Aliens auto_features: writing meta', [
+              'product_id' => $product->id,
+              'col' => $colNorm ?? $col,
+              'featureName' => $featureName,
+              'meta_key' => 'feature.' . Str::slug($featureName, '_'),
+              'value_preview' => mb_substr($val, 0, 120),
+            ]);
+          }
+
 
           ProductMeta::updateOrCreate(
             [
