@@ -23,7 +23,7 @@ use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Group;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Checkbox;
@@ -158,24 +158,30 @@ class ProductResource extends Resource
                 ->maxLength(65535)
                 ->columnSpan(6), */
               // Beginn Einfügen
-              Placeholder::make('description_html')
-                ->label('Beschreibung')
-                ->content(
-                  fn($record) =>
-                  $record?->description
-                    ? new HtmlString($record->description)
-                    : '—'
-                )
-                ->columnSpanFull(),
+              Group::make()
+                ->schema([
+                  Placeholder::make('short_description_html')
+                    ->label('')
+                    ->content(
+                      fn($record) =>
+                      new HtmlString(
+                        '<h3 class="text-base font-semibold mb-2">Kurzbeschreibung</h3>'
+                          . ($record?->short_description ?: '<div class="text-gray-500">—</div>')
+                      )
+                    )
+                    ->columnSpanFull(),
 
-              Placeholder::make('short_description_html')
-                ->label('Kurzbeschreibung')
-                ->content(
-                  fn($record) =>
-                  $record?->short_description
-                    ? new HtmlString($record->short_description)
-                    : '—'
-                )
+                  Placeholder::make('description_html')
+                    ->label('')
+                    ->content(
+                      fn($record) =>
+                      new HtmlString(
+                        '<h3 class="text-base font-semibold mt-4 mb-2">Beschreibung</h3>'
+                          . ($record?->description ?: '<div class="text-gray-500">—</div>')
+                      )
+                    )
+                    ->columnSpanFull(),
+                ])
                 ->columnSpanFull(),
               // Ende Einfügen
 
