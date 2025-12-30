@@ -286,25 +286,48 @@ class AliensCsvStreamImporter
   }
 
   /**
-   * Upsertet eine Variante anhand der "Kombination-ID" (Aliens Variation ID).
+   * Upsertet eine Variante anhand der "Kombinations-Referenz" (interne Artikelnummer).
+   * Fallback: "Kombination-ID".
    */
   protected function upsertVariation(Product $product, array $row, string $combinationId): void
   {
     $payload = $this->mapVariationPayload($row);
 
-    $sku = $combinationId;
+    $variationRef = $this->cell($row, ['Kombinations-Referenz']);
+    $variationRef = is_string($variationRef) ? trim($variationRef) : (is_numeric($variationRef) ? (string) $variationRef : null);
+
+    // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
+    $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
 
     ProductVariation::updateOrCreate(
       ['product_id' => $product->id, 'sku' => $sku],
       $this->filterExistingColumns(ProductVariation::class, $payload)
     );
 
-    // Variation-ID als Meta (optional)
+    // Kombinations-ID als Meta (damit wir sie trotzdem haben)
     $product->meta()->updateOrCreate(
-      ['scope' => 'variation', 'key' => 'aliens_combination_id', 'variation_id' => null],
+      [
+        'scope' => 'variation',
+        'key' => 'aliens_combination_id',
+        // Optional: wenn du variation_id sauber setzen willst, holen wir erst die Variation
+        'variation_id' => null,
+      ],
       ['value' => $combinationId]
     );
+
+    // Optional: Kombinations-Referenz ebenfalls als Meta (falls SKU später umgestellt wird)
+    if ($variationRef !== null && $variationRef !== '') {
+      $product->meta()->updateOrCreate(
+        [
+          'scope' => 'variation',
+          'key' => 'aliens_combination_reference',
+          'variation_id' => null,
+        ],
+        ['value' => $variationRef]
+      );
+    }
   }
+
 
   protected function mapProductPayload(array $row): array
   {
