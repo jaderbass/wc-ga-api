@@ -126,7 +126,7 @@ class AliensCsvStreamImporter
       $productId = $this->cell($assoc, ['Produkt-ID']);
       
       $combinationId = $this->cell($assoc, ['Kombination-ID']);
-      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
+      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz', 'Kombinations-Referenz__2', 'Kombinations-Referenz__3']);
       $combinationRef = is_string($combinationRef)
         ? trim($combinationRef)
         : (is_numeric($combinationRef) ? (string) $combinationRef : null);
@@ -431,20 +431,46 @@ class AliensCsvStreamImporter
     return $out;
   }
 
+  // cell() tolerant für unique header suffixe (__2, __3, ...) ---
   protected function cell(array $row, array $candidates): ?string
   {
+    // 1) exakte Matches (wie bisher)
     foreach ($candidates as $key) {
       if (array_key_exists($key, $row)) {
         $val = $row[$key];
         if ($val === null) {
           continue;
         }
+
         $s = is_string($val) ? trim($val) : (string) $val;
         if ($s !== '') {
           return $s;
         }
       }
     }
+
+    // 2) Fallback: unique header suffixe (candidate__2, candidate__3, ...)
+    foreach ($candidates as $candidate) {
+      foreach ($row as $k => $val) {
+        if (!is_string($k)) {
+          continue;
+        }
+
+        if (!str_starts_with($k, $candidate . '__')) {
+          continue;
+        }
+
+        if ($val === null) {
+          continue;
+        }
+
+        $s = is_string($val) ? trim($val) : (string) $val;
+        if ($s !== '') {
+          return $s;
+        }
+      }
+    }
+
     return null;
   }
 
