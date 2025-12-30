@@ -31,7 +31,7 @@ use League\Csv\Reader;
 class AliensCsvStreamImporter
 {
   use HasImportAuthor;
-  
+
   protected array $mapping;
   protected ?string $runId = null;
 
@@ -384,7 +384,17 @@ class AliensCsvStreamImporter
     }
   }
 
-
+  /**
+   * Baut das Produkt-Payload anhand des Import-Mappings.
+   *
+   * Enthält:
+   * - Feld-Mapping CSV → DB
+   * - Normalisierung von description / short_description
+   * - Fallback-Logik für short_description
+   *
+   * @param  array  $row  Assoziative CSV-Zeile
+   * @return array        DB-taugliches Produkt-Payload
+   */
   protected function mapProductPayload(array $row): array
   {
     $map = $this->mapping['product'] ?? [];
@@ -669,6 +679,22 @@ class AliensCsvStreamImporter
     }
   }
 
+  /**
+   * Normalisiert HTML-Inhalte aus dem Aliens-CSV.
+   *
+   * Aufgaben:
+   * - Entfernt bildbasierte Nummerierungs-Icons (Legacy-CMS)
+   * - Wandelt diese in strukturierte Wrapper um (oder entfernt sie vollständig)
+   * - Bereitet den HTML-Inhalt für sauberes Rendering im Admin vor
+   *
+   * Wichtig:
+   * - Wird ausschließlich beim Import angewendet
+   * - Bestehende Datensätze werden nicht automatisch migriert
+   *
+   * @param  string|null  $html  Rohes HTML aus der CSV
+   * @return string|null         Normalisiertes HTML
+   */
+
   private function normalizeAliensHtml(?string $html): ?string
   {
     if (!$html) {
@@ -727,7 +753,23 @@ class AliensCsvStreamImporter
     return $before . $wrappedSteps;
   }
 
-  // Beginn Einfügen
+  /**
+   * Sammelt Produktbild-URLs aus der aktuellen CSV-Zeile
+   * und speichert sie gesammelt als JSON in product_meta.
+   *
+   * Erwartetes Verhalten:
+   * - Erkennt typische Bild-Spalten (z. B. "Bild 1", "Image 2", "Produktbild 3")
+   * - Akzeptiert nur absolute HTTP(S)-URLs
+   * - Speichert deduplizierte URLs unter:
+   *   scope=product, key=aliens_image_urls
+   *
+   * Die eigentliche Bildverarbeitung (Download, Ablage, Anzeige)
+   * erfolgt bewusst in einem separaten Schritt (Job/Command).
+   *
+   * @param  Product  $product  Aktuelles Parent-Produkt
+   * @param  array    $assoc    Assoziative CSV-Zeile
+   * @return void
+   */
   private function upsertProductImagesMeta(Product $product, array $assoc): void
   {
     // Aliens liefert je nach Export unterschiedliche Header – wir sammeln breit.
