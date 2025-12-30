@@ -123,13 +123,35 @@ class AliensCsvStreamImporter
 
       $assoc = $this->combineRow($headers, $row);
 
+      // Debug: Welche Keys/Werte kommen für Kombinations-Referenz wirklich an? ---
+      if ((string) ($this->cell($assoc, ['Produkt-ID']) ?? '') === '58') {
+        $keys = array_keys($assoc);
+
+        $interestingKeys = array_values(array_filter($keys, function ($k) {
+          return is_string($k) && (
+            str_contains($k, 'Kombinations-Referenz')
+            || str_contains($k, 'Kombination-ID')
+            || str_contains($k, 'Feature Name')
+            || str_contains($k, 'Feature Value')
+          );
+        }));
+
+        Log::info('Aliens stream debug: keys/values', [
+          'interesting_keys' => $interestingKeys,
+          'kombination_id' => $this->cell($assoc, ['Kombination-ID']),
+          'kombinations_ref' => $this->cell($assoc, ['Kombinations-Referenz']),
+          'feature_name' => $this->cell($assoc, ['Feature Name']),
+          'feature_value' => $this->cell($assoc, ['Feature Value']),
+        ]);
+      }
+
+      // --- Beginn Ersetzen: Feature-Zeilen vs. Varianten-Zeilen sauber unterscheiden ---
       $productId = $this->cell($assoc, ['Produkt-ID']);
-      
       $combinationId = $this->cell($assoc, ['Kombination-ID']);
-      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz', 'Kombinations-Referenz__2', 'Kombinations-Referenz__3']);
-      $combinationRef = is_string($combinationRef)
-        ? trim($combinationRef)
-        : (is_numeric($combinationRef) ? (string) $combinationRef : null);
+
+      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
+      $featureName = $this->cell($assoc, ['Feature Name']);
+      $featureValue = $this->cell($assoc, ['Feature Value']);
 
       // Ohne Produkt-ID macht die Zeile keinen Sinn
       if ($productId === null || $productId === '') {
@@ -146,48 +168,26 @@ class AliensCsvStreamImporter
         $importedProducts
       );
 
+      // Feature-Zeile? -> nur Meta, keine Variation
+      $isFeatureRow = (($featureName ?? '') !== '' || ($featureValue ?? '') !== '');
+
       // Features immer übernehmen (auch aus Feature-only Zeilen)
       $this->upsertProductFeaturesMeta($product, $assoc);
 
-      // Nur echte Variantenzeilen upserten (PrestaShop: erkennbar an Kombinations-Referenz)
-      $isVariationRow = false;
+      if ($isFeatureRow) {
+        continue;
+      }
 
-      // 1) Sicheres Signal: Kombinations-Referenz vorhanden
+      // Ab hier: echte Variantenzeile
       if ($combinationRef !== null && $combinationRef !== '') {
-        $isVariationRow = true;
-      }
-
-      // 2) Fallback: Varianten-typische Spalten befüllt (auch wenn Referenz leer ist)
-      if ($isVariationRow === false) {
-        $variationSignals = [
-          'Kombination EAN13',
-          'Kombinationsmenge',
-          'Kombinations-Referenz', // falls Header-Variante/Whitespace
-          'Attribute Group: Farbe',
-          'Attribute Group: Schlingenlänge | Farbe',
-        ];
-
-        foreach ($variationSignals as $sig) {
-          $v = $this->cell($assoc, [$sig]);
-          $v = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
-
-          if ($v !== null && $v !== '') {
-            $isVariationRow = true;
-            break;
-          }
-        }
-      }
-
-      if ($isVariationRow === true) {
         $combinationIdSafe = ($combinationId !== null && $combinationId !== '')
           ? (string) $combinationId
-          : (($combinationRef !== null && $combinationRef !== '') ? (string) $combinationRef : '');
+          : (string) $combinationRef;
 
-        if ($combinationIdSafe !== '') {
-          $this->upsertVariation($product, $assoc, $combinationIdSafe);
-          $importedVariations++;
-        }
+        $this->upsertVariation($product, $assoc, $combinationIdSafe);
+        $importedVariations++;
       }
+      // --- Ende Ersetzen ---
 
       if ($this->runId && ($importedVariations % 100 === 0)) {
         ImportRun::whereKey($this->runId)->update([
