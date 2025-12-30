@@ -281,8 +281,8 @@ class ProductResource extends Resource
                 $rows = '';
                 foreach ($items as [$label, $value]) {
                   $rows .= '<tr>'
-                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;white-space:nowrap;"><strong>' . e($label) . '</strong></td>'
-                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">' . e($value) . '</td>'
+                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;white-space:nowrap;"><strong>' . e($label) . '</strong></td>'
+                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;">' . e($value) . '</td>'
                     . '</tr>';
                 }
 
@@ -290,8 +290,8 @@ class ProductResource extends Resource
                   '<div style="overflow:auto;">'
                     . '<table style="width:100%;border-collapse:collapse;">'
                     . '<thead><tr>'
-                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb;">Attribut</th>'
-                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb;">Wert</th>'
+                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Attribut</th>'
+                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Wert</th>'
                     . '</tr></thead>'
                     . '<tbody>' . $rows . '</tbody>'
                     . '</table>'
