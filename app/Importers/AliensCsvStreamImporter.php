@@ -459,7 +459,7 @@ class AliensCsvStreamImporter
     }
 
     if ($attrs !== []) {
-      $payload['attributes_json'] = $attrs;
+      $out['attributes_json'] = $attrs;
     }
     // --- Ende Einfügen ---
 
