@@ -30,7 +30,6 @@ use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\Repeater;
 use Filament\Forms\Get;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
@@ -145,7 +144,7 @@ class ProductResource extends Resource
           ->description('Weiterführende Produktinformationen')
           ->schema([
             Grid::make(12)->schema([
-              Textarea::make('description')
+              /* Textarea::make('description')
                 ->label('Beschreibung')
                 ->rows(6)
                 ->required()
@@ -157,7 +156,29 @@ class ProductResource extends Resource
                 ->rows(6)
                 ->required()
                 ->maxLength(65535)
-                ->columnSpan(6),
+                ->columnSpan(6), */
+              // Beginn Einfügen
+              Placeholder::make('description_html')
+                ->label('Beschreibung')
+                ->content(
+                  fn($record) =>
+                  $record?->description
+                    ? new HtmlString($record->description)
+                    : '—'
+                )
+                ->columnSpanFull(),
+
+              Placeholder::make('short_description_html')
+                ->label('Kurzbeschreibung')
+                ->content(
+                  fn($record) =>
+                  $record?->short_description
+                    ? new HtmlString($record->short_description)
+                    : '—'
+                )
+                ->columnSpanFull(),
+              // Ende Einfügen
+
 
             ]) // Grid
           ]) //schema
