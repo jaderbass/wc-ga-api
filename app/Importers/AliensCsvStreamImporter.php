@@ -150,14 +150,43 @@ class AliensCsvStreamImporter
       $this->upsertProductFeaturesMeta($product, $assoc);
 
       // Nur echte Variantenzeilen upserten (PrestaShop: erkennbar an Kombinations-Referenz)
+      $isVariationRow = false;
+
+      // 1) Sicheres Signal: Kombinations-Referenz vorhanden
       if ($combinationRef !== null && $combinationRef !== '') {
-        // Falls Kombination-ID leer ist, fallback auf Referenz (für upsertVariation-Fallback)
+        $isVariationRow = true;
+      }
+
+      // 2) Fallback: Varianten-typische Spalten befüllt (auch wenn Referenz leer ist)
+      if ($isVariationRow === false) {
+        $variationSignals = [
+          'Kombination EAN13',
+          'Kombinationsmenge',
+          'Kombinations-Referenz', // falls Header-Variante/Whitespace
+          'Attribute Group: Farbe',
+          'Attribute Group: Schlingenlänge | Farbe',
+        ];
+
+        foreach ($variationSignals as $sig) {
+          $v = $this->cell($assoc, [$sig]);
+          $v = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+
+          if ($v !== null && $v !== '') {
+            $isVariationRow = true;
+            break;
+          }
+        }
+      }
+
+      if ($isVariationRow === true) {
         $combinationIdSafe = ($combinationId !== null && $combinationId !== '')
           ? (string) $combinationId
-          : (string) $combinationRef;
+          : (($combinationRef !== null && $combinationRef !== '') ? (string) $combinationRef : '');
 
-        $this->upsertVariation($product, $assoc, $combinationIdSafe);
-        $importedVariations++;
+        if ($combinationIdSafe !== '') {
+          $this->upsertVariation($product, $assoc, $combinationIdSafe);
+          $importedVariations++;
+        }
       }
 
       if ($this->runId && ($importedVariations % 100 === 0)) {
