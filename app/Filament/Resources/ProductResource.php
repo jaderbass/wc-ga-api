@@ -47,7 +47,6 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Livewire\Component as LivewireComponent;
 
 /**
  * Class ProductResource
@@ -248,34 +247,62 @@ class ProductResource extends Resource
                 ->maxLength(255)
                 ->columnSpan(3),
             ]), // Grid
-            Repeater::make('technical_attributes_readonly')
-              ->label('Technische Angaben (Import)')
-              ->helperText('Readonly: aus importierten Attributen (z. B. Normen, Bruchlast, Material, Farbe, Typ).')
-              ->schema([
-                TextInput::make('key')
-                  ->label('Attribut')
-                  ->disabled()
-                  ->dehydrated(false),
-
-                TextInput::make('value')
-                  ->label('Wert')
-                  ->disabled()
-                  ->dehydrated(false),
-              ])
-              ->columns(2)
-              ->disabled()
-              ->dehydrated(false)
-              ->afterStateHydrated(function ($component, $state, $record) {
+            // Beginn Ersetzen: technical_attributes_readonly Repeater -> Tabelle (readonly)
+            \Filament\Forms\Components\Placeholder::make('technical_features_table')
+              ->label('Technische Angaben')
+              ->content(function (?\App\Models\Product $record) {
                 if (! $record) {
-                  $component->state([]);
-                  return;
+                  return new HtmlString('—');
                 }
 
-                // kommt aus Product::technicalAttributesKv()
-                $component->state($record->technicalAttributesKv());
-              }),
+                $items = $record->meta()
+                  ->where('scope', 'product')
+                  ->where('key', 'like', 'feature.%')
+                  ->orderBy('key')
+                  ->get(['key', 'value'])
+                  ->map(function ($m) {
+                    $label = (string) $m->key;
+                    $label = preg_replace('/^feature\./', '', $label) ?? $label;
+                    $label = str_replace('_', ' ', $label);
+                    $label = trim($label);
+
+                    $value = is_string($m->value) ? trim($m->value) : (string) $m->value;
+
+                    return [$label, $value];
+                  })
+                  ->filter(fn($pair) => ($pair[1] ?? '') !== '')
+                  ->values()
+                  ->all();
+
+                if (empty($items)) {
+                  return new HtmlString('—');
+                }
+
+                $rows = '';
+                foreach ($items as [$label, $value]) {
+                  $rows .= '<tr>'
+                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;white-space:nowrap;"><strong>' . e($label) . '</strong></td>'
+                    . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;">' . e($value) . '</td>'
+                    . '</tr>';
+                }
+
+                return new HtmlString(
+                  '<div style="overflow:auto;">'
+                    . '<table style="width:100%;border-collapse:collapse;">'
+                    . '<thead><tr>'
+                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb;">Attribut</th>'
+                    . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb;">Wert</th>'
+                    . '</tr></thead>'
+                    . '<tbody>' . $rows . '</tbody>'
+                    . '</table>'
+                    . '</div>'
+                );
+              })
+            // Ende Ersetzen
+
           ]) //schema
           ->collapsible(),
+
 
         FormSection::make('Author')
           ->description('Benutzerdaten von WooCommerce')
