@@ -101,29 +101,3 @@ html.dark .fi-dropdown .fi-dropdown-item[aria-current="true"] {
   color: #f9fafb !important;
   /* gray-50 */
 }
-
-.alien-icon {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: rgb(243 244 246);
-  /* gray-100 */
-  color: rgb(17 24 39);
-  /* gray-900 */
-  text-decoration: none;
-}
-
-.alien-icon:hover {
-  text-decoration: underline;
-}
-
-.dark .alien-icon {
-  background: rgb(31 41 55);
-  /* gray-800 */
-  color: rgb(243 244 246);
-  /* gray-100 */
-}
