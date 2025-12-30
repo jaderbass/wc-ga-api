@@ -341,6 +341,14 @@ class AliensCsvStreamImporter
     // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
     $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
 
+    // Base-Referenz aus Kombinations-Referenz ableiten ---
+    $baseRef = null;
+
+    if ($variationRef !== null && $variationRef !== '') {
+      $baseRef = str_contains($variationRef, '-') ? explode('-', $variationRef, 2)[0] : $variationRef;
+      $baseRef = trim($baseRef);
+    }
+
     ProductVariation::updateOrCreate(
       ['product_id' => $product->id, 'sku' => $sku],
       $this->filterExistingColumns(ProductVariation::class, $payload)
@@ -366,6 +374,18 @@ class AliensCsvStreamImporter
           'variation_id' => null,
         ],
         ['value' => $variationRef]
+      );
+    }
+
+    // Base-Referenz als Meta speichern ---
+    if ($baseRef !== null && $baseRef !== '') {
+      $product->meta()->updateOrCreate(
+        [
+          'scope' => 'variation',
+          'key' => 'aliens_variation_base_reference',
+          'variation_id' => null,
+        ],
+        ['value' => $baseRef]
       );
     }
   }
