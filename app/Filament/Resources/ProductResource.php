@@ -144,20 +144,6 @@ class ProductResource extends Resource
           ->description('Weiterführende Produktinformationen')
           ->schema([
             Grid::make(12)->schema([
-              /* Textarea::make('description')
-                ->label('Beschreibung')
-                ->rows(6)
-                ->required()
-                ->maxLength(65535)
-                ->columnSpan(6),
-
-              Textarea::make('short_description')
-                ->label('Kurzbeschreibung')
-                ->rows(6)
-                ->required()
-                ->maxLength(65535)
-                ->columnSpan(6), */
-              // Beginn Einfügen
               Group::make()
                 ->schema([
                   Placeholder::make('short_description_html')
@@ -183,8 +169,6 @@ class ProductResource extends Resource
                     ->columnSpanFull(),
                 ])
                 ->columnSpanFull(),
-              // Ende Einfügen
-
 
             ]) // Grid
           ]) //schema
