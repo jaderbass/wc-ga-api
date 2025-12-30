@@ -158,6 +158,9 @@ class AliensCsvStreamImporter
       // 2) Features immer übernehmen (Hauptzeile + Feature-only Zeilen)
       $this->upsertProductFeaturesMeta($currentProduct, $assoc);
 
+      // 2b) Bilder-URLs sammeln
+      $this->upsertProductImagesMeta($currentProduct, $assoc);
+
       // 3) Feature-only Zeile? (nur Feature Name/Value/Position, keine Kombi-Daten) -> keine Variation
       $isFeatureOnlyRow =
         (($featureName ?? '') !== '' || ($featureValue ?? '') !== '' || ($featurePosition ?? '') !== '')
@@ -666,7 +669,6 @@ class AliensCsvStreamImporter
     }
   }
 
-  // Beginn Einfügen
   private function normalizeAliensHtml(?string $html): ?string
   {
     if (!$html) {
@@ -723,6 +725,51 @@ class AliensCsvStreamImporter
       . '</div>';
 
     return $before . $wrappedSteps;
+  }
+
+  // Beginn Einfügen
+  private function upsertProductImagesMeta(Product $product, array $assoc): void
+  {
+    // Aliens liefert je nach Export unterschiedliche Header – wir sammeln breit.
+    $urls = [];
+
+    foreach ($assoc as $colName => $raw) {
+      if (!is_string($colName)) {
+        continue;
+      }
+
+      $col = trim($colName);
+
+      // typische Spalten: "Bild 1", "Bild 2", "Image 1", "Image 2", "Produktbild 1", ...
+      $isImageColumn = (bool) preg_match('/^(bild|image|produktbild)\s*\d+/i', $col);
+
+      if (!$isImageColumn) {
+        continue;
+      }
+
+      $val = is_string($raw) ? trim($raw) : (is_numeric($raw) ? (string) $raw : '');
+      if ($val === '') {
+        continue;
+      }
+
+      // nur echte URLs übernehmen
+      if (!preg_match('~^https?://~i', $val)) {
+        continue;
+      }
+
+      $urls[] = $val;
+    }
+
+    $urls = array_values(array_unique($urls));
+
+    if ($urls === []) {
+      return;
+    }
+
+    $product->meta()->updateOrCreate(
+      ['scope' => 'product', 'key' => 'aliens_image_urls', 'variation_id' => null],
+      ['value' => json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
+    );
   }
   // Ende Einfügen
 
