@@ -101,3 +101,49 @@ html.dark .fi-dropdown .fi-dropdown-item[aria-current="true"] {
   color: #f9fafb !important;
   /* gray-50 */
 }
+
+/* Beginn Einfügen */
+.alien-steps {
+  counter-reset: alien-step;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.alien-step {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.alien-step::before {
+  counter-increment: alien-step;
+  content: counter(alien-step);
+
+  position: absolute;
+  left: 0;
+  top: 0.125rem;
+
+  width: 1.25rem;
+  height: 1.25rem;
+  line-height: 1.25rem;
+
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+
+  border-radius: 0.25rem;
+
+  background: rgb(229 231 235);
+  /* gray-200 */
+  color: rgb(17 24 39);
+  /* gray-900 */
+}
+
+/* Dark Mode */
+.dark .alien-step::before {
+  background: rgb(55 65 81);
+  /* gray-700 */
+  color: rgb(243 244 246);
+  /* gray-100 */
+}
+
+/* Ende Einfügen */
