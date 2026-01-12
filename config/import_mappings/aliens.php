@@ -268,17 +268,17 @@ return [
 
         // Punkte-Trenner in Kommas umwandeln
         // ! nur wenn benötigt!
-        'norms' => function ($v) {
-            if ($v === null) return null;
-            $s = trim((string) $v);
-            if ($s === '') return null;
+        // 'norms' => function ($v) {
+        //     if ($v === null) return null;
+        //     $s = trim((string) $v);
+        //     if ($s === '') return null;
 
-            $s = str_replace(['•', '·', '|'], ',', $s);
-            $s = preg_replace('/\s*,\s*/', ', ', $s);
-            $s = preg_replace('/\s+/', ' ', $s);
+        //     $s = str_replace(['•', '·', '|'], ',', $s);
+        //     $s = preg_replace('/\s*,\s*/', ', ', $s);
+        //     $s = preg_replace('/\s+/', ' ', $s);
 
-            return trim($s, " ,");
-        },
+        //     return trim($s, " ,");
+        // },
     ],
 
 ];
