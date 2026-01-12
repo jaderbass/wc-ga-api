@@ -283,6 +283,14 @@ class ProductResource extends Resource
                     $label = preg_replace('/^feature\./', '', $label) ?? $label;
                     $label = str_replace('_', ' ', $label);
                     $label = trim($label);
+                    $label = mb_convert_case($label, MB_CASE_TITLE, 'UTF-8');
+                    // optionale Feinschliff-Korrekturen
+                    $label = str_replace(
+                      [' Mm', ' Kn', ' Uiaa'],
+                      [' mm', ' kN', ' UIAA'],
+                      $label
+                    );
+
 
                     $value = is_string($m->value) ? trim($m->value) : (string) $m->value;
 
