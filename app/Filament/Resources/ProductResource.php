@@ -258,7 +258,7 @@ class ProductResource extends Resource
                 ->maxLength(255)
                 ->columnSpan(3),
             ]), // Grid
-            // Beginn Ersetzen: technical_attributes_readonly Repeater -> Tabelle (readonly)
+            // technical_attributes_readonly Repeater -> Tabelle (readonly)
             \Filament\Forms\Components\Placeholder::make('technical_features_table')
               ->label('Technische Angaben')
               ->content(function (?\App\Models\Product $record) {
@@ -309,7 +309,6 @@ class ProductResource extends Resource
                     . '</div>'
                 );
               })
-            // Ende Ersetzen
 
           ]) //schema
           ->collapsible(),
