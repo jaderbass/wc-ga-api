@@ -747,6 +747,16 @@ class AliensCsvStreamImporter
       $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
       $featureName = trim($featureName);
 
+      if ($featureName === 'Normen') {
+        $s = $val;
+
+        $s = str_replace(['•', '·', '|'], ',', $s);
+        $s = preg_replace('/\s*,\s*/', ', ', $s) ?? $s;
+        $s = preg_replace('/\s+/', ' ', $s) ?? $s;
+
+        $val = trim($s, " ,");
+      }
+
       if ($featureName === '') {
         continue;
       }
