@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductMeta;
 use App\Models\ImportRun;
+use App\Models\Manufacturer;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
 use App\Support\Concerns\HasImportAuthor;
@@ -34,11 +35,11 @@ class AliensCsvStreamImporter
 
   protected array $mapping;
   protected ?string $runId = null;
-
+  protected array $manufacturerNameCache = []; // name => id
 
   public function __construct(
     protected string $mappingFile = 'aliens',
-    protected ?int $manufacturerId = null
+    protected ?int $manufacturerId = null,
   ) {
     $this->mapping = $this->loadMapping($this->mappingFile);
   }
@@ -280,7 +281,7 @@ class AliensCsvStreamImporter
     }
 
     $payload['slug'] = $slug;
-    $payload['manufacturer_id'] = $this->manufacturerId;
+    $payload['manufacturer_id'] = $this->resolveManufacturerId($row);
     $payload['author_id'] = $this->resolveAuthorId();
 
     // 1) Produkt primär über Meta finden (ohne Transaktion)
@@ -952,6 +953,32 @@ class AliensCsvStreamImporter
       ['value' => json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
     );
   }
-  // Ende Einfügen
+
+  protected function resolveManufacturerId(array $row): ?int
+  {
+    // Nur bei Aliens pro Produkt aus CSV auflösen
+    if ($this->mappingFile !== 'aliens') {
+      return $this->manufacturerId;
+    }
+
+    $name = $this->cell($row, ['Hersteller']);
+    $name = is_string($name) ? trim($name) : null;
+
+    if (!$name) {
+      return $this->manufacturerId;
+    }
+
+    $key = mb_strtolower($name);
+    if (isset($this->manufacturerNameCache[$key])) {
+      return $this->manufacturerNameCache[$key];
+    }
+
+    $m = Manufacturer::query()->firstOrCreate(
+      ['manufacturer' => $name],
+      ['manufacturer' => $name]
+    );
+
+    return $this->manufacturerNameCache[$key] = (int) $m->id;
+  }
 
 }
