@@ -112,12 +112,19 @@ class ProductResource extends Resource
                 ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
                 ->columnSpan(4),
 
-              Select::make('manufacturer_id')
+              /* Select::make('manufacturer_id')
                 ->required()
                 ->relationship('manufacturer', 'manufacturer')
                 ->native(false)        // Tom Select statt nativer <select>
                 ->searchable()         // Typeahead-Suche aktivieren
                 ->preload()            // Optionen vorladen (besseres UX im Modal)
+                ->columnSpan(4), */
+
+              TextInput::make('manufacturer_readonly')
+                ->label('Manufacturer')
+                ->disabled()
+                ->dehydrated(false)
+                ->formatStateUsing(fn($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
                 ->columnSpan(4),
 
               TextInput::make('sku')
@@ -261,7 +268,7 @@ class ProductResource extends Resource
             // technical_attributes_readonly Repeater -> Tabelle (readonly)
             \Filament\Forms\Components\Placeholder::make('technical_features_table')
               ->label('Technische Angaben')
-              ->content(function (?\App\Models\Product $record) {
+              ->content(function (?Product $record) {
                 if (! $record) {
                   return new HtmlString('—');
                 }
@@ -960,7 +967,7 @@ class ProductResource extends Resource
 
         Section::make('Petzl-Produktdetails')
           // nur anzeigen, wenn Hersteller Petzl ist
-          ->visible(fn(\App\Models\Product $record) => $record->manufacturer?->name === 'Petzl')
+          ->visible(fn(Product $record) => $record->manufacturer?->name === 'Petzl')
           ->columns(2)
           ->schema([
             TextEntry::make('designation')
