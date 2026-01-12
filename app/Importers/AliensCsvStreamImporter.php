@@ -954,6 +954,22 @@ class AliensCsvStreamImporter
     );
   }
 
+  /**
+   * Ermittelt die manufacturer_id für ein Produkt während des Imports.
+   *
+   * Verhalten:
+   * - Bei Aliens-Importen wird der tatsächliche Hersteller aus der CSV-Spalte
+   *   "Hersteller" gelesen, auf einen Manufacturer-Datensatz aufgelöst
+   *   (oder neu angelegt) und dessen ID zurückgegeben.
+   * - Bei allen anderen Importern wird der beim Import im UI ausgewählte
+   *   manufacturer_id verwendet.
+   *
+   * Zur Performance-Optimierung wird ein lokaler Cache genutzt, damit
+   * identische Herstellernamen nicht mehrfach aus der DB gelesen/angelegt werden.
+   *
+   * @param  array  $row  Aktuelle assoziative CSV-Zeile
+   * @return int|null     Hersteller-ID oder Fallback-ID
+   */
   protected function resolveManufacturerId(array $row): ?int
   {
     // Nur bei Aliens pro Produkt aus CSV auflösen
