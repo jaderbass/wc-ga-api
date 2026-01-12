@@ -115,6 +115,7 @@ class AliensCsvStreamImporter
 
     $currentProductId = null;
     $currentProduct = null;
+    $skippedProductIds = [];
 
     foreach ($rows as $row) {
       $rowIndex++;
@@ -140,6 +141,29 @@ class AliensCsvStreamImporter
       if ($productId !== null && $productId !== '') {
         $currentProductId = (string) $productId;
 
+        // Beginn Einfügen: Ausverkaufte Produkte überspringen
+        if (isset($skippedProductIds[$currentProductId])) {
+          $currentProductId = null;
+          $currentProduct = null;
+          continue;
+        }
+
+        $ref = $this->cell($assoc, ['Referenz']);
+        if (is_string($ref)) {
+          $ref = trim($ref);
+        }
+
+        $ref = $ref !== null ? trim((string) $ref) : null;
+
+        // Beginn Einfügen: "ausverkauft" anywhere (case-insensitive) => skip
+        if (is_string($ref) && Str::contains(Str::lower($ref), 'ausverkauft')) {
+          $skippedProductIds[$currentProductId] = true;
+
+          $currentProductId = null;
+          $currentProduct = null;
+          continue;
+        }
+
         $currentProduct = $this->getOrUpsertProduct(
           $assoc,
           $currentProductId,
@@ -149,6 +173,7 @@ class AliensCsvStreamImporter
           $importedProducts
         );
       }
+
 
       // Ohne aktives Parent können wir nichts zuordnen
       if ($currentProduct === null) {
