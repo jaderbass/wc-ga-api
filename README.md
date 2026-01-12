@@ -201,6 +201,7 @@ Verarbeitung:
 | Woo-Services | `app/Services/Woo/` |
 | Filament-Actions | `app/Filament/Resources/ProductResource/Actions/` |
 | Importer-Basis | `app/Importers/` |
+| Mapping-Dateien | `config/import_mappings/*aliens*.php` |
 
 ---
 
