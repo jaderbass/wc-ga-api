@@ -82,7 +82,18 @@ abstract class BaseImporter
                 $variation
               );
             }
+
+            // product_type korrekt setzen (einmal pro Produkt)
+            if ($product->product_type !== 'variable') {
+              $product->update(['product_type' => 'variable']);
+            }
+          } else {
+            // Optional: wenn du "zurück" auf simple willst (meist NICHT nötig)
+            // if ($product->product_type !== 'simple') {
+            //   $product->update(['product_type' => 'simple']);
+            // }
           }
+
 
           // Bilder
           $images = $this->parseImages($row);
