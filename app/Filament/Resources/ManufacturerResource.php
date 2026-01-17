@@ -22,12 +22,14 @@ class ManufacturerResource extends Resource
     protected static ?string $model = Manufacturer::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-wrench-screwdriver';
+    protected static ?string $navigationLabel = 'Hersteller';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
                 Forms\Components\TextInput::make('manufacturer')
+                    ->label('Hersteller')
                     ->required()
                     ->maxLength(100),
                 Forms\Components\TextInput::make('manufacturercountry')
