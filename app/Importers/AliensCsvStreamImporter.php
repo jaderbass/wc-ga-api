@@ -360,19 +360,49 @@ class AliensCsvStreamImporter
 
     // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
     $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
+    $sku = trim((string) $sku);
 
-    // Base-Referenz aus Kombinations-Referenz ableiten ---
+    // Base-Referenz aus Kombinations-Referenz ableiten (z. B. "400/12-B" -> "400/12")
     $baseRef = null;
 
     if ($variationRef !== null && $variationRef !== '') {
-      $baseRef = str_contains($variationRef, '-') ? explode('-', $variationRef, 2)[0] : $variationRef;
+      $baseRef = str_contains($variationRef, '-')
+        ? explode('-', $variationRef, 2)[0]
+        : $variationRef;
+
       $baseRef = trim($baseRef);
     }
 
-    ProductVariation::updateOrCreate(
-      ['product_id' => $product->id, 'sku' => $sku],
-      $this->filterExistingColumns(ProductVariation::class, $payload)
+    if ($sku === '') {
+      Log::warning('❗ Aliens variation without SKU skipped', [
+        'product_id' => $product->id,
+        'combination_id' => $combinationId,
+        'variation_ref' => $variationRef,
+      ]);
+      return;
+    }
+
+    $existing = ProductVariation::query()->where('sku', $sku)->first();
+
+    if ($existing && (int) $existing->product_id !== (int) $product->id) {
+      Log::warning('❗ Duplicate SKU across products – aliens variation skipped', [
+        'sku' => $sku,
+        'current_product_id' => $product->id,
+        'existing_product_id' => $existing->product_id,
+        'combination_id' => $combinationId,
+        'variation_ref' => $variationRef,
+      ]);
+      return;
+    }
+
+    $variation = ProductVariation::updateOrCreate(
+      ['sku' => $sku],
+      array_merge(
+        $this->filterExistingColumns(ProductVariation::class, $payload),
+        ['product_id' => $product->id]
+      )
     );
+
 
     // Kombinations-ID als Meta (damit wir sie trotzdem haben)
     $product->meta()->updateOrCreate(
