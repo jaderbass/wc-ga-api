@@ -376,10 +376,8 @@ class AliensCsvStreamImporter
     // Interne, stabile Varianten-ID (global eindeutig)
     $externalId = 'ALIENS-' . trim((string) $combinationId);
 
-    // SKU bleibt ein Attribut (nicht mehr Identität)
-    $sku = ($variationRef !== null && $variationRef !== '')
-      ? trim((string) $variationRef)
-      : $externalId;
+    // Woo-SKU: garantiert eindeutig
+    $sku = $externalId;
 
     $variation = ProductVariation::updateOrCreate(
       ['external_id' => $externalId],
