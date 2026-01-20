@@ -59,39 +59,64 @@ abstract class BaseImporter
         try {
           $mapped = $this->mapFields($row);
 
-          if (empty($mapped['productnumber'])) {
-            Log::warning("❗ Kein productnumber gesetzt – Datensatz wird ignoriert", $mapped);
+          if (empty($mapped['manufacturer_id']) || empty($mapped['slug'])) {
+            Log::warning('❗ manufacturer_id oder slug fehlt – Datensatz wird ignoriert', [
+              'row' => $row,
+              'mapped' => $mapped,
+            ]);
             continue;
           }
 
-          // Upsert Hauptprodukt
           $product = Product::updateOrCreate(
-            ['productnumber' => $mapped['productnumber']],
-            Arr::except($mapped, ['variations', 'images'])
+            [
+              'manufacturer_id' => $mapped['manufacturer_id'],
+              'slug' => $mapped['slug'],
+            ],
+            Arr::except($mapped, ['variations', 'images', 'product_type'])
           );
 
           // Variationen
           $variations = $this->parseVariations($row);
+
           if (!empty($variations)) {
             foreach ($variations as $variation) {
-              ProductVariation::updateOrCreate(
-                [
+              $sku = trim((string)($variation['sku'] ?? ''));
+
+              if ($sku === '') {
+                Log::warning('❗ Variation ohne SKU – wird übersprungen', [
                   'product_id' => $product->id,
-                  'sku' => $variation['sku'] ?? null,
-                ],
-                $variation
+                  'slug' => $product->slug ?? null,
+                  'rowNumber' => $rowNumber,
+                  'variation' => $variation,
+                ]);
+                continue;
+              }
+
+              $existing = ProductVariation::where('sku', $sku)->first();
+
+              if ($existing && (int)$existing->product_id !== (int)$product->id) {
+                Log::warning('❗ Duplicate SKU across products – variation skipped', [
+                  'sku' => $sku,
+                  'current_product_id' => $product->id,
+                  'existing_product_id' => $existing->product_id,
+                  'rowNumber' => $rowNumber,
+                ]);
+                continue;
+              }
+
+              ProductVariation::updateOrCreate(
+                ['sku' => $sku],
+                array_merge($variation, [
+                  'product_id' => $product->id,
+                  'sku' => $sku, // normalize
+                ])
               );
             }
 
-            // product_type korrekt setzen (einmal pro Produkt)
+            // product_type korrekt setzen (nur wenn Variationen vorhanden)
             if ($product->product_type !== 'variable') {
               $product->update(['product_type' => 'variable']);
             }
-          } else {
-            // Optional: wenn du "zurück" auf simple willst (meist NICHT nötig)
-            // if ($product->product_type !== 'simple') {
-            //   $product->update(['product_type' => 'simple']);
-            // }
           }
 
 
@@ -107,6 +132,10 @@ abstract class BaseImporter
                 $image
               );
             }
+          }
+
+          if (!empty($variations) && $product->product_type !== 'variable') {
+            $product->update(['product_type' => 'variable']);
           }
 
           Log::info("✅ Produkt importiert", ['productnumber' => $mapped['productnumber']]);
