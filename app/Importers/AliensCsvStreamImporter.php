@@ -388,10 +388,13 @@ class AliensCsvStreamImporter
       Log::warning('❗ Duplicate SKU across products – aliens variation skipped', [
         'sku' => $sku,
         'current_product_id' => $product->id,
+        'current_product_number' => $product->product_number,
+        'current_product_slug' => $product->slug,
         'existing_product_id' => $existing->product_id,
         'combination_id' => $combinationId,
         'variation_ref' => $variationRef,
       ]);
+
       return;
     }
 
@@ -403,6 +406,10 @@ class AliensCsvStreamImporter
       )
     );
 
+    // Variation erfolgreich angelegt → Parent ist variable
+    if ($product->product_type !== 'variable') {
+      $product->update(['product_type' => 'variable']);
+    }
 
     // Kombinations-ID als Meta (damit wir sie trotzdem haben)
     $product->meta()->updateOrCreate(
