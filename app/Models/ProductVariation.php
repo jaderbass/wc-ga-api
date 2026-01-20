@@ -24,6 +24,7 @@ class ProductVariation extends Model
     // Attribute und EAN aus Aliens
     'attributes_json',
     'ean',
+    'external_id',
   ];
 
   protected $casts = [
