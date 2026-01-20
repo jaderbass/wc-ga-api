@@ -373,36 +373,23 @@ class AliensCsvStreamImporter
       $baseRef = trim($baseRef);
     }
 
-    if ($sku === '') {
-      Log::warning('❗ Aliens variation without SKU skipped', [
-        'product_id' => $product->id,
-        'combination_id' => $combinationId,
-        'variation_ref' => $variationRef,
-      ]);
-      return;
-    }
+    // Interne, stabile Varianten-ID (global eindeutig)
+    $externalId = 'ALIENS-' . trim((string) $combinationId);
 
-    $existing = ProductVariation::query()->where('sku', $sku)->first();
-
-    if ($existing && (int) $existing->product_id !== (int) $product->id) {
-      Log::warning('❗ Duplicate SKU across products – aliens variation skipped', [
-        'sku' => $sku,
-        'current_product_id' => $product->id,
-        'current_product_number' => $product->product_number,
-        'current_product_slug' => $product->slug,
-        'existing_product_id' => $existing->product_id,
-        'combination_id' => $combinationId,
-        'variation_ref' => $variationRef,
-      ]);
-
-      return;
-    }
+    // SKU bleibt ein Attribut (nicht mehr Identität)
+    $sku = ($variationRef !== null && $variationRef !== '')
+      ? trim((string) $variationRef)
+      : $externalId;
 
     $variation = ProductVariation::updateOrCreate(
-      ['sku' => $sku],
+      ['external_id' => $externalId],
       array_merge(
         $this->filterExistingColumns(ProductVariation::class, $payload),
-        ['product_id' => $product->id]
+        [
+          'product_id'  => $product->id,
+          'external_id' => $externalId,
+          'sku'         => $sku,
+        ]
       )
     );
 
@@ -410,6 +397,7 @@ class AliensCsvStreamImporter
     if ($product->product_type !== 'variable') {
       $product->update(['product_type' => 'variable']);
     }
+
 
     // Kombinations-ID als Meta (damit wir sie trotzdem haben)
     $product->meta()->updateOrCreate(
