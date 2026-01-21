@@ -5,9 +5,10 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use App\Models\Shop;
 use App\Services\Woo\WooClient;
-use Filament\Facades\Filament;
-use Filament\Navigation\NavigationGroup;
 use Illuminate\Support\Facades\Gate;
+use App\Services\ProductNaming\DefaultProductNameBuilder;
+use App\Services\ProductNaming\NameTemplateRegistry;
+use App\Services\ProductNaming\ProductPropertyExtractor;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -28,6 +29,14 @@ class AppServiceProvider extends ServiceProvider
                 return new WooClient($shop);
             }
         );
+
+        // Registry is simple/config-based -> singleton is fine.
+        $this->app->singleton(NameTemplateRegistry::class);
+
+        // Builder is stateless -> singleton is fine.
+        $this->app->singleton(DefaultProductNameBuilder::class);
+
+        $this->app->singleton(ProductPropertyExtractor::class);
     }
 
 
