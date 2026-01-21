@@ -26,14 +26,10 @@ final class ProductPropertyExtractor
    * - Order matters!
    * - Only these attributes are allowed to influence the product name.
    *
-   * Example:
-   *  p1 = size
-   *  p2 = length
-   *  p3 = color
    */
   private const PROPERTY_SLUG_ORDER = [
     'p1',
-    'p1',
+    'p2',
     'p3',
   ];
 
@@ -73,7 +69,10 @@ final class ProductPropertyExtractor
   {
     $map = [];
 
-    $product->loadMissing('variations.attributeValues.attribute');
+    // Avoid DB calls in unit tests if relations are already provided in-memory.
+    if (! $product->relationLoaded('variations')) {
+      $product->loadMissing('variations.attributeValues.attribute');
+    }
 
     // 1) Preferred: pivot-based attribute values
     foreach ($product->variations as $variation) {
@@ -233,20 +232,23 @@ final class ProductPropertyExtractor
   {
     $k = mb_strtolower($key);
 
-    // We don't rely on exact names; we detect keywords.
+    // Größe / Size
     if (preg_match('/\b(größe|groesse|size)\b/u', $k)) {
       return ['priority' => 10, 'value' => $value];
     }
 
+    // Version
     if (preg_match('/\bversion\b/u', $k)) {
       return ['priority' => 20, 'value' => $value];
     }
 
-    if (preg_match('/\b(länge|laenge|length)\b/u', $k)) {
+    // Länge (Seillänge, Länge, Length)
+    if (preg_match('/\b(seil)?(länge|laenge|length)\b/u', $k)) {
       return ['priority' => 30, 'value' => $value];
     }
 
-    if (preg_match('/\b(farbe|color)\b/u', $k)) {
+    // Farbe / Color
+    if (preg_match('/\b(seil)?farbe\b/u', $k) || preg_match('/\bcolor\b/u', $k)) {
       return ['priority' => 40, 'value' => $value];
     }
 
