@@ -32,9 +32,9 @@ final class ProductPropertyExtractor
    *  p3 = color
    */
   private const PROPERTY_SLUG_ORDER = [
-    'size',
-    'length',
-    'color',
+    'p1',
+    'p1',
+    'p3',
   ];
 
   /**
@@ -63,91 +63,76 @@ final class ProductPropertyExtractor
   }
 
   /**
-   * Collects attribute values indexed by attribute slug.
+   * Collects naming properties (p1..p3) from either:
+   * - variation attributeValues (pivot), or
+   * - variation attributes_json (Aliens)
    *
-   * Result example:
-   * [
-   *   'size'   => '0.5',
-   *   'length' => '90 mm',
-   *   'color'  => 'red',
-   * ]
-   *
-   * @return array<string, string>
+   * @return array<string, string>  keys: p1|p2|p3
    */
   private function collectAttributeValues(Product $product): array
   {
     $map = [];
 
-    /**
-     * You may already have this relation on Product.
-     * If not, we resolve via variations.
-     */
     $product->loadMissing('variations.attributeValues.attribute');
 
+    // 1) Preferred: pivot-based attribute values
     foreach ($product->variations as $variation) {
       foreach ($variation->attributeValues as $value) {
-        $slug = $value->attribute->slug ?? null;
-
-        if ($slug === null) {
+        $attrSlug = $value->attribute->slug ?? null;
+        if (!is_string($attrSlug) || $attrSlug === '') {
           continue;
         }
 
-        /**
-         * First value wins.
-         * We do NOT override to keep naming deterministic.
-         */
-        if (! array_key_exists($slug, $map)) {
-          $map[$slug] = $this->normalizeValue($value);
-        }
-      }
-    }
-
-    // Fallback: if no attribute values are attached (pivot not used),
-    // read values from attributes_json stored on the variation.
-    if ($map === []) {
-      foreach ($product->variations as $variation) {
-        $json = $variation->attributes_json ?? null;
-
-        if (!is_array($json) || $json === []) {
+        $normalized = trim($value->value);
+        if ($normalized === '') {
           continue;
         }
 
-        foreach ($json as $k => $v) {
-          if (!is_string($k)) {
-            continue;
-          }
-
-          $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
-          if ($val === null || $val === '') {
-            continue;
-          }
-
-          // Example key: "Attribute Group: Schlingenlänge | Farbe"
-          $key = trim($k);
-
-          // Map customer properties by detecting known keywords in the key.
-          // Adjust these mappings to your real attribute groups.
-          if (!isset($map['length']) && preg_match('/schlingenlänge|länge/i', $key)) {
-            $map['length'] = $val;
-            continue;
-          }
-
-          if (!isset($map['color']) && preg_match('/farbe|color/i', $key)) {
-            $map['color'] = $val;
-            continue;
-          }
-
-          if (!isset($map['size']) && preg_match('/größe|size/i', $key)) {
-            $map['size'] = $val;
-            continue;
-          }
+        // Map known attribute slugs into our priority list
+        $candidate = $this->candidateFromSlug($attrSlug, $normalized);
+        if ($candidate === null) {
+          continue;
         }
+
+        $this->pushCandidate($map, $candidate['priority'], $candidate['value']);
       }
     }
 
+    if ($map !== []) {
+      return $this->toSlots($map);
+    }
 
-    return $map;
+    // 2) Fallback: attributes_json on variation (Aliens)
+    foreach ($product->variations as $variation) {
+      $json = $variation->attributes_json ?? null;
+      if (!is_array($json) || $json === []) {
+        continue;
+      }
+
+      foreach ($json as $k => $v) {
+        if (!is_string($k)) {
+          continue;
+        }
+
+        $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+        if ($val === null || $val === '') {
+          continue;
+        }
+
+        $key = trim($k);
+
+        $candidate = $this->candidateFromAliensKey($key, $val);
+        if ($candidate === null) {
+          continue;
+        }
+
+        $this->pushCandidate($map, $candidate['priority'], $candidate['value']);
+      }
+    }
+
+    return $this->toSlots($map);
   }
+
 
   /**
    * Normalizes a single attribute value for name usage.
@@ -160,5 +145,111 @@ final class ProductPropertyExtractor
   private function normalizeValue(ProductAttributeValue $value): string
   {
     return trim($value->value);
+  }
+
+  /**
+   * Turns a map of priority => value into p1..p3 slots.
+   *
+   * @param array<int, string> $byPriority
+   * @return array<string, string>
+   */
+  private function toSlots(array $byPriority): array
+  {
+    if ($byPriority === []) {
+      return [];
+    }
+
+    ksort($byPriority); // priority 10 before 20 before 30 ...
+
+    $values = array_values($byPriority);
+    $values = array_slice($values, 0, 3);
+
+    $slots = [];
+    foreach ($values as $i => $v) {
+      $slots['p' . ($i + 1)] = $v;
+    }
+
+    return $slots;
+  }
+
+  /**
+   * Adds a candidate if the given priority is still free.
+   *
+   * @param array<int, string> $byPriority
+   */
+  private function pushCandidate(array &$byPriority, int $priority, string $value): void
+  {
+    if ($value === '') {
+      return;
+    }
+
+    // first wins per priority (deterministic)
+    if (!isset($byPriority[$priority])) {
+      $byPriority[$priority] = $value;
+    }
+  }
+
+  /**
+   * Maps a generic attribute slug to a naming candidate.
+   *
+   * @return array{priority:int, value:string}|null
+   */
+  private function candidateFromSlug(string $slug, string $value): ?array
+  {
+    $s = mb_strtolower(trim($slug));
+
+    // Priority list (lower = more important)
+    if (preg_match('/\b(size|groesse|größe)\b/u', $s)) {
+      return ['priority' => 10, 'value' => $value];
+    }
+
+    if (preg_match('/\b(version)\b/u', $s)) {
+      return ['priority' => 20, 'value' => $value];
+    }
+
+    if (preg_match('/\b(length|laenge|länge)\b/u', $s)) {
+      return ['priority' => 30, 'value' => $value];
+    }
+
+    if (preg_match('/\b(color|farbe)\b/u', $s)) {
+      return ['priority' => 40, 'value' => $value];
+    }
+
+    return null;
+  }
+
+  /**
+   * Maps an Aliens attributes_json key to a naming candidate.
+   *
+   * Example keys:
+   * - "Attribute Group: Seil-Version"
+   * - "Attribute Group: Seillänge"
+   * - "Attribute Group: Seilfarbe"
+   * - "Attribute Group: Größe | Farbe"
+   *
+   * @return array{priority:int, value:string}|null
+   */
+  private function candidateFromAliensKey(string $key, string $value): ?array
+  {
+    $k = mb_strtolower($key);
+
+    // We don't rely on exact names; we detect keywords.
+    if (preg_match('/\b(größe|groesse|size)\b/u', $k)) {
+      return ['priority' => 10, 'value' => $value];
+    }
+
+    if (preg_match('/\bversion\b/u', $k)) {
+      return ['priority' => 20, 'value' => $value];
+    }
+
+    if (preg_match('/\b(länge|laenge|length)\b/u', $k)) {
+      return ['priority' => 30, 'value' => $value];
+    }
+
+    if (preg_match('/\b(farbe|color)\b/u', $k)) {
+      return ['priority' => 40, 'value' => $value];
+    }
+
+    return null;
   }
 }
