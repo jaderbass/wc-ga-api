@@ -105,6 +105,15 @@ class AliensCsvStreamImporter
       'sample' => array_slice($headers, 0, 10),
     ]);
 
+    Log::error('Aliens naming header probe', [
+      'has_Bezeichnung' => in_array('Bezeichnung', $headers, true),
+      'has_Produktname' => in_array('Produktname', $headers, true),
+      'has_Artikelbezeichnung' => in_array('Artikelbezeichnung', $headers, true),
+      'has_Designation' => in_array('Designation', $headers, true),
+      'header_sample' => array_slice($headers, 0, 60),
+    ]);
+
+
     // Jetzt erneut Records-Iterator holen und ab Zeile 2 streamen:
     $rows = $csv->getRecords();
 
@@ -192,6 +201,22 @@ class AliensCsvStreamImporter
           $productCacheMax,
           $importedProducts
         );
+
+        $designationProbe = $this->cell($assoc, [
+          'Bezeichnung',
+          'Produktname',
+          'Artikelbezeichnung',
+          'Designation',
+        ]);
+
+        if ($rowIndex < 5) {
+          Log::info('Aliens naming probe', [
+            'productId' => $currentProductId,
+            'designation' => $designationProbe,
+            'available_keys_sample' => array_slice(array_keys($assoc), 0, 30),
+          ]);
+        }
+
 
         // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
         $lastParentAssoc = $assoc;
@@ -1072,6 +1097,7 @@ class AliensCsvStreamImporter
     // 1) CSV-Originalname (Designation) ermitteln
     // TODO: Kandidaten ggf. anpassen, wenn Deine CSV-Spalte anders heißt.
     $designation = $this->cell($parentAssoc, [
+      'Produktname',
       'Bezeichnung',
       'Produktname',
       'Artikelbezeichnung',
