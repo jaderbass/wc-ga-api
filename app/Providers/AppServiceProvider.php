@@ -48,7 +48,36 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // ... (deine evtl. bestehenden Einträge)
+        /**
+         * Prevent destructive Artisan commands from running in production.
+         *
+         * This is a safety net to avoid accidentally wiping the production database
+         * (e.g. via `migrate:fresh`, `db:wipe`, etc.).
+         *
+         * Override (ONLY if you really know what you're doing):
+         * - set ALLOW_DESTRUCTIVE_COMMANDS=true in the environment for a one-off run
+         */
+        if (app()->environment('production') && app()->runningInConsole()) {
+            $command = $_SERVER['argv'][1] ?? null;
+
+            $forbidden = [
+                'migrate:fresh',
+                'migrate:reset',
+                'db:wipe',
+                'schema:drop',
+            ];
+
+            $allow = filter_var(env('ALLOW_DESTRUCTIVE_COMMANDS', false), FILTER_VALIDATE_BOOL);
+
+            if (!$allow && is_string($command) && in_array($command, $forbidden, true)) {
+                fwrite(STDERR, PHP_EOL);
+                fwrite(STDERR, "ABORTED: '{$command}' is blocked in production for safety." . PHP_EOL);
+                fwrite(STDERR, "If you really intend to run it, set ALLOW_DESTRUCTIVE_COMMANDS=true temporarily." . PHP_EOL);
+                fwrite(STDERR, PHP_EOL);
+                exit(1);
+            }
+        }
+
 
         Gate::before(function ($user, $ability = null) {
             // <<< DEINE Mailadresse hier eintragen >>>
