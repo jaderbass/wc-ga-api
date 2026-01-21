@@ -7,6 +7,10 @@ use App\Models\ProductVariation;
 use App\Models\ProductMeta;
 use App\Models\ImportRun;
 use App\Models\Manufacturer;
+use App\Services\ProductNaming\DefaultProductNameBuilder;
+use App\Services\ProductNaming\ProductKind;
+use App\Services\ProductNaming\ProductNameContext;
+use App\Services\ProductNaming\ProductPropertyExtractor;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
 use App\Support\Concerns\HasImportAuthor;
@@ -116,6 +120,9 @@ class AliensCsvStreamImporter
 
     $currentProductId = null;
     $currentProduct = null;
+    $lastParentAssoc = null;
+    $lastParentManufacturerId = null;
+
     $skippedProductIds = [];
 
     foreach ($rows as $row) {
@@ -137,6 +144,13 @@ class AliensCsvStreamImporter
       $featureName     = $this->cell($assoc, ['Feature Name']);
       $featureValue    = $this->cell($assoc, ['Feature Value']);
       $featurePosition = $this->cell($assoc, ['Feature Position']);
+
+      // Wenn ein neues Parent-Produkt beginnt, finalisieren wir das vorherige.
+      // Dadurch passiert die Namensbildung genau 1x pro Produkt.
+      if ($productId !== null && $productId !== '' && $currentProduct !== null) {
+        $this->finalizeProductNaming($currentProduct, $assoc);
+      }
+
 
       // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
       if ($productId !== null && $productId !== '') {
@@ -165,6 +179,11 @@ class AliensCsvStreamImporter
           continue;
         }
 
+        // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
+        if ($currentProduct !== null && is_array($lastParentAssoc)) {
+          $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
+        }
+
         $currentProduct = $this->getOrUpsertProduct(
           $assoc,
           $currentProductId,
@@ -173,8 +192,11 @@ class AliensCsvStreamImporter
           $productCacheMax,
           $importedProducts
         );
-      }
 
+        // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
+        $lastParentAssoc = $assoc;
+        $lastParentManufacturerId = $currentProduct->manufacturer_id;
+      }
 
       // Ohne aktives Parent können wir nichts zuordnen
       if ($currentProduct === null) {
@@ -215,6 +237,12 @@ class AliensCsvStreamImporter
         ]);
       }
     }
+
+    // Letztes Produkt am Ende ebenfalls finalisieren
+    if ($currentProduct !== null && is_array($lastParentAssoc)) {
+      $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
+    }
+
 
     if ($this->runId) {
       ImportRun::whereKey($this->runId)->update([
@@ -1020,4 +1048,104 @@ class AliensCsvStreamImporter
     return $this->manufacturerNameCache[$key] = (int) $m->id;
   }
 
+  /**
+   * Finalisiert die Namensbildung für ein Parent-Produkt:
+   * - original_product_name aus CSV übernehmen
+   * - product_name über ProductNameBuilder erzeugen
+   *
+   * Wird absichtlich nur 1x pro Produkt ausgeführt (bei Produktwechsel + am Ende),
+   * damit wir nicht pro CSV-Zeile neu speichern.
+   *
+   * @param Product   $product
+   * @param array     $parentAssoc  Assoziative CSV-Zeile der Parent-Zeile (nicht Feature-only)
+   * @param int|null  $manufacturerId Optional: Hersteller-ID (perf/Cache)
+   * @return void
+   */
+  private function finalizeProductNaming(Product $product, array $parentAssoc, ?int $manufacturerId = null): void
+  {
+    /** @var DefaultProductNameBuilder $nameBuilder */
+    $nameBuilder = app(DefaultProductNameBuilder::class);
+
+    /** @var ProductPropertyExtractor $propertyExtractor */
+    $propertyExtractor = app(ProductPropertyExtractor::class);
+
+    // 1) CSV-Originalname (Designation) ermitteln
+    // TODO: Kandidaten ggf. anpassen, wenn Deine CSV-Spalte anders heißt.
+    $designation = $this->cell($parentAssoc, [
+      'Bezeichnung',
+      'Produktname',
+      'Artikelbezeichnung',
+      'Designation',
+    ]);
+
+    // Wenn wir keinen CSV-Namen haben, brechen wir ab (kein Müll schreiben)
+    if ($designation === null || $designation === '') {
+      return;
+    }
+
+    // 2) Kategorie: aktuell (wie besprochen) aus existierendem Produkt / Woo-Spiegelung.
+    // Wenn Du (noch) nichts spiegelst, bleibt es leer -> Builder lässt es weg.
+    // Passe den Column/Accessor an, sobald Du Kategorien speicherst.
+    $categoryName = '';
+    if (isset($product->category_name) && is_string($product->category_name)) {
+      $categoryName = $product->category_name;
+    }
+
+    // 3) Eigenschaften aus gespeicherten Variation-Attributen ziehen
+    $properties = $propertyExtractor->extract($product->fresh());
+
+    // 4) Kind bestimmen (variable sobald mindestens 1 Variation existiert)
+    $kind = $product->variations()->exists()
+      ? ProductKind::Variable
+      : ProductKind::Simple;
+
+    // 5) Herstellername ermitteln (über ID, cached)
+    $manufacturerName = $this->resolveManufacturerName($manufacturerId ?? $product->manufacturer_id);
+
+    $ctx = new ProductNameContext(
+      kind: $kind,
+      manufacturerName: $manufacturerName,
+      categoryName: $categoryName,
+      designation: $designation,
+      properties: $properties,
+      manufacturerId: $manufacturerId ?? $product->manufacturer_id,
+    );
+
+    $result = $nameBuilder->build($ctx);
+
+    // 6) Persistieren
+    $product->original_product_name = $designation;
+    $product->product_name = $result->productName;
+    $product->save();
+  }
+
+  /**
+   * Resolves the manufacturer display name for naming purposes.
+   *
+   * Uses a simple in-memory cache to avoid repeated DB queries during streaming import.
+   */
+  private function resolveManufacturerName(?int $manufacturerId): string
+  {
+    if (!$manufacturerId) {
+      return '';
+    }
+
+    // Cache-Array ist bei Dir schon vorhanden, aber aktuell "name => id".
+    // Dafür nehmen wir lieber einen separaten Cache für id => name.
+    static $idToName = [];
+
+    if (isset($idToName[$manufacturerId])) {
+      return $idToName[$manufacturerId];
+    }
+
+    $m = Manufacturer::query()->find($manufacturerId);
+
+    // In Deinem Model heißt das Feld offenbar "manufacturer"
+    $name = '';
+    if ($m) {
+      $name = (string) ($m->manufacturer ?? $m->name ?? '');
+    }
+
+    return $idToName[$manufacturerId] = $name;
+  }
 }
