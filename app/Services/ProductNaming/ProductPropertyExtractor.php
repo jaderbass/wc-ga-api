@@ -102,6 +102,50 @@ final class ProductPropertyExtractor
       }
     }
 
+    // Fallback: if no attribute values are attached (pivot not used),
+    // read values from attributes_json stored on the variation.
+    if ($map === []) {
+      foreach ($product->variations as $variation) {
+        $json = $variation->attributes_json ?? null;
+
+        if (!is_array($json) || $json === []) {
+          continue;
+        }
+
+        foreach ($json as $k => $v) {
+          if (!is_string($k)) {
+            continue;
+          }
+
+          $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+          if ($val === null || $val === '') {
+            continue;
+          }
+
+          // Example key: "Attribute Group: Schlingenlänge | Farbe"
+          $key = trim($k);
+
+          // Map customer properties by detecting known keywords in the key.
+          // Adjust these mappings to your real attribute groups.
+          if (!isset($map['length']) && preg_match('/schlingenlänge|länge/i', $key)) {
+            $map['length'] = $val;
+            continue;
+          }
+
+          if (!isset($map['color']) && preg_match('/farbe|color/i', $key)) {
+            $map['color'] = $val;
+            continue;
+          }
+
+          if (!isset($map['size']) && preg_match('/größe|size/i', $key)) {
+            $map['size'] = $val;
+            continue;
+          }
+        }
+      }
+    }
+
+
     return $map;
   }
 
