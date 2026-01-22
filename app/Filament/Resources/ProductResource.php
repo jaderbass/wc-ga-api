@@ -19,6 +19,9 @@ use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Models\ImportRun;
+use App\Services\ProductNaming\DefaultProductNameBuilder;
+use App\Services\ProductNaming\ProductNameContext;
+use App\Services\ProductNaming\ProductKind;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
@@ -148,6 +151,46 @@ class ProductResource extends Resource
           ]) //schema
           ->collapsible(),
 
+        FormSection::make('Produktname (Vorschau)')
+          ->description('Live Vorschau basierend auf den aktuellen Daten')
+          ->schema([
+            Placeholder::make('product_name_preview')
+              ->label('Generierter Produktname')
+              ->content(function ($record) {
+                if (! $record) {
+                  return '—';
+                }
+
+                $ctx = ProductNameContext::fromProduct($record);
+                $builder = app(DefaultProductNameBuilder::class);
+
+                // return $builder->build($ctx) ?? '—';
+                $result = $builder->build($ctx);
+
+                return $result->productName ?? '—';
+              }),
+
+            Placeholder::make('product_name_parts')
+              ->label('Namensbestandteile')
+              ->content(function ($record) {
+                if (! $record) {
+                  return '—';
+                }
+
+                $ctx = ProductNameContext::fromProduct($record);
+
+                return implode(' | ', array_filter([
+                  'Manufacturer: ' . $ctx->manufacturerName,
+                  'Original: ' . $ctx->designation,
+                  'Category: ' . ($ctx->categoryName !== '' ? $ctx->categoryName : '—'),
+                  'p1: ' . ($ctx->properties[0] ?? '—'),
+                  'p2: ' . ($ctx->properties[1] ?? '—'),
+                  'p3: ' . ($ctx->properties[2] ?? '—'),
+                ]));
+              }),
+          ])
+          ->collapsed(),
+
         FormSection::make('Beschreibungen')
           ->description('Weiterführende Produktinformationen')
           ->schema([
@@ -181,6 +224,7 @@ class ProductResource extends Resource
             ]) // Grid
           ]) //schema
           ->collapsible(),
+
 
         FormSection::make('Maße')
           ->description('Produkt- und Verpackungsmaße')
@@ -678,6 +722,34 @@ class ProductResource extends Resource
       ->actions([
         Tables\Actions\EditAction::make(),
       ])
+      ->actions([
+        Tables\Actions\EditAction::make(),
+
+        Tables\Actions\Action::make('rebuildName')
+          ->label('Produktnamen neu berechnen')
+          ->icon('heroicon-o-arrow-path')
+          ->requiresConfirmation()
+          ->action(function ($record) {
+            /** @var \App\Models\Product $record */
+
+            $ctx = ProductNameContext::fromProduct($record);
+
+            /** @var \App\Services\ProductNaming\DefaultProductNameBuilder $builder */
+            $builder = app(DefaultProductNameBuilder::class);
+
+            $result = $builder->build($ctx);
+
+            $record->update([
+              'product_name' => $result->productName,
+            ]);
+
+            Notification::make()
+              ->title('Produktname aktualisiert')
+              ->success()
+              ->send();
+          }),
+      ])
+
       ->headerActions([
         Tables\Actions\Action::make('importProducts')
           ->label('Import starten')
