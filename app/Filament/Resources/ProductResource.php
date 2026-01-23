@@ -689,13 +689,22 @@ class ProductResource extends Resource
           ->formatStateUsing(
             fn($state) =>
             $state
-              ? Str::limit(Str::of((string) $state)->stripTags()->squish(), 40)
+              ? Str::limit(
+                Str::of((string) $state)
+                  ->replaceMatches('/<br\s*\/?>/i', ' ')
+                  ->stripTags()
+                  ->squish(),
+                40
+              )
               : '—'
           )
           // 3) Tooltip: voller Text, ebenfalls ohne HTML
           ->tooltip(
             fn($record) => ($text = ($record->short_description ?: $record->description))
-              ? Str::of((string) $text)->stripTags()->squish()
+              ? Str::of((string) $text)
+              ->replaceMatches('/<br\s*\/?>/i', ' ')
+              ->stripTags()
+              ->squish()
               : null
           )
           ->toggleable(),
