@@ -668,7 +668,7 @@ class ProductResource extends Resource
           ->sortable()
           ->toggleable(),
 
-        Tables\Columns\TextColumn::make('product_number')
+        /* Tables\Columns\TextColumn::make('product_number')
           ->label('Artikelnummer')
           ->searchable()
           ->sortable()
@@ -678,21 +678,31 @@ class ProductResource extends Resource
           ->label('EAN')
           ->searchable()
           ->sortable()
-          ->toggleable(),
+          ->toggleable(), */
 
         // NEU: hart auf 45 Zeichen begrenzen + Tooltip mit vollem Text
         Tables\Columns\TextColumn::make('short_description')
           ->label('Kurzbeschreibung')
           // 1) State aus Record ableiten: short_description ODER Fallback auf description
           ->state(fn($record) => $record->short_description ?: $record->description)
-          // 2) Anzeige kürzen
-          ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string) $state, 40) : '—')
-          // 3) Tooltip: voller Text (gleicher Fallback)
-          ->tooltip(fn($record) => ($record->short_description ?: $record->description) ?: null)
+          // 2) Anzeige: HTML entfernen + kürzen
+          ->formatStateUsing(
+            fn($state) =>
+            $state
+              ? Str::limit(Str::of((string) $state)->stripTags()->squish(), 40)
+              : '—'
+          )
+          // 3) Tooltip: voller Text, ebenfalls ohne HTML
+          ->tooltip(
+            fn($record) => ($text = ($record->short_description ?: $record->description))
+              ? Str::of((string) $text)->stripTags()->squish()
+              : null
+          )
           ->toggleable(),
 
         Tables\Columns\TextColumn::make('size')
-          ->label('Größe'),
+          ->label('Größe')
+          ->toggleable(isToggledHiddenByDefault: true),
 
         Tables\Columns\TextColumn::make('certification')
           ->label('Zertifizierung')
