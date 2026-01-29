@@ -579,35 +579,51 @@ class ProductResource extends Resource
                     return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
                   }
 
-                  // Beginn Einfügen: lokale Bilder (aliens_image_paths) bevorzugen
                   $pathsMeta = $record->meta()
                     ->where('scope', 'product')
                     ->where('key', 'aliens_image_paths')
                     ->whereNull('variation_id')
                     ->first();
 
-                  $localUrls = [];
+                  $urls = [];
 
                   if ($pathsMeta && is_string($pathsMeta->value) && trim($pathsMeta->value) !== '') {
                     $paths = json_decode($pathsMeta->value, true);
 
                     if (is_array($paths)) {
                       foreach ($paths as $path) {
-                        if (!is_string($path) || trim($path) === '') {
-                          continue;
-                        }
+                        if (!is_string($path) || trim($path) === '') continue;
 
                         $path = ltrim(trim($path), '/'); // products/aliens/m1/p6/5191.jpg
 
                         if (preg_match('#^products/aliens/m(\d+)/p(\d+)/(.+)$#', $path, $m)) {
-                          $localUrls[] = url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
+                          $urls[] = url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
                         }
                       }
                     }
                   }
 
-                  $urls = $localUrls !== [] ? $localUrls : ($record->display_image_urls ?? []);
-                  // Ende Einfügen
+                  // Fallback: Remote URLs, falls paths fehlen
+                  if ($urls === []) {
+                    $urlsMeta = $record->meta()
+                      ->where('scope', 'product')
+                      ->where('key', 'aliens_image_urls')
+                      ->whereNull('variation_id')
+                      ->first();
+
+                    if ($urlsMeta && is_string($urlsMeta->value) && trim($urlsMeta->value) !== '') {
+                      $decoded = json_decode($urlsMeta->value, true);
+                      if (is_array($decoded)) {
+                        foreach ($decoded as $u) {
+                          if (is_string($u) && trim($u) !== '') $urls[] = trim($u);
+                        }
+                      }
+                    }
+                  }
+
+                  $urls = array_values(array_unique($urls));
+
+                  // $urls = $localUrls !== [] ? $localUrls : ($record->display_image_urls ?? []);
 
                   if (empty($urls)) {
                     return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
