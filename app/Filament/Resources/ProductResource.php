@@ -623,23 +623,24 @@ class ProductResource extends Resource
 
                   $urls = array_values(array_unique($urls));
 
+
                   // $urls = $localUrls !== [] ? $localUrls : ($record->display_image_urls ?? []);
 
                   if (empty($urls)) {
                     return new HtmlString('<p class="text-sm text-gray-500">Keine Bilder vorhanden.</p>');
                   }
 
-                  $html = '<div class="grid grid-cols-3 gap-4">';
+                  $html = '<div class="flex flex-wrap gap-4">';
 
                   foreach ($urls as $url) {
                     $urlEsc = e($url);
 
                     $html .= <<<HTML
-      <div class="space-y-1">
-        <div class="overflow-hidden rounded-md border bg-gray-900 h-40 flex items-center justify-center">
+      <div style="width:140px;">
+        <div style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #e5e7eb;border-radius:8px;background:#111827;">
           <img 
             src="{$urlEsc}" 
-            class="max-h-full max-w-full object-contain hover:scale-110 transition-transform duration-300"
+            style="width:140px;height:auto;object-fit:contain;"
             loading="lazy"
           />
         </div>
