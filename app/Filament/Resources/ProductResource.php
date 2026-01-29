@@ -593,12 +593,14 @@ class ProductResource extends Resource
 
                     if (is_array($paths)) {
                       foreach ($paths as $path) {
-                        if (is_string($path) && $path !== '') {
-                          $path = ltrim(trim($path), '/');          // z.B. products/aliens/m1/p6/5191.jpg
-                          // $localUrls[] = asset('storage/app/' . $path); // -> /storage/products/aliens/...
-                          if (preg_match('#^products/aliens/m(\d+)/p(\d+)/(.+)$#', $path, $m)) {
-                            $localUrls[] = url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
-                          }
+                        if (!is_string($path) || trim($path) === '') {
+                          continue;
+                        }
+
+                        $path = ltrim(trim($path), '/'); // products/aliens/m1/p6/5191.jpg
+
+                        if (preg_match('#^products/aliens/m(\d+)/p(\d+)/(.+)$#', $path, $m)) {
+                          $localUrls[] = url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
                         }
                       }
                     }
