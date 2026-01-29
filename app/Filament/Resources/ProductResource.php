@@ -594,7 +594,9 @@ class ProductResource extends Resource
                     if (is_array($paths)) {
                       foreach ($paths as $path) {
                         if (is_string($path) && $path !== '') {
-                          $localUrls[] = asset($path);
+                          $path = ltrim(trim($path), '/');          // z.B. products/aliens/m1/p6/5191.jpg
+                          $localUrls[] = asset('storage/app/' . $path); // -> /storage/products/aliens/...
+
                         }
                       }
                     }
@@ -694,7 +696,7 @@ class ProductResource extends Resource
           ->tooltip(
             fn($record) => ($text = ($record->short_description ?: $record->description))
               ? TextNormalizer::plain((string) $text)
-            : null
+              : null
           )
           ->toggleable(),
 
