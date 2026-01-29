@@ -595,8 +595,10 @@ class ProductResource extends Resource
                       foreach ($paths as $path) {
                         if (is_string($path) && $path !== '') {
                           $path = ltrim(trim($path), '/');          // z.B. products/aliens/m1/p6/5191.jpg
-                          $localUrls[] = asset('storage/app/' . $path); // -> /storage/products/aliens/...
-
+                          // $localUrls[] = asset('storage/app/' . $path); // -> /storage/products/aliens/...
+                          if (preg_match('#^products/aliens/m(\d+)/p(\d+)/(.+)$#', $path, $m)) {
+                            $localUrls[] = url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
+                          }
                         }
                       }
                     }

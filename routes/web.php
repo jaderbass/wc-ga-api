@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\ImportRunEventsController;
+use App\Http\Controllers\AliensImageController;
 
 /*
 Route::get('/', function () {
@@ -35,3 +36,10 @@ Route::get('/whoami', function () {
 
 Route::get('/imports/runs/{run}/events', [ImportRunEventsController::class, 'show'])
     ->middleware(['web', 'auth']);
+
+Route::get('/aliens-image/{manufacturerId}/{productId}/{filename}', [AliensImageController::class, 'show'])
+    ->where([
+        'manufacturerId' => '[0-9]+',
+        'productId' => '[0-9]+',
+        'filename' => '.+',
+    ]);
