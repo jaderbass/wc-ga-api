@@ -39,3 +39,4 @@ yarn-error.log
 # nicht benötigte docs-Dateien
 docs/api
 docs/api-cache
+/public/media/
