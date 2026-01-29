@@ -21,7 +21,7 @@ use App\Models\Product;
 use App\Models\ImportRun;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductNameContext;
-use App\Services\ProductNaming\ProductKind;
+use App\Support\TextNormalizer;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
@@ -688,24 +688,13 @@ class ProductResource extends Resource
           // 2) Anzeige: HTML entfernen + kürzen
           ->formatStateUsing(
             fn($state) =>
-            $state
-              ? Str::limit(
-                Str::of((string) $state)
-                  ->replaceMatches('/<br\s*\/?>/i', ' ')
-                  ->stripTags()
-                  ->squish(),
-                40
-              )
-              : '—'
+            $state ? Str::limit(TextNormalizer::plain((string) $state), 40) : '—'
           )
           // 3) Tooltip: voller Text, ebenfalls ohne HTML
           ->tooltip(
             fn($record) => ($text = ($record->short_description ?: $record->description))
-              ? Str::of((string) $text)
-              ->replaceMatches('/<br\s*\/?>/i', ' ')
-              ->stripTags()
-              ->squish()
-              : null
+              ? TextNormalizer::plain((string) $text)
+            : null
           )
           ->toggleable(),
 
