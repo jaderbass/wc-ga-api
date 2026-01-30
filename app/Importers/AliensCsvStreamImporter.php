@@ -958,6 +958,19 @@ class AliensCsvStreamImporter
     return $before . $wrappedSteps;
   }
 
+  private function isLikelyImageUrl(string $url): bool
+  {
+    $url = trim($url);
+    if ($url === '') return false;
+
+    // Muss URL sein
+    if (!preg_match('#^https?://#i', $url)) return false;
+
+    // Bild-Endungen (häufigster/leichtester Filter)
+    return (bool) preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $url);
+  }
+
+
   /**
    * Sammelt Produktbild-URLs aus der aktuellen CSV-Zeile
    * und speichert sie gesammelt als JSON in product_meta.
@@ -1018,7 +1031,11 @@ class AliensCsvStreamImporter
       }
     }
 
-    $urls = array_values(array_unique($urls));
+    $urls = array_values(array_filter(
+      $urls,
+      fn($u) =>
+      is_string($u) && $this->isLikelyImageUrl($u)
+    ));
 
     if ($urls === []) {
       return;
