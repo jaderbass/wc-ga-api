@@ -772,7 +772,7 @@ class AliensCsvStreamImporter
    */
   protected function loadMapping(string $name): array
   {
-    $fromConfig = config("import_mappings.{$name}");
+    $fromConfig = config("import_mappings." . $name);
     if (is_array($fromConfig)) {
       return $fromConfig;
     }
@@ -958,6 +958,19 @@ class AliensCsvStreamImporter
     return $before . $wrappedSteps;
   }
 
+  /**
+   * Extracts and stores Aliens product image URLs from the current CSV row.
+   *
+   * Aliens exports are inconsistent regarding column headers (e.g. "Bild", "Bilder",
+   * "Image URL", "Hauptbild", ...). This method scans the row for image-related
+   * columns, splits cells that may contain multiple URLs, validates them, and stores
+   * the resulting unique list as JSON in product meta under the key "aliens_image_urls".
+   *
+   * Important:
+   * - We intentionally do NOT treat any generic "*url*" column as an image source,
+   *   because that would incorrectly capture product page URLs.
+   * - Only http(s) URLs that look like images are persisted.
+   */
   private function isLikelyImageUrl(string $url): bool
   {
     $url = trim($url);
@@ -1001,8 +1014,10 @@ class AliensCsvStreamImporter
       $col = trim($colName);
 
       // Aliens ist hier uneinheitlich: "Bild", "Bilder", "Image URL", "Hauptbild", ...
-      $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col)
-        || (bool) preg_match('/\burl\b/i', $col);
+      /* $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col)
+        || (bool) preg_match('/\burl\b/i', $col); */
+      $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col);
+
 
       if (!$isImageColumn) {
         continue;
@@ -1024,6 +1039,11 @@ class AliensCsvStreamImporter
 
         // akzeptiere nur http(s) und typische Bild-Endungen (oder image CDN ohne Endung)
         if (!preg_match('~^https?://~i', $part)) {
+          continue;
+        }
+
+        // NEU: nur echte Bild-URLs (verhindert Produktseiten)
+        if (!preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $part)) {
           continue;
         }
 
