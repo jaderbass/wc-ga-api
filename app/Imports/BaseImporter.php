@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 abstract class BaseImporter
 {
   use HasImportAuthor;
-  
+
   protected ?int $authorId = null;
 
   public function setAuthorId(?int $authorId): static
@@ -67,13 +67,39 @@ abstract class BaseImporter
             continue;
           }
 
-          $product = Product::updateOrCreate(
-            [
-              'manufacturer_id' => $mapped['manufacturer_id'],
-              'slug' => $mapped['slug'],
-            ],
-            Arr::except($mapped, ['variations', 'images', 'product_type'])
-          );
+          $product = Product::firstOrNew([
+            'manufacturer_id' => $mapped['manufacturer_id'],
+            'slug'            => $mapped['slug'],
+          ]);
+
+          $isNew = ! $product->exists;
+
+          $payload = Arr::except($mapped, ['variations', 'images', 'product_type']);
+
+          /**
+           * Aliens-Konvention:
+           * - original_product_name = Rohname aus Quelle (CSV/XML/API)
+           * - product_name          = berechneter Name (NameBuilder) -> darf NICHT durch Import überschrieben werden
+           */
+          if (array_key_exists('product_name', $payload)) {
+            $rawName = is_string($payload['product_name']) ? trim($payload['product_name']) : (string) $payload['product_name'];
+
+            // Rohname immer aktualisieren
+            $payload['original_product_name'] = $rawName !== '' ? $rawName : $payload['original_product_name'] ?? null;
+
+            // verhindere Überschreiben des berechneten Namens beim Re-Import
+            unset($payload['product_name']);
+
+            // optional: beim Neuanlegen product_name initial setzen, falls noch leer
+            if ($isNew && (!is_string($product->product_name) || trim((string) $product->product_name) === '')) {
+              $product->product_name = $rawName;
+            }
+          }
+
+          // normale Felder übernehmen
+          $product->fill($payload);
+          $product->save();
+
 
           // Variationen
           $variations = $this->parseVariations($row);
