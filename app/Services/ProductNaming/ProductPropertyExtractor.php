@@ -40,6 +40,13 @@ final class ProductPropertyExtractor
    */
   public function extract(Product $product): array
   {
+    // ✅ Variable Produkte: genau 1 Eigenschaft aus Variation-Attributen (nur value)
+    if ($product->product_type === 'variable') {
+      $value = $this->pickVariablePropertyValueFromVariations($product);
+
+      return $value !== null ? [$value] : [];
+    }
+
     /**
      * Collect all attribute values related to this product.
      *
@@ -57,6 +64,57 @@ final class ProductPropertyExtractor
 
     return $result;
   }
+
+  private function pickVariablePropertyValueFromVariations(Product $product): ?string
+  {
+    // N+1 vermeiden
+    $product->loadMissing(['variations.attributeValues.attribute']);
+
+    /** @var array<string, array<string, true>> $byAttributeName */
+    $byAttributeName = [];
+
+    foreach ($product->variations as $variation) {
+      foreach ($variation->attributeValues as $attrValue) {
+        $attrName = $attrValue->attribute?->name;
+        if (!is_string($attrName) || trim($attrName) === '') {
+          continue;
+        }
+
+        $value = trim((string) $attrValue->value);
+        if ($value === '') {
+          continue;
+        }
+
+        $byAttributeName[$attrName][$value] = true; // unique set
+      }
+    }
+
+    if ($byAttributeName === []) {
+      return null;
+    }
+
+    // Werte-Listen bauen (stabil sortiert)
+    $lists = [];
+    foreach ($byAttributeName as $name => $set) {
+      $values = array_keys($set);
+      sort($values, SORT_NATURAL | SORT_FLAG_CASE);
+      $lists[$name] = $values;
+    }
+
+    // Priorität: Länge > Durchmesser > Größe > Farbe
+    foreach (['Länge', 'Durchmesser', 'Größe', 'Farbe'] as $preferred) {
+      if (!empty($lists[$preferred])) {
+        return $lists[$preferred][0] ?? null;
+      }
+    }
+
+    // Fallback: Attribut mit den meisten Ausprägungen
+    uasort($lists, fn(array $a, array $b) => count($b) <=> count($a));
+    $firstKey = array_key_first($lists);
+
+    return $firstKey !== null ? ($lists[$firstKey][0] ?? null) : null;
+  }
+
 
   /**
    * Collects naming properties (p1..p3) from either:
