@@ -22,6 +22,7 @@ class Kernel extends ConsoleKernel
     \App\Console\Commands\MakeImportMapping::class,
     \App\Console\Commands\SmokeTestAliensImportCommand::class,
     \App\Console\Commands\RebuildProductNamesCommand::class,
+    \App\Console\Commands\BackfillProductNamesCommand::class,
   ];
 
   /**
