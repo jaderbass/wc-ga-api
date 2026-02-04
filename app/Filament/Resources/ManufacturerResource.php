@@ -54,14 +54,14 @@ class ManufacturerResource extends Resource
                     ->password()
                     ->helperText('Um das Passwort zu ändern, hier ein neues Passwort eingeben. Wenn leer gelassen, bleibt das bestehende Passwort erhalten.')
 
-                ->hint(
-                    fn($record) => ($record?->api_password_changed_at instanceof \Illuminate\Support\Carbon
-                        ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
-                        : 'Noch nie geändert.')
-                )
+                    ->hint(
+                        fn($record) => ($record?->api_password_changed_at instanceof \Illuminate\Support\Carbon
+                            ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
+                            : 'Noch nie geändert.')
+                    )
 
 
-                ->dehydrateStateUsing(function ($state, $record) {
+                    ->dehydrateStateUsing(function ($state, $record) {
                         if ($state) {
                             if ($record) {
                                 $record->api_password_changed_at = now();
@@ -99,6 +99,9 @@ class ManufacturerResource extends Resource
                 Tables\Columns\TextColumn::make('manufacturer')
                     ->label('Hersteller')
                     ->searchable()
+                    ->sortable(),
+                Tables\Columns\ToggleColumn::make('active')
+                    ->label('Aktiv')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('manufacturercountry')
                     ->label('Ländercode')
