@@ -1079,6 +1079,27 @@ class GenericCsvProductImporter implements CsvImporterContract
     $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
     $builder = app(\App\Services\ProductNaming\DefaultProductNameBuilder::class);
 
+    
+    $template = array_values(array_filter(array_unique((array) $tpl['template'])));
+    Log::debug('NAMECTX', [
+      'product_id' => $product->id,
+      'manufacturer' => $ctx->manufacturerName,
+      'designation'  => $ctx->designation,
+      'properties'   => $ctx->properties,
+      'template'     => $tpl['template'] ?? null, // falls du es dort verfügbar machst
+    ]);
+
+    $props = collect($ctx->properties ?? [])
+      ->filter(fn($v) => is_string($v) && trim($v) !== '')
+      ->map(fn($v) => trim($v))
+      ->unique()
+      ->values()
+      ->all();
+
+    $p1 = $props[0] ?? null;
+    $p2 = $props[1] ?? null;
+    $p3 = $props[2] ?? null;
+
     $calc = $builder->build($ctx)->productName;
     $calc = is_string($calc) ? trim($calc) : '';
 
