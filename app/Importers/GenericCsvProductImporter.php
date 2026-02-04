@@ -477,6 +477,14 @@ class GenericCsvProductImporter implements CsvImporterContract
       );
     }
 
+    // original_product_name muss gesetzt sein, sonst wird später der berechnete Name erneut als Designation verwendet.
+    if (
+      (!array_key_exists('original_product_name', $productPayload) || trim((string) ($productPayload['original_product_name'] ?? '')) === '')
+      && \Illuminate\Support\Facades\Schema::hasColumn('products', 'original_product_name')
+    ) {
+      $productPayload['original_product_name'] = trim((string) $groupKey);
+    }
+
     // Name/Slug/Feste Werte
     $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
     $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());

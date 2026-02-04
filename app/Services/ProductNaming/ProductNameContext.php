@@ -61,10 +61,8 @@ final class ProductNameContext
 
     $designation =
       (is_string($product->original_product_name) && trim($product->original_product_name) !== '')
-        ? trim($product->original_product_name)
-        : ((is_string($product->product_name) && trim($product->product_name) !== '')
-          ? trim($product->product_name)
-          : (string) $product->slug);
+      ? trim($product->original_product_name)
+      : (string) $product->slug;
 
     $variationsCount = $product->relationLoaded('variations')
       ? $product->variations->count()
