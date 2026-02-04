@@ -318,6 +318,8 @@ class GenericCsvProductImporter implements CsvImporterContract
           'groupKey'  => $groupKey,
           'rows'      => $rows->count(),
           'exception' => $e->getMessage(),
+          'file'      => $e->getFile(),
+          'line'      => $e->getLine(),
         ]);
       }
     }
@@ -365,6 +367,9 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
   {
+    $payload = null;
+    $writablePayload = null;
+
 
     // reference kann String oder Array sein
     $referenceKey  = $this->mapping['reference'] ?? null;
@@ -560,7 +565,14 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // Zusatzsicherung: berechneten Namen niemals aus Importdaten überschreiben
     if (array_key_exists('product_name', $writablePayload)) {
-      unset($payload['product_name'], $writablePayload['product_name']);
+      // unset($payload['product_name'], $writablePayload['product_name']);
+      if (is_array($payload)) {
+        unset($payload['product_name']);
+      }
+
+      if (isset($writablePayload) && is_array($writablePayload)) {
+        unset($writablePayload['product_name']);
+      }
     }
 
     if ($product) {
@@ -657,6 +669,8 @@ class GenericCsvProductImporter implements CsvImporterContract
           );
         }
 
+        $payload = null;
+
         // Feature Name/Value/Position als JSON-Liste (sofern befüllt)
         $fn = $row['Feature Name'] ?? null;
         $fv = $row['Feature Value'] ?? null;
@@ -667,7 +681,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $fp = is_string($fp) ? trim($fp) : null;
 
         if (($fn ?? '') !== '' || ($fv ?? '') !== '' || ($fp ?? '') !== '') {
-          $payload = [
+          $featuresListPayload  = [
             [
               'name' => $fn,
               'value' => $fv,
@@ -682,7 +696,7 @@ class GenericCsvProductImporter implements CsvImporterContract
               'scope'        => 'product',
               'key'          => 'features.list_json',
             ],
-            ['value' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+            ['value' => json_encode($featuresListPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
           );
         }
       }
