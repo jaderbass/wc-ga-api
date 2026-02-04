@@ -744,7 +744,7 @@ class ProductResource extends Resource
       ->filters([
         Tables\Filters\SelectFilter::make('manufacturer_id')
           ->label('Hersteller')
-          ->relationship('manufacturer', 'manufacturer') // Relation + anzuzeigendes Feld
+          ->relationship('manufacturer', 'manufacturer', fn($query) => $query->where('active', true)) // Relation + anzuzeigendes Feld
           ->multiple()                                   // ⬅️ Mehrfachauswahl aktivieren
           ->searchable()
           ->preload()
@@ -788,7 +788,7 @@ class ProductResource extends Resource
             Select::make('manufacturer_id')
               ->label('Hersteller')
               ->placeholder('Bitte Hersteller wählen …')
-              ->relationship('manufacturer', 'manufacturer')
+              ->relationship('manufacturer', 'manufacturer', fn($query) => $query->where('active', true))
               ->native(false)        // Tom Select statt nativer <select>
               ->searchable()         // Typeahead-Suche aktivieren
               ->preload()            // Optionen vorladen (besseres UX im Modal)
