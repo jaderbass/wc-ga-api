@@ -66,8 +66,12 @@ final class ProductNameContext
           ? trim($product->product_name)
           : (string) $product->slug);
 
+    $variationsCount = $product->relationLoaded('variations')
+      ? $product->variations->count()
+      : $product->variations()->count();
+
     $kind = match ($product->product_type) {
-      'variable' => ProductKind::Variable,
+      'variable' => ($variationsCount <= 1 ? ProductKind::Simple : ProductKind::Variable),
       'set'      => ProductKind::Set,
       default    => ProductKind::Simple,
     };
