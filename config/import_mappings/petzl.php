@@ -31,19 +31,20 @@ return [
   // Mapping für Felder des Hauptprodukts (wird aus der ersten Zeile der Gruppe genommen).
   // Alle Felder, die im Hauptprodukt landen sollen, müssen hier definiert werden.
   'product' => [
-    'product_name'   => 'Product name',
-    'product_number' => 'Reference',
-    'description'    => 'Description',
-    'designation'    => 'Designation',   // Marketing-/Katalogname
-    'type'           => 'Type',
-    'category'       => 'Category',
-    'subcategory'    => 'Subcategory',
-    'market'         => 'Market',
-    'ean'            => 'EAN Code',
-    'customs'        => 'Customs',       // Zolltarifnummer
-    'made_in'        => 'Made in',
-    'certification'  => 'CERTIFICATION',
-    'materials'      => 'MATERIALS',
+    'product_name'          => 'Product name',
+    'original_product_name' => 'Product name',
+    'product_number'        => 'Reference',
+    'description'           => 'Description',
+    'designation'           => 'Designation',   // Marketing-/Katalogname
+    'type'                  => 'Type',
+    'category'              => 'Category',
+    'subcategory'           => 'Subcategory',
+    'market'                => 'Market',
+    'ean'                   => 'EAN Code',
+    'customs'               => 'Customs',       // Zolltarifnummer
+    'made_in'               => 'Made in',
+    'certification'         => 'CERTIFICATION',
+    'materials'             => 'MATERIALS',
 
     // Maße / Gewicht Produkt
     'dimension_length_mm' => 'Product length',
