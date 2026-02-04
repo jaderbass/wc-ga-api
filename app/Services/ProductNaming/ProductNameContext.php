@@ -76,12 +76,19 @@ final class ProductNameContext
       default    => ProductKind::Simple,
     };
 
+    $properties = collect($extractor->extract($product) ?? [])
+      ->filter(fn($v) => is_string($v) && trim($v) !== '')
+      ->map(fn($v) => trim($v))
+      ->unique()
+      ->values()
+      ->all();
+
     return new self(
       kind: $kind,
       manufacturerName: $manufacturerName,
       categoryName: '',
       designation: $designation,
-      properties: $extractor->extract($product),
+      properties: $properties,
       manufacturerId: (int) $product->manufacturer_id,
     );
   }
