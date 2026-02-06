@@ -30,6 +30,7 @@
  * @mapping-target   InternalProductDTO
  * @see App\Imports\ImporterForAliens
  */
+
 use Illuminate\Support\Str;
 
 return [
@@ -87,7 +88,7 @@ return [
      */
     'product' => [
         'product_name'      => ['Produktname'],
-        'product_number'    => ['Referenz'],
+        'product_number'    => ['Referenz', 'Kombinations-Referenz'],
         'ean'               => ['EAN-13'],
         'description'       => ['Beschreibung'],
         'short_description' => ['Kurzbeschreibung'],
@@ -239,6 +240,16 @@ return [
             $name = (string)($row['Produktname'] ?? '');
             $name = trim($name);
             return $name !== '' ? \Illuminate\Support\Str::slug($name) : null;
+        },
+
+        'product_number' => function ($v, array $row = []) {
+            // Primär: Referenz, Fallback: Kombinations-Referenz
+            $ref  = trim((string)($row['Referenz'] ?? ''));
+            $comb = trim((string)($row['Kombinations-Referenz'] ?? ''));
+
+            $val = $ref !== '' ? $ref : $comb;
+
+            return $val !== '' ? $val : null;
         },
 
         '_build_feature_meta' => function ($v, array $row = [], array $mapping = []) {
