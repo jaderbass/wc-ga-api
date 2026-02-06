@@ -73,6 +73,10 @@ class ProductResource extends Resource
   protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
   protected static ?string $navigationLabel = 'Produkte';
 
+  protected static ?string $modelLabel = 'Produkt';
+  protected static ?string $pluralModelLabel = 'Produkte';
+
+
   /**
    * Formularschema für Create/Edit.
    *
