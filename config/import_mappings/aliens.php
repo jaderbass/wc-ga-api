@@ -243,14 +243,37 @@ return [
         },
 
         'product_number' => function ($v, array $row = []) {
-            // Primär: Referenz, Fallback: Kombinations-Referenz
             $ref  = trim((string)($row['Referenz'] ?? ''));
             $comb = trim((string)($row['Kombinations-Referenz'] ?? ''));
 
-            $val = $ref !== '' ? $ref : $comb;
+            if ($ref !== '') {
+                logger()->debug('[Aliens Import] product_number from Referenz', [
+                    'value'       => $ref,
+                    'product_id'  => $row['Produkt-ID'] ?? null,
+                    'variant_id'  => $row['Kombination-ID'] ?? null,
+                ]);
 
-            return $val !== '' ? $val : null;
+                return $ref;
+            }
+
+            if ($comb !== '') {
+                logger()->debug('[Aliens Import] product_number from Kombinations-Referenz', [
+                    'value'       => $comb,
+                    'product_id'  => $row['Produkt-ID'] ?? null,
+                    'variant_id'  => $row['Kombination-ID'] ?? null,
+                ]);
+
+                return $comb;
+            }
+
+            logger()->warning('[Aliens Import] product_number missing', [
+                'product_id' => $row['Produkt-ID'] ?? null,
+                'row'        => $row,
+            ]);
+
+            return null;
         },
+
 
         '_build_feature_meta' => function ($v, array $row = [], array $mapping = []) {
             // $mapping ist je nach Importer evtl. nicht verfügbar – falls nicht, lass es weg
