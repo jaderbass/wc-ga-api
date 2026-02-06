@@ -226,7 +226,7 @@ class ProductResource extends Resource
           ->collapsible(),
 
 
-        FormSection::make('Maße')
+        /* FormSection::make('Maße')
           ->description('Produkt- und Verpackungsmaße')
           ->schema([
             Grid::make(12)->schema([
@@ -280,7 +280,7 @@ class ProductResource extends Resource
                 ->columnSpan(3),
             ]) // Grid
           ]) // schema
-          ->collapsible(),
+          ->collapsible(), */
 
         FormSection::make('Unterlagen')
           ->description('Gebrauchsanweisung/Zertifizierung/Konformitätserklärung')
