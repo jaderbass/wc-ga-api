@@ -95,6 +95,11 @@ class ManufacturerResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function (Builder $query) {
+                $query
+                    ->orderByDesc('active')   // aktive (1) zuerst, inaktive (0) nach unten
+                    ->orderBy('manufacturer'); // danach sauber alphabetisch
+            })
             ->recordClasses(fn($record) => $record->active ? null : 'opacity-60')
             ->columns([
                 Tables\Columns\TextColumn::make('id')
