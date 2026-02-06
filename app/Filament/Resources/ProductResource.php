@@ -97,24 +97,75 @@ class ProductResource extends Resource
                 ->maxLength(255)
                 ->columnSpan(4),
 
+              Placeholder::make('product_name_parts')
+                ->label('Namensbestandteile')
+                ->content(function ($record) {
+                  if (! $record) {
+                    return '—';
+                  }
+
+                  $ctx = ProductNameContext::fromProduct($record);
+
+                  // Basis-Infos (immer anzeigen)
+                  $items = [
+                    ['Manufacturer', $ctx->manufacturerName],
+                    ['Original', $ctx->designation],
+                    ['Category', $ctx->categoryName !== '' ? $ctx->categoryName : '(folgt)'],
+                  ];
+
+                  // optionale Properties nur bei echtem Inhalt
+                  foreach ([$ctx->properties[0] ?? null, $ctx->properties[1] ?? null, $ctx->properties[2] ?? null] as $idx => $prop) {
+                    if (filled($prop)) {
+                      $items[] = ['p' . ($idx + 1), $prop];
+                    }
+                  }
+
+                  $parts = [];
+
+                  foreach ($items as [$label, $value]) {
+                    $labelEsc = e((string) $label);
+                    $valueEsc = e((string) $value);
+
+                    $parts[] = <<<HTML
+<span style="display:inline-flex;align-items:baseline;gap:6px;min-width:0;">
+  <span style="
+    font-size:10px;
+    line-height:1;
+    font-weight:600;
+    letter-spacing:.03em;
+    text-transform:uppercase;
+    padding:2px 6px;
+    border-radius:999px;
+    border:1px solid rgba(148,163,184,.25);
+    color:rgba(148,163,184,.95);
+    white-space:nowrap;
+  ">{$labelEsc}</span>
+
+  <span style="
+    font-size:13px;
+    opacity:.9;
+    word-break:break-word;
+    min-width:0;
+  ">{$valueEsc}</span>
+</span>
+HTML;
+                  }
+
+                  $html = '<div style="display:flex;flex-wrap:wrap;gap:6px 10px;">'
+                    . implode(' - ', $parts)
+                    . '</div>';
+
+                  return new \Illuminate\Support\HtmlString($html);
+                })
+                ->helperText('Live Vorschau basierend auf den aktuellen Daten')
+                ->columnSpan(8),
+
+
               TextInput::make('slug')
                 ->label('Slug')
                 ->helperText('URL-Teil, automatisch aus dem Namen. Kollisionen werden serverseitig aufgelöst.')
                 ->required()
-                ->columnSpan(4),
-
-              TextInput::make('product_number')
-                ->label('Produktnummer')
-                ->maxLength(64)
-                ->helperText('Interne/Hersteller-Artikelnummer')
-                ->columnSpan(4),
-
-              TextInput::make('ean')
-                ->label('EAN')
-                ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
-                ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
-                ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
-                ->columnSpan(4),
+                ->columnSpan(3),
 
               /* Select::make('manufacturer_id')
                 ->required()
@@ -125,11 +176,24 @@ class ProductResource extends Resource
                 ->columnSpan(4), */
 
               TextInput::make('manufacturer_readonly')
-                ->label('Manufacturer')
+                ->label('Hersteller')
                 ->disabled()
                 ->dehydrated(false)
                 ->formatStateUsing(fn($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
-                ->columnSpan(4),
+                ->columnSpan(2),
+
+              TextInput::make('product_number')
+                ->label('Produktnummer')
+                ->maxLength(64)
+                ->helperText('Interne/Hersteller-Artikelnummer')
+                ->columnSpan(2),
+
+              TextInput::make('ean')
+                ->label('EAN')
+                ->maxLength(32) // EAN-13 passt; etwas Luft für Varianten/Präfixe
+                ->rule('regex:/^[0-9\- ]*$/') // nur Ziffern, Bindestrich, Leerzeichen
+                ->helperText('Nur Ziffern, ggf. mit Bindestrich/Leerzeichen')
+                ->columnSpan(2),
 
               TextInput::make('sku')
                 ->label('SKU')
@@ -145,7 +209,7 @@ class ProductResource extends Resource
                 ->dehydrated(fn($state) => filled($state))
                 ->maxLength(255)
                 ->helperText('Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
-                ->columnSpan(4),
+                ->columnSpan(3),
 
             ]) //Grid
           ]) //schema
