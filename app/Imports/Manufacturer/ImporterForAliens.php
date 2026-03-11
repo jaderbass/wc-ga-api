@@ -88,6 +88,17 @@ class ImporterForAliens
     ];
   }
 
+  /**
+   * Entfernt Herstellerbezeichnungen aus dem Produktnamen,
+   * um doppelte Herstellerpräfixe im finalen Produktnamen zu vermeiden.
+   *
+   * Beispiel:
+   * "ALIENS Aufreissfalldämpfer Reactor Rope"
+   * -> "Aufreissfalldämpfer Reactor Rope"
+   *
+   * @param string $name
+   * @return string
+   */
   private function cleanAliensProductName(string $name): string
   {
     return app(\App\Support\Imports\ManufacturerNameCleaner::class)->clean(
