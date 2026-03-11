@@ -36,7 +36,10 @@ final class DefaultProductNameBuilder
     $tokens = [
       'manufacturer' => $this->normalizeManufacturer($ctx->manufacturerName),
       'category'     => $this->normalizePart($ctx->categoryName),
-      'designation'  => $this->normalizeDesignation($ctx->designation),
+      'designation' => $this->normalizeDesignation(
+        $ctx->designation,
+        $ctx->manufacturerName
+      ),
       'p1'           => $this->normalizePart($p1),
       'p2'           => $this->normalizePart($p2),
       'p3'           => $this->normalizePart($p3),
@@ -71,9 +74,11 @@ final class DefaultProductNameBuilder
    * - We do NOT title-case the entire string to avoid breaking model/brand names.
    * - We only uppercase the first character and keep the rest as-is.
    */
-  private function normalizeDesignation(string $designation): string
+  private function normalizeDesignation(string $designation, string $manufacturer): string
   {
+    $designation = $this->removeManufacturerPrefix($designation, $manufacturer);
     $designation = trim($designation);
+
     if ($designation === '') {
       return '';
     }
@@ -112,5 +117,33 @@ final class DefaultProductNameBuilder
     $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
     return trim($name);
+  }
+
+  /**
+   * Removes duplicated manufacturer prefix from designation.
+   *
+   * Example:
+   * "ALIENS Aufreissfalldämpfer Reactor Rope"
+   * -> "Aufreissfalldämpfer Reactor Rope"
+   */
+  private function removeManufacturerPrefix(string $designation, string $manufacturer): string
+  {
+    $designation = trim($designation);
+    $manufacturer = trim($manufacturer);
+
+    if ($designation === '' || $manufacturer === '') {
+      return $designation;
+    }
+
+    $quoted = preg_quote($manufacturer, '/');
+
+    $updated = preg_replace(
+      '/^' . $quoted . '\b(?:\s*[-–—:|]\s*|\s+)/iu',
+      '',
+      $designation,
+      1
+    );
+
+    return is_string($updated) ? trim($updated) : $designation;
   }
 }
