@@ -73,15 +73,27 @@ class ImporterForAliens
    */
   private function mapRow(array $row): array
   {
+    $rawName = trim((string) ($row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt'));
+    $cleanName = $this->cleanAliensProductName($rawName);
+
     return [
-      'product_name' => $row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt',
+      'product_name' => $cleanName,
       'product_number' => $row['Artikelnummer'] ?? null,
-      'short_description' => $row['Artikelbezeichnung'] ?? null,
+      'short_description' => $cleanName !== '' ? $cleanName : null,
       'ean' => $row['EAN'] ?? null,
       'price' => $row['eVK netto'] ?? null,
       'manufacturer_id' => 1, // Aliens
       'slug' => $row['Artikelnummer'] ?? uniqid('produkt-'),
       'status' => 'draft',
     ];
+  }
+
+  private function cleanAliensProductName(string $name): string
+  {
+    return app(\App\Support\Imports\ManufacturerNameCleaner::class)->clean(
+      $name,
+      'ALIENS',
+      ['Aliens']
+    );
   }
 }
