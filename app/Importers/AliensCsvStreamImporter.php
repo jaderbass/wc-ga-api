@@ -707,15 +707,20 @@ class AliensCsvStreamImporter
    * @param  array   $payload     Ungefiltertes Payload
    * @return array               Payload nur mit existierenden DB-Spalten
    */
-  protected function filterExistingColumns(string $modelClass, array $payload): array
-  {
-    $model = app($modelClass);
-    $table = $model->getTable();
-    $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
-    $set = array_flip($cols);
+    protected function filterExistingColumns(string $modelClass, array $payload): array
+    {
+        static $columnCache = [];
 
-    return array_intersect_key($payload, $set);
-  }
+        $model = app($modelClass);
+        $table = $model->getTable();
+
+        if (!isset($columnCache[$table])) {
+            $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            $columnCache[$table] = array_flip($cols);
+        }
+
+        return array_intersect_key($payload, $columnCache[$table]);
+    }
 
   /**
    * Aktualisiert die LRU-Reihenfolge für einen Cache-Key.
