@@ -29,8 +29,6 @@ final class ProductNameNormalizer
     ];
 
     /**
-     * Schreibweise, wie sie final ausgegeben werden soll.
-     *
      * @var array<int, string>
      */
     private const UNITS = [
@@ -51,53 +49,36 @@ final class ProductNameNormalizer
             return '';
         }
 
-        // Grundbereinigung
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
         $name = preg_replace('/\s*-\s*/u', '-', $name) ?? $name;
 
-        // Maßangaben mit "x" vereinheitlichen:
-        // 10x120cm   -> 10 x 120 cm
-        // 6 X 19 mm  -> 6 x 19 mm
         $name = self::normalizeDimensionSeparators($name);
 
-        // Grundformatierung
         $name = Str::of($name)
             ->lower()
-            ->replaceMatches('/\b([a-zäöü])([a-zäöü0-9]*)/u', function (array $matches): string {
-                return mb_strtoupper($matches[1]) . $matches[2];
-            })
-            ->replaceMatches('/-([a-zäöü])/u', function (array $matches): string {
-                return '-' . mb_strtoupper($matches[1]);
-            })
+            ->replaceMatches('/\b([a-zäöü])([a-zäöü0-9]*)/u', fn(array $m): string => mb_strtoupper($m[1]) . $m[2])
+            ->replaceMatches('/-([a-zäöü])/u', fn(array $m): string => '-' . mb_strtoupper($m[1]))
             ->toString();
 
-        // Abkürzungen wiederherstellen
         foreach (self::ABBREVIATIONS as $abbr) {
             $name = preg_replace(
-                '/\b' . preg_quote($abbr, '/') . '\b/u',
+                '/\b' . preg_quote($abbr, '/') . '\b/ui',
                 $abbr,
                 $name
             ) ?? $name;
         }
 
-        // Einheiten wiederherstellen
         foreach (self::UNITS as $unit) {
             $name = preg_replace(
-                '/\b' . preg_quote(mb_strtolower($unit), '/') . '\b/ui',
+                '/\b' . preg_quote($unit, '/') . '\b/ui',
                 $unit,
                 $name
             ) ?? $name;
         }
 
-        // "x" nur in Maßangaben klein halten
-        $name = preg_replace(
-            '/(?<=\b\d)\s*[Xx]\s*(?=\d\b)/u',
-            ' x ',
-            $name
-        ) ?? $name;
+        // x nur zwischen Zahlen klein halten
+        $name = preg_replace('/(\d)\s*[Xx]\s*(\d)/u', '$1 x $2', $name) ?? $name;
 
-        // Falls links/rechts zusätzlich Einheiten stehen:
-        // 10 x 120 mm, 6 x 19 mm, 8,5 mm x 20 m
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
         return trim($name);
@@ -105,30 +86,26 @@ final class ProductNameNormalizer
 
     private static function normalizeDimensionSeparators(string $value): string
     {
-        // Zahl x Zahl   => 10 x 120
-        $value = preg_replace(
-            '/(?<=\d)\s*[xX]\s*(?=\d)/u',
-            ' x ',
-            $value
-        ) ?? $value;
+        // 10x120 -> 10 x 120
+        $value = preg_replace('/(\d)\s*[xX]\s*(\d)/u', '$1 x $2', $value) ?? $value;
 
-        // ZahlEinheit x ZahlEinheit => 8,5 mm x 20 m
+        // 8,5mm -> 8,5 mm | 22kN -> 22 kN
         $value = preg_replace(
-            '/(?<=\b\d(?:[.,]\d+)?)\s*(mm|cm|dm|m|g|kg|kn)\s*[xX]\s*(?=\d)/ui',
-            ' $1 x ',
-            $value
-        ) ?? $value;
-
-        // Zahl x ZahlEinheit => 10 x 120cm  -> 10 x 120 cm
-        $value = preg_replace(
-            '/(?<=\bx\s)(\d+(?:[.,]\d+)?)(mm|cm|dm|m|g|kg|kn)\b/ui',
+            '/(\d+(?:[.,]\d+)?)\s*(mm|cm|dm|kg|kn|m|g)\b/ui',
             '$1 $2',
             $value
         ) ?? $value;
 
-        // Allgemein ZahlEinheit zusammenziehen: 120 cm bleibt okay, 120cm -> 120 cm
+        // 8,5 mmx20 m / 8,5 mm x20 m / 8,5 mm X 20 m -> 8,5 mm x 20 m
         $value = preg_replace(
-            '/(\d+(?:[.,]\d+)?)(mm|cm|dm|m|g|kg|kn)\b/ui',
+            '/(\d+(?:[.,]\d+)?\s*(?:mm|cm|dm|kg|kn|m|g))\s*[xX]\s*(\d+(?:[.,]\d+)?)/ui',
+            '$1 x $2',
+            $value
+        ) ?? $value;
+
+        // 10 x 120cm -> 10 x 120 cm
+        $value = preg_replace(
+            '/(\bx\b\s*\d+(?:[.,]\d+)?)\s*(mm|cm|dm|kg|kn|m|g)\b/ui',
             '$1 $2',
             $value
         ) ?? $value;
