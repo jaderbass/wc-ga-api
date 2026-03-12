@@ -638,8 +638,8 @@ class ProductResource extends Resource
                     $html .= <<<HTML
       <div style="width:140px;">
         <div style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #e5e7eb;border-radius:8px;background:#111827;">
-          <img 
-            src="{$urlEsc}" 
+          <img
+            src="{$urlEsc}"
             style="width:140px;height:auto;object-fit:contain;"
             loading="lazy"
           />
@@ -680,7 +680,7 @@ class ProductResource extends Resource
           ->label('Produktname')
           ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string)$state, 20) : '—')
           ->tooltip(fn($state) => $state ?: null)
-          ->searchable()
+          ->searchable(['product_name', 'product_number'])
           ->sortable()
           ->wrap()
           ->toggleable(),
