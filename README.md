@@ -215,12 +215,18 @@ Verarbeitung:
 
 ### 1) Aufräumen (vor dem UI-Import)
 
-#### 1.1 Petzl-Produkte löschen (per Artisan)
+#### 1.1 Produkte löschen (per Artisan)
 
-→ Ziel: Alle bestehenden Petzl-Produkte + Variationen entfernen
+→ Ziel: Alle bestehenden Produkte + Variationen entfernen
 
 ```bash
-php artisan products:purge --manufacturerId=3
+php artisan products:purge --force
+```
+
+→ Ziel: Alle bestehenden Produkte + Variationen eines bestimmten Herstellers entfernen (ID mit der Hersteller-ID ersetzen) z.B. für Petzl: 3
+
+```bash
+php artisan products:purge --manufacturerId=<ID>
 ```
 
 #### 1.2 Queue & Batches aufräumen
@@ -331,4 +337,4 @@ JAderBass web’n’more – Erfurt
 
 ---
 
-© 2025 JAderBass web’n’more · Stand 2025-10-17
+© 2025 JAderBass web’n’more · Stand 2026-03-12
