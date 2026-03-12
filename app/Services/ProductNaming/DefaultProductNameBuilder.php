@@ -9,10 +9,10 @@ use App\Support\ProductNameNormalizer;
  *
  * Customer rules (summary):
  * - Manufacturer name in CAPS
- * - Designation with every first letter in words uppercased
+ * - Designation normalized with capitalized words
  * - Parts separated by " - "
- * - Simple: Manufacturer - Designation - Category - P1 - P2 - P3
- * - Variable/Set: Manufacturer - Designation - Category - P1
+ * - Simple: Manufacturer - Category - Designation - P1 - P2 - P3
+ * - Variable/Set: Manufacturer - Category - Designation - P1
  *
  * Notes:
  * - The builder does NOT decide category or property order.
@@ -37,8 +37,8 @@ final class DefaultProductNameBuilder
         /** @var array<string, string|null> $tokens */
         $tokens = [
             'manufacturer' => $this->normalizeManufacturer($ctx->manufacturerName),
-            'category'     => $this->normalizePart($ctx->categoryName),
-            'designation' => $this->normalizeDesignation(
+            'category'     => $this->normalizePart($p1 = $ctx->categoryName),
+            'designation'  => $this->normalizeDesignation(
                 $ctx->designation,
                 $ctx->manufacturerName
             ),
@@ -66,6 +66,7 @@ final class DefaultProductNameBuilder
     private function normalizeManufacturer(string $name): string
     {
         $name = trim($name);
+
         return $name === '' ? '' : mb_strtoupper($name);
     }
 
@@ -100,6 +101,7 @@ final class DefaultProductNameBuilder
         }
 
         $v = trim($value);
+
         return $v === '' ? null : $v;
     }
 
@@ -112,7 +114,6 @@ final class DefaultProductNameBuilder
     {
         $name = implode($separator, $parts);
 
-        // Normalize whitespace
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
         return trim($name);
