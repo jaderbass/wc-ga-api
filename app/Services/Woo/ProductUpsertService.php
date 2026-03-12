@@ -137,6 +137,22 @@ class ProductUpsertService
             ];
         }
 
+        if ($this->isMeterware($product)) {
+            Log::info('ProductUpsertService: skipping meterware product', [
+                'product_id' => $product->id,
+                'product_name' => $product->product_name,
+            ]);
+
+            return [
+                'action'    => 'skipped',
+                'status'    => 0,
+                'remote_id' => $product->woo_product_id ? (int) $product->woo_product_id : null,
+                'body'      => [
+                    'reason' => 'meterware',
+                ],
+            ];
+        }
+
         // --- Parent-Attribute sicherstellen (deine vorhandene Helper-Methode) ---
         // Mischt 'type' => 'variable' + attributes[] (variation:true, options[]) ins Payload
         // und entfernt Preisfelder am Parent.
@@ -727,5 +743,18 @@ class ProductUpsertService
             ->where('key', 'supplier_out_of_stock')
             ->where('value', '1')
             ->exists();
+    }
+
+    protected function isMeterware(Product $product): bool
+    {
+        $value = $product->meta()
+            ->where('meta_key', 'is_meterware')
+            ->value('meta_value');
+
+        if ($value === null) {
+            return false;
+        }
+
+        return in_array(strtolower((string) $value), ['1', 'true', 'yes', 'ja'], true);
     }
 }
