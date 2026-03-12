@@ -132,8 +132,6 @@ class AliensCsvStreamImporter
         $lastParentAssoc = null;
         $lastParentManufacturerId = null;
 
-        $skippedProductIds = [];
-
         foreach ($rows as $row) {
             $rowIndex++;
 
@@ -164,29 +162,6 @@ class AliensCsvStreamImporter
             // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
             if ($productId !== null && $productId !== '') {
                 $currentProductId = (string) $productId;
-
-                // Beginn Einfügen: Ausverkaufte Produkte überspringen
-                if (isset($skippedProductIds[$currentProductId])) {
-                    $currentProductId = null;
-                    $currentProduct = null;
-                    continue;
-                }
-
-                $ref = $this->cell($assoc, ['Referenz']);
-                if (is_string($ref)) {
-                    $ref = trim($ref);
-                }
-
-                $ref = $ref !== null ? trim((string) $ref) : null;
-
-                // Beginn Einfügen: "ausverkauft" anywhere (case-insensitive) => skip
-                if (is_string($ref) && Str::contains(Str::lower($ref), 'ausverkauft')) {
-                    $skippedProductIds[$currentProductId] = true;
-
-                    $currentProductId = null;
-                    $currentProduct = null;
-                    continue;
-                }
 
                 // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
                 if ($currentProduct !== null && is_array($lastParentAssoc)) {
@@ -388,6 +363,11 @@ class AliensCsvStreamImporter
         $product->meta()->updateOrCreate(
             ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
             ['value' => $productId]
+        );
+
+        $product->meta()->updateOrCreate(
+            ['scope' => 'product', 'key' => 'supplier_out_of_stock', 'variation_id' => null],
+            ['value' => $this->isSupplierOutOfStock($row) ? '1' : '0']
         );
 
         $counter++;
@@ -1216,5 +1196,33 @@ class AliensCsvStreamImporter
         }
 
         return $idToName[$manufacturerId] = $name;
+    }
+
+    /**
+     * Prüft, ob der Lieferant das Produkt in der CSV als ausverkauft markiert.
+     *
+     * Wichtig:
+     * - Das ist nur ein Lieferantenstatus.
+     * - Das Produkt wird trotzdem importiert.
+     * - Der Status kann später den Woo-Export verhindern.
+     */
+    private function isSupplierOutOfStock(array $row): bool
+    {
+        foreach ($row as $value) {
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+
+            if (Str::contains(Str::lower($text), 'ausverkauft')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
