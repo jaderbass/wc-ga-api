@@ -92,6 +92,11 @@ class ProductVariation extends Model
    */
   public function attributeValues(): BelongsToMany
   {
-    return $this->belongsToMany(ProductAttributeValue::class, 'product_variation_attribute_value');
+    return $this->belongsToMany(
+      ProductAttributeValue::class,
+      'product_variation_attribute_value',
+      'product_variation_id',
+      'product_attribute_value_id'
+    );
   }
 }

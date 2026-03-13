@@ -30,6 +30,7 @@
  * @mapping-target   InternalProductDTO
  * @see App\Imports\ImporterForAliens
  */
+
 use Illuminate\Support\Str;
 
 return [
@@ -87,7 +88,7 @@ return [
      */
     'product' => [
         'product_name'      => ['Produktname'],
-        'product_number'    => ['Referenz'],
+        'product_number'    => ['Referenz', 'Kombinations-Referenz'],
         'ean'               => ['EAN-13'],
         'description'       => ['Beschreibung'],
         'short_description' => ['Kurzbeschreibung'],
@@ -240,6 +241,39 @@ return [
             $name = trim($name);
             return $name !== '' ? \Illuminate\Support\Str::slug($name) : null;
         },
+
+        'product_number' => function ($v, array $row = []) {
+            $ref  = trim((string)($row['Referenz'] ?? ''));
+            $comb = trim((string)($row['Kombinations-Referenz'] ?? ''));
+
+            if ($ref !== '') {
+                logger()->debug('[Aliens Import] product_number from Referenz', [
+                    'value'       => $ref,
+                    'product_id'  => $row['Produkt-ID'] ?? null,
+                    'variant_id'  => $row['Kombination-ID'] ?? null,
+                ]);
+
+                return $ref;
+            }
+
+            if ($comb !== '') {
+                logger()->debug('[Aliens Import] product_number from Kombinations-Referenz', [
+                    'value'       => $comb,
+                    'product_id'  => $row['Produkt-ID'] ?? null,
+                    'variant_id'  => $row['Kombination-ID'] ?? null,
+                ]);
+
+                return $comb;
+            }
+
+            logger()->warning('[Aliens Import] product_number missing', [
+                'product_id' => $row['Produkt-ID'] ?? null,
+                'row'        => $row,
+            ]);
+
+            return null;
+        },
+
 
         '_build_feature_meta' => function ($v, array $row = [], array $mapping = []) {
             // $mapping ist je nach Importer evtl. nicht verfügbar – falls nicht, lass es weg

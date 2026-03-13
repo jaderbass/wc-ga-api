@@ -4,6 +4,7 @@
 /storage
 /storage/*.key
 /node_modules
+/lang/vendor/
 /public/build
 /public/hot
 /public/storage

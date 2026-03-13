@@ -35,1180 +35,1194 @@ use League\Csv\Reader;
  */
 class AliensCsvStreamImporter
 {
-  use HasImportAuthor;
+    use HasImportAuthor;
 
-  protected array $mapping;
-  protected ?string $runId = null;
-  protected array $manufacturerNameCache = []; // name => id
+    protected array $mapping;
+    protected ?string $runId = null;
+    protected array $manufacturerNameCache = []; // name => id
 
-  public function __construct(
-    protected string $mappingFile = 'aliens',
-    protected ?int $manufacturerId = null,
-  ) {
-    $this->mapping = $this->loadMapping($this->mappingFile);
-  }
-
-  /**
-   * Setzt die Import-Run-ID für Progress-Tracking.
-   *
-   * Wird vom RunManufacturerImportJob gesetzt, um diesem Importer
-   * den zugehörigen ImportRun zuzuordnen. Ermöglicht das laufende
-   * Aktualisieren von processed_rows während eines Streaming-Imports
-   * sowie das Anzeigen des Fortschritts im UI via SSE.
-   *
-   * @param  string|null  $runId  UUID des ImportRuns oder null, wenn kein Tracking gewünscht ist.
-   * @return static
-   */
-  public function setRunId(?string $runId): static
-  {
-    $this->runId = $runId;
-    return $this;
-  }
-
-
-  /**
-   * Führt den CSV-Import (streamed) aus.
-   *
-   * Erwartet bei CSV einen absoluten Pfad.
-   *
-   * @param string $filePath Absoluter Pfad zur CSV-Datei.
-   * @return void
-   */
-  public function import(string $filePath): void
-  {
-    $csv = Reader::createFromPath($filePath, 'r');
-    $csv->setDelimiter(';');
-    $csv->skipEmptyRecords();
-
-    // Wir lesen Header manuell (Aliens kann Duplikate haben).
-    $rows = $csv->getRecords(); // Iterator (streamed), liefert numerische Arrays
-
-    $headerRow = null;
-    foreach ($rows as $row) {
-      $headerRow = $row;
-      break;
+    public function __construct(
+        protected string $mappingFile = 'aliens',
+        protected ?int $manufacturerId = null,
+    ) {
+        $this->mapping = $this->loadMapping($this->mappingFile);
     }
 
-    if ($headerRow === null) {
-      throw new \RuntimeException('CSV appears to be empty.');
+    /**
+     * Setzt die Import-Run-ID für Progress-Tracking.
+     *
+     * Wird vom RunManufacturerImportJob gesetzt, um diesem Importer
+     * den zugehörigen ImportRun zuzuordnen. Ermöglicht das laufende
+     * Aktualisieren von processed_rows während eines Streaming-Imports
+     * sowie das Anzeigen des Fortschritts im UI via SSE.
+     *
+     * @param  string|null  $runId  UUID des ImportRuns oder null, wenn kein Tracking gewünscht ist.
+     * @return static
+     */
+    public function setRunId(?string $runId): static
+    {
+        $this->runId = $runId;
+        return $this;
     }
 
-    $headers = array_map(
-      fn($h) => is_string($h) ? trim($h) : (string) $h,
-      $headerRow
-    );
 
-    $headers = $this->makeUniqueHeaders($headers);
+    /**
+     * Führt den CSV-Import (streamed) aus.
+     *
+     * Erwartet bei CSV einen absoluten Pfad.
+     *
+     * @param string $filePath Absoluter Pfad zur CSV-Datei.
+     * @return void
+     */
+    public function import(string $filePath): void
+    {
+        $csv = Reader::createFromPath($filePath, 'r');
+        $csv->setDelimiter(';');
+        $csv->skipEmptyRecords();
 
-    ImportLog::debug('CSV Header (unique)', [
-      'count'  => count($headers),
-      'sample' => array_slice($headers, 0, 10),
-    ]);
+        // Wir lesen Header manuell (Aliens kann Duplikate haben).
+        $rows = $csv->getRecords(); // Iterator (streamed), liefert numerische Arrays
 
-    Log::error('Aliens naming header probe', [
-      'has_Bezeichnung' => in_array('Bezeichnung', $headers, true),
-      'has_Produktname' => in_array('Produktname', $headers, true),
-      'has_Artikelbezeichnung' => in_array('Artikelbezeichnung', $headers, true),
-      'has_Designation' => in_array('Designation', $headers, true),
-      'header_sample' => array_slice($headers, 0, 60),
-    ]);
-
-
-    // Jetzt erneut Records-Iterator holen und ab Zeile 2 streamen:
-    $rows = $csv->getRecords();
-
-    $rowIndex = -1;
-    $importedProducts = 0;
-    $importedVariations = 0;
-
-    // Cache: Produkt-ID -> Product-Model (damit wir nicht pro Zeile neu aus DB lesen)
-    // Wichtig: begrenzen, sonst wächst es ins Unendliche. Wir nutzen eine LRU-light Strategie.
-    $productCache = [];
-    $productCacheOrder = [];
-    $productCacheMax = 500;
-
-    $currentProductId = null;
-    $currentProduct = null;
-    $lastParentAssoc = null;
-    $lastParentManufacturerId = null;
-
-    $skippedProductIds = [];
-
-    foreach ($rows as $row) {
-      $rowIndex++;
-
-      // Header-Zeile überspringen
-      if ($rowIndex === 0) {
-        continue;
-      }
-
-      $assoc = $this->combineRow($headers, $row);
-
-      // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
-      $productId = $this->cell($assoc, ['Produkt-ID']);
-
-      $combinationId  = $this->cell($assoc, ['Kombination-ID']);
-      $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
-
-      $featureName     = $this->cell($assoc, ['Feature Name']);
-      $featureValue    = $this->cell($assoc, ['Feature Value']);
-      $featurePosition = $this->cell($assoc, ['Feature Position']);
-
-      // Wenn ein neues Parent-Produkt beginnt, finalisieren wir das vorherige.
-      // Dadurch passiert die Namensbildung genau 1x pro Produkt.
-      if ($productId !== null && $productId !== '' && $currentProduct !== null) {
-        $this->finalizeProductNaming($currentProduct, $assoc);
-      }
-
-
-      // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
-      if ($productId !== null && $productId !== '') {
-        $currentProductId = (string) $productId;
-
-        // Beginn Einfügen: Ausverkaufte Produkte überspringen
-        if (isset($skippedProductIds[$currentProductId])) {
-          $currentProductId = null;
-          $currentProduct = null;
-          continue;
+        $headerRow = null;
+        foreach ($rows as $row) {
+            $headerRow = $row;
+            break;
         }
 
-        $ref = $this->cell($assoc, ['Referenz']);
-        if (is_string($ref)) {
-          $ref = trim($ref);
+        if ($headerRow === null) {
+            throw new \RuntimeException('CSV appears to be empty.');
         }
 
-        $ref = $ref !== null ? trim((string) $ref) : null;
+        $headers = array_map(
+            fn($h) => is_string($h) ? trim($h) : (string) $h,
+            $headerRow
+        );
 
-        // Beginn Einfügen: "ausverkauft" anywhere (case-insensitive) => skip
-        if (is_string($ref) && Str::contains(Str::lower($ref), 'ausverkauft')) {
-          $skippedProductIds[$currentProductId] = true;
+        $headers = $this->makeUniqueHeaders($headers);
 
-          $currentProductId = null;
-          $currentProduct = null;
-          continue;
+        ImportLog::debug('CSV Header (unique)', [
+            'count'  => count($headers),
+            'sample' => array_slice($headers, 0, 10),
+        ]);
+
+        Log::error('Aliens naming header probe', [
+            'has_Bezeichnung' => in_array('Bezeichnung', $headers, true),
+            'has_Produktname' => in_array('Produktname', $headers, true),
+            'has_Artikelbezeichnung' => in_array('Artikelbezeichnung', $headers, true),
+            'has_Designation' => in_array('Designation', $headers, true),
+            'header_sample' => array_slice($headers, 0, 60),
+        ]);
+
+
+        // Jetzt erneut Records-Iterator holen und ab Zeile 2 streamen:
+        $rows = $csv->getRecords();
+
+        $rowIndex = -1;
+        $importedProducts = 0;
+        $importedVariations = 0;
+
+        // Cache: Produkt-ID -> Product-Model (damit wir nicht pro Zeile neu aus DB lesen)
+        // Wichtig: begrenzen, sonst wächst es ins Unendliche. Wir nutzen eine LRU-light Strategie.
+        $productCache = [];
+        $productCacheOrder = [];
+        $productCacheMax = 500;
+
+        $currentProductId = null;
+        $currentProduct = null;
+        $lastParentAssoc = null;
+        $lastParentManufacturerId = null;
+
+        foreach ($rows as $row) {
+            $rowIndex++;
+
+            // Header-Zeile überspringen
+            if ($rowIndex === 0) {
+                continue;
+            }
+
+            $assoc = $this->combineRow($headers, $row);
+
+            // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
+            $productId = $this->cell($assoc, ['Produkt-ID']);
+
+            $combinationId  = $this->cell($assoc, ['Kombination-ID']);
+            $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
+
+            $featureName     = $this->cell($assoc, ['Feature Name']);
+            $featureValue    = $this->cell($assoc, ['Feature Value']);
+            $featurePosition = $this->cell($assoc, ['Feature Position']);
+
+            // Wenn ein neues Parent-Produkt beginnt, finalisieren wir das vorherige.
+            // Dadurch passiert die Namensbildung genau 1x pro Produkt.
+            if ($productId !== null && $productId !== '' && $currentProduct !== null) {
+                $this->finalizeProductNaming($currentProduct, $assoc);
+            }
+
+
+            // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
+            if ($productId !== null && $productId !== '') {
+                $currentProductId = (string) $productId;
+
+                // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
+                if ($currentProduct !== null && is_array($lastParentAssoc)) {
+                    $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
+                }
+
+                $currentProduct = $this->getOrUpsertProduct(
+                    $assoc,
+                    $currentProductId,
+                    $productCache,
+                    $productCacheOrder,
+                    $productCacheMax,
+                    $importedProducts
+                );
+
+                $designationProbe = $this->cell($assoc, [
+                    'Bezeichnung',
+                    'Produktname',
+                    'Artikelbezeichnung',
+                    'Designation',
+                ]);
+
+                if ($rowIndex < 5) {
+                    Log::info('Aliens naming probe', [
+                        'productId' => $currentProductId,
+                        'designation' => $designationProbe,
+                        'available_keys_sample' => array_slice(array_keys($assoc), 0, 30),
+                    ]);
+                }
+
+
+                // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
+                $lastParentAssoc = $assoc;
+                $lastParentManufacturerId = $currentProduct->manufacturer_id;
+            }
+
+            // Ohne aktives Parent können wir nichts zuordnen
+            if ($currentProduct === null) {
+                continue;
+            }
+
+            // 2) Features immer übernehmen (Hauptzeile + Feature-only Zeilen)
+            $this->upsertProductFeaturesMeta($currentProduct, $assoc);
+
+            // 2b) Bilder-URLs sammeln
+            $this->upsertProductImagesMeta($currentProduct, $assoc);
+
+            // 3) Feature-only Zeile? (nur Feature Name/Value/Position, keine Kombi-Daten) -> keine Variation
+            $isFeatureOnlyRow =
+                (($featureName ?? '') !== '' || ($featureValue ?? '') !== '' || ($featurePosition ?? '') !== '')
+                && (($combinationId ?? '') === '')
+                && (($combinationRef ?? '') === '');
+
+            if ($isFeatureOnlyRow) {
+                continue;
+            }
+
+            // 4) Varianten-Zeile: Kombinations-Referenz (oder ID) vorhanden -> Variation upsert
+            $hasVariationIdentity = (($combinationRef ?? '') !== '' || ($combinationId ?? '') !== '');
+
+            if ($hasVariationIdentity) {
+                $combinationIdSafe = (($combinationId ?? '') !== '')
+                    ? (string) $combinationId
+                    : (string) $combinationRef;
+
+                $this->upsertVariation($currentProduct, $assoc, $combinationIdSafe);
+                $importedVariations++;
+            }
+
+            if ($this->runId && ($importedVariations % 100 === 0)) {
+                ImportRun::whereKey($this->runId)->update([
+                    'processed_rows' => $importedVariations,
+                ]);
+            }
         }
 
-        // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
+        // Letztes Produkt am Ende ebenfalls finalisieren
         if ($currentProduct !== null && is_array($lastParentAssoc)) {
-          $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-        }
-
-        $currentProduct = $this->getOrUpsertProduct(
-          $assoc,
-          $currentProductId,
-          $productCache,
-          $productCacheOrder,
-          $productCacheMax,
-          $importedProducts
-        );
-
-        $designationProbe = $this->cell($assoc, [
-          'Bezeichnung',
-          'Produktname',
-          'Artikelbezeichnung',
-          'Designation',
-        ]);
-
-        if ($rowIndex < 5) {
-          Log::info('Aliens naming probe', [
-            'productId' => $currentProductId,
-            'designation' => $designationProbe,
-            'available_keys_sample' => array_slice(array_keys($assoc), 0, 30),
-          ]);
+            $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
         }
 
 
-        // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
-        $lastParentAssoc = $assoc;
-        $lastParentManufacturerId = $currentProduct->manufacturer_id;
-      }
+        if ($this->runId) {
+            ImportRun::whereKey($this->runId)->update([
+                'processed_rows' => $importedVariations,
+            ]);
+        }
 
-      // Ohne aktives Parent können wir nichts zuordnen
-      if ($currentProduct === null) {
-        continue;
-      }
-
-      // 2) Features immer übernehmen (Hauptzeile + Feature-only Zeilen)
-      $this->upsertProductFeaturesMeta($currentProduct, $assoc);
-
-      // 2b) Bilder-URLs sammeln
-      $this->upsertProductImagesMeta($currentProduct, $assoc);
-
-      // 3) Feature-only Zeile? (nur Feature Name/Value/Position, keine Kombi-Daten) -> keine Variation
-      $isFeatureOnlyRow =
-        (($featureName ?? '') !== '' || ($featureValue ?? '') !== '' || ($featurePosition ?? '') !== '')
-        && (($combinationId ?? '') === '')
-        && (($combinationRef ?? '') === '');
-
-      if ($isFeatureOnlyRow) {
-        continue;
-      }
-
-      // 4) Varianten-Zeile: Kombinations-Referenz (oder ID) vorhanden -> Variation upsert
-      $hasVariationIdentity = (($combinationRef ?? '') !== '' || ($combinationId ?? '') !== '');
-
-      if ($hasVariationIdentity) {
-        $combinationIdSafe = (($combinationId ?? '') !== '')
-          ? (string) $combinationId
-          : (string) $combinationRef;
-
-        $this->upsertVariation($currentProduct, $assoc, $combinationIdSafe);
-        $importedVariations++;
-      }
-
-      if ($this->runId && ($importedVariations % 100 === 0)) {
-        ImportRun::whereKey($this->runId)->update([
-          'processed_rows' => $importedVariations,
+        Log::info('Aliens CSV import finished (streamed)', [
+            'products_upserted'   => $importedProducts,
+            'variations_upserted' => $importedVariations,
         ]);
-      }
     }
 
-    // Letztes Produkt am Ende ebenfalls finalisieren
-    if ($currentProduct !== null && is_array($lastParentAssoc)) {
-      $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-    }
+    /**
+     * Upsertet ein Produkt anhand der "Produkt-ID" (Aliens Parent ID).
+     */
+    protected function getOrUpsertProduct(
+        array $row,
+        string $productId,
+        array &$cache,
+        array &$order,
+        int $max,
+        int &$counter
+    ): Product {
+        if (isset($cache[$productId])) {
+            // refresh LRU
+            $this->touchCacheKey($productId, $order);
+            return $cache[$productId];
+        }
 
+        $payload = $this->mapProductPayload($row);
 
-    if ($this->runId) {
-      ImportRun::whereKey($this->runId)->update([
-        'processed_rows' => $importedVariations,
-      ]);
-    }
+        if (array_key_exists('weight_g', $payload)) {
+            $payload['weight_g'] = ImportValueNormalizer::toGrams($payload['weight_g']) ?? 0;
+        }
 
-    Log::info('Aliens CSV import finished (streamed)', [
-      'products_upserted'   => $importedProducts,
-      'variations_upserted' => $importedVariations,
-    ]);
-  }
+        if (array_key_exists('length_mm', $payload)) {
+            $payload['length_mm'] = ImportValueNormalizer::toMillimeters($payload['length_mm']) ?? 0;
+        }
 
-  /**
-   * Upsertet ein Produkt anhand der "Produkt-ID" (Aliens Parent ID).
-   */
-  protected function getOrUpsertProduct(
-    array $row,
-    string $productId,
-    array &$cache,
-    array &$order,
-    int $max,
-    int &$counter
-  ): Product {
-    if (isset($cache[$productId])) {
-      // refresh LRU
-      $this->touchCacheKey($productId, $order);
-      return $cache[$productId];
-    }
+        if (array_key_exists('width_mm', $payload)) {
+            $payload['width_mm'] = ImportValueNormalizer::toMillimeters($payload['width_mm']) ?? 0;
+        }
 
-    $payload = $this->mapProductPayload($row);
+        if (array_key_exists('height_mm', $payload)) {
+            $payload['height_mm'] = ImportValueNormalizer::toMillimeters($payload['height_mm']) ?? 0;
+        }
 
-    if (array_key_exists('weight_g', $payload)) {
-      $payload['weight_g'] = ImportValueNormalizer::toGrams($payload['weight_g']) ?? 0;
-    }
+        // Optional: falls du diese Felder überhaupt befüllst (die sind nullable)
+        if (array_key_exists('dimension_length_mm', $payload)) {
+            $payload['dimension_length_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_length_mm']);
+        }
+        if (array_key_exists('dimension_width_mm', $payload)) {
+            $payload['dimension_width_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_width_mm']);
+        }
+        if (array_key_exists('dimension_height_mm', $payload)) {
+            $payload['dimension_height_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_height_mm']);
+        }
 
-    if (array_key_exists('length_mm', $payload)) {
-      $payload['length_mm'] = ImportValueNormalizer::toMillimeters($payload['length_mm']) ?? 0;
-    }
+        // deterministischer slug: Aliens SEO-URL oder fallback productId
+        $slug = $payload['slug'] ?? null;
+        if (!is_string($slug) || trim($slug) === '') {
+            $slug = 'aliens-' . $productId;
+        }
 
-    if (array_key_exists('width_mm', $payload)) {
-      $payload['width_mm'] = ImportValueNormalizer::toMillimeters($payload['width_mm']) ?? 0;
-    }
+        $payload['slug'] = $slug;
+        $payload['manufacturer_id'] = $this->resolveManufacturerId($row);
+        $payload['author_id'] = $this->resolveAuthorId();
 
-    if (array_key_exists('height_mm', $payload)) {
-      $payload['height_mm'] = ImportValueNormalizer::toMillimeters($payload['height_mm']) ?? 0;
-    }
+        // 1) Produkt primär über Meta finden (ohne Transaktion)
+        $product = Product::query()
+            ->where('manufacturer_id', $payload['manufacturer_id'])
+            ->whereHas('meta', function ($q) use ($productId) {
+                $q->where('scope', 'product')
+                    ->where('key', 'aliens_product_id')
+                    ->whereNull('variation_id')
+                    ->where('value', $productId);
+            })
+            ->first();
 
-    // Optional: falls du diese Felder überhaupt befüllst (die sind nullable)
-    if (array_key_exists('dimension_length_mm', $payload)) {
-      $payload['dimension_length_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_length_mm']);
-    }
-    if (array_key_exists('dimension_width_mm', $payload)) {
-      $payload['dimension_width_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_width_mm']);
-    }
-    if (array_key_exists('dimension_height_mm', $payload)) {
-      $payload['dimension_height_mm'] = ImportValueNormalizer::toMillimeters($payload['dimension_height_mm']);
-    }
+        if ($product instanceof Product) {
+            // UPDATE-Pfad: kein Transaction-Overhead
+            $filtered = $this->filterExistingColumns(Product::class, $payload);
 
-    // deterministischer slug: Aliens SEO-URL oder fallback productId
-    $slug = $payload['slug'] ?? null;
-    if (!is_string($slug) || trim($slug) === '') {
-      $slug = 'aliens-' . $productId;
-    }
+            // slug nicht zwangsupdaten (stabil halten)
+            unset($filtered['slug']);
 
-    $payload['slug'] = $slug;
-    $payload['manufacturer_id'] = $this->resolveManufacturerId($row);
-    $payload['author_id'] = $this->resolveAuthorId();
+            $product->forceFill($filtered)->save();
+        } else {
+            // CREATE-Pfad: nur hier Transaktion
+            $product = DB::transaction(function () use ($payload, $productId): Product {
+                $product = Product::query()->firstOrCreate(
+                    [
+                        'manufacturer_id' => $payload['manufacturer_id'],
+                        'slug'            => $payload['slug'],
+                    ],
+                    [
+                        'manufacturer_id' => $payload['manufacturer_id'],
+                        'slug'            => $payload['slug'],
+                        'product_name'    => $payload['product_name'] ?? null,
+                        'author_id'       => $payload['author_id'],
+                    ]
+                );
 
-    // 1) Produkt primär über Meta finden (ohne Transaktion)
-    $product = Product::query()
-      ->where('manufacturer_id', $payload['manufacturer_id'])
-      ->whereHas('meta', function ($q) use ($productId) {
-        $q->where('scope', 'product')
-          ->where('key', 'aliens_product_id')
-          ->whereNull('variation_id')
-          ->where('value', $productId);
-      })
-      ->first();
+                $product->forceFill($this->filterExistingColumns(Product::class, $payload))->save();
 
-    if ($product instanceof Product) {
-      // UPDATE-Pfad: kein Transaction-Overhead
-      $filtered = $this->filterExistingColumns(Product::class, $payload);
+                // Meta beim Create-Pfad atomar setzen
+                $product->meta()->updateOrCreate(
+                    ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
+                    ['value' => $productId]
+                );
 
-      // slug nicht zwangsupdaten (stabil halten)
-      unset($filtered['slug']);
+                return $product;
+            });
+        }
 
-      $product->forceFill($filtered)->save();
-    } else {
-      // CREATE-Pfad: nur hier Transaktion
-      $product = DB::transaction(function () use ($payload, $productId): Product {
-        $product = Product::query()->firstOrCreate(
-          [
-            'manufacturer_id' => $payload['manufacturer_id'],
-            'slug'            => $payload['slug'],
-          ],
-          [
-            'manufacturer_id' => $payload['manufacturer_id'],
-            'slug'            => $payload['slug'],
-            'product_name'    => $payload['product_name'] ?? null,
-            'author_id'       => $payload['author_id'],
-          ]
-        );
-
-        $product->forceFill($this->filterExistingColumns(Product::class, $payload))->save();
-
-        // Meta beim Create-Pfad atomar setzen
+        // 2) Meta sicherstellen (idempotent) – auch für Update-Pfad
         $product->meta()->updateOrCreate(
-          ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
-          ['value' => $productId]
+            ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
+            ['value' => $productId]
         );
+
+        $product->meta()->updateOrCreate(
+            ['scope' => 'product', 'key' => 'supplier_out_of_stock', 'variation_id' => null],
+            ['value' => $this->isSupplierOutOfStock($row) ? '1' : '0']
+        );
+
+        $counter++;
+
+        // Cache pflegen
+        $cache[$productId] = $product;
+        $order[] = $productId;
+        $this->evictCacheIfNeeded($cache, $order, $max);
 
         return $product;
-      });
     }
 
-    // 2) Meta sicherstellen (idempotent) – auch für Update-Pfad
-    $product->meta()->updateOrCreate(
-      ['scope' => 'product', 'key' => 'aliens_product_id', 'variation_id' => null],
-      ['value' => $productId]
-    );
+    /**
+     * Upsertet eine Variante anhand der "Kombinations-Referenz" (interne Artikelnummer).
+     * Fallback: "Kombination-ID".
+     */
+    protected function upsertVariation(Product $product, array $row, string $combinationId): void
+    {
+        $payload = $this->mapVariationPayload($row);
 
-    $counter++;
+        $variationRef = $this->cell($row, ['Kombinations-Referenz']);
+        $variationRef = is_string($variationRef) ? trim($variationRef) : (is_numeric($variationRef) ? (string) $variationRef : null);
 
-    // Cache pflegen
-    $cache[$productId] = $product;
-    $order[] = $productId;
-    $this->evictCacheIfNeeded($cache, $order, $max);
+        // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
+        $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
+        $sku = trim((string) $sku);
 
-    return $product;
-  }
+        // Base-Referenz aus Kombinations-Referenz ableiten (z. B. "400/12-B" -> "400/12")
+        $baseRef = null;
 
-  /**
-   * Upsertet eine Variante anhand der "Kombinations-Referenz" (interne Artikelnummer).
-   * Fallback: "Kombination-ID".
-   */
-  protected function upsertVariation(Product $product, array $row, string $combinationId): void
-  {
-    $payload = $this->mapVariationPayload($row);
+        if ($variationRef !== null && $variationRef !== '') {
+            $baseRef = str_contains($variationRef, '-')
+                ? explode('-', $variationRef, 2)[0]
+                : $variationRef;
 
-    $variationRef = $this->cell($row, ['Kombinations-Referenz']);
-    $variationRef = is_string($variationRef) ? trim($variationRef) : (is_numeric($variationRef) ? (string) $variationRef : null);
-
-    // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
-    $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
-    $sku = trim((string) $sku);
-
-    // Base-Referenz aus Kombinations-Referenz ableiten (z. B. "400/12-B" -> "400/12")
-    $baseRef = null;
-
-    if ($variationRef !== null && $variationRef !== '') {
-      $baseRef = str_contains($variationRef, '-')
-        ? explode('-', $variationRef, 2)[0]
-        : $variationRef;
-
-      $baseRef = trim($baseRef);
-    }
-
-    // Interne, stabile Varianten-ID (global eindeutig)
-    $externalId = 'ALIENS-' . trim((string) $combinationId);
-
-    // Woo-SKU: garantiert eindeutig
-    $sku = $externalId;
-
-    $variation = ProductVariation::updateOrCreate(
-      ['external_id' => $externalId],
-      array_merge(
-        $this->filterExistingColumns(ProductVariation::class, $payload),
-        [
-          'product_id'  => $product->id,
-          'external_id' => $externalId,
-          'sku'         => $sku,
-        ]
-      )
-    );
-
-    // Variation erfolgreich angelegt → Parent ist variable
-    if ($product->product_type !== 'variable') {
-      $product->update(['product_type' => 'variable']);
-    }
-
-
-    // Kombinations-ID als Meta (damit wir sie trotzdem haben)
-    $product->meta()->updateOrCreate(
-      [
-        'scope' => 'variation',
-        'key' => 'aliens_combination_id',
-        // Optional: wenn du variation_id sauber setzen willst, holen wir erst die Variation
-        'variation_id' => null,
-      ],
-      ['value' => $combinationId]
-    );
-
-    // Optional: Kombinations-Referenz ebenfalls als Meta (falls SKU später umgestellt wird)
-    if ($variationRef !== null && $variationRef !== '') {
-      $product->meta()->updateOrCreate(
-        [
-          'scope' => 'variation',
-          'key' => 'aliens_combination_reference',
-          'variation_id' => null,
-        ],
-        ['value' => $variationRef]
-      );
-    }
-
-    // Base-Referenz als Meta speichern ---
-    if ($baseRef !== null && $baseRef !== '') {
-      $product->meta()->updateOrCreate(
-        [
-          'scope' => 'variation',
-          'key' => 'aliens_variation_base_reference',
-          'variation_id' => null,
-        ],
-        ['value' => $baseRef]
-      );
-    }
-  }
-
-  /**
-   * Baut das Produkt-Payload anhand des Import-Mappings.
-   *
-   * Enthält:
-   * - Feld-Mapping CSV → DB
-   * - Normalisierung von description / short_description
-   * - Fallback-Logik für short_description
-   *
-   * @param  array  $row  Assoziative CSV-Zeile
-   * @return array        DB-taugliches Produkt-Payload
-   */
-  protected function mapProductPayload(array $row): array
-  {
-    $map = $this->mapping['product'] ?? [];
-
-    $out = [];
-    foreach ($map as $dbField => $csvSpec) {
-      $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
-      if ($val === null || $val === '') {
-        continue;
-      }
-      $out[$dbField] = $val;
-    }
-
-    // Beginn Einfügen
-    if (isset($out['description'])) {
-      $out['description'] = $this->normalizeAliensHtml((string) $out['description']);
-    }
-
-    if (isset($out['short_description'])) {
-      $out['short_description'] = $this->normalizeAliensHtml((string) $out['short_description']);
-    }
-    // Ende Einfügen
-
-
-    // Fallback short_description
-    if (
-      (!isset($out['short_description']) || trim((string) $out['short_description']) === '')
-      && !empty($out['description'])
-    ) {
-      $out['short_description'] = \Illuminate\Support\Str::limit(strip_tags((string) $out['description']), 255);
-    }
-
-    return $out;
-  }
-
-  /**
-   * Baut das Variation-Payload anhand des Import-Mappings.
-   *
-   * Zusätzlich werden dynamische "Attribute Group:*"-Spalten gesammelt
-   * und als JSON in `attributes_json` gespeichert.
-   *
-   * @param  array  $row  Assoziative CSV-Zeile
-   * @return array        DB-taugliches Variation-Payload
-   */
-  protected function mapVariationPayload(array $row): array
-  {
-    $map = $this->mapping['variation_fields'] ?? [];
-
-    $out = [];
-    foreach ($map as $dbField => $csvSpec) {
-      $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
-      if ($val === null || $val === '') {
-        continue;
-      }
-      $out[$dbField] = $val;
-    }
-
-    // --- Beginn Einfügen: Attribute Group:* in attributes_json übernehmen ---
-    $attrs = [];
-
-    foreach ($row as $k => $v) {
-      if (!is_string($k)) {
-        continue;
-      }
-
-      $key = trim($k);
-      if (!str_starts_with($key, 'Attribute Group:')) {
-        continue;
-      }
-
-      $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
-      if ($val === null || $val === '') {
-        continue;
-      }
-
-      $attrs[$key] = $val;
-    }
-
-    if ($attrs !== []) {
-      $out['attributes_json'] = $attrs;
-    }
-    // --- Ende Einfügen ---
-
-
-    return $out;
-  }
-
-  /**
-   * Liefert den ersten nicht-leeren Wert aus der CSV-Zeile für einen Satz möglicher Headernamen.
-   *
-   * Unterstützt Aliens-spezifische Duplicate-Header, die durch `makeUniqueHeaders()`
-   * suffixiert werden (z. B. "Header__2", "Header__3", ...).
-   *
-   * @param  array  $row         Assoziative CSV-Zeile
-   * @param  array  $candidates  Mögliche Headernamen (in Prioritätsreihenfolge)
-   * @return string|null         Getrimmter Wert oder null, wenn nicht vorhanden/leer
-   */
-  protected function cell(array $row, array $candidates): ?string
-  {
-    // 1) exakte Matches (wie bisher)
-    foreach ($candidates as $key) {
-      if (array_key_exists($key, $row)) {
-        $val = $row[$key];
-        if ($val === null) {
-          continue;
+            $baseRef = trim($baseRef);
         }
 
-        $s = is_string($val) ? trim($val) : (string) $val;
-        if ($s !== '') {
-          return $s;
+        // Interne, stabile Varianten-ID (global eindeutig)
+        $externalId = 'ALIENS-' . trim((string) $combinationId);
+
+        // Woo-SKU: garantiert eindeutig
+        $sku = $externalId;
+
+        $variation = ProductVariation::updateOrCreate(
+            ['external_id' => $externalId],
+            array_merge(
+                $this->filterExistingColumns(ProductVariation::class, $payload),
+                [
+                    'product_id'  => $product->id,
+                    'external_id' => $externalId,
+                    'sku'         => $sku,
+                ]
+            )
+        );
+
+        // Variation erfolgreich angelegt → Parent ist variable
+        if ($product->product_type !== 'variable') {
+            $product->update(['product_type' => 'variable']);
         }
-      }
-    }
 
-    // 2) Fallback: unique header suffixe (candidate__2, candidate__3, ...)
-    foreach ($candidates as $candidate) {
-      foreach ($row as $k => $val) {
-        if (!is_string($k)) {
-          continue;
+
+        // Kombinations-ID als Meta (damit wir sie trotzdem haben)
+        $product->meta()->updateOrCreate(
+            [
+                'scope' => 'variation',
+                'key' => 'aliens_combination_id',
+                // Optional: wenn du variation_id sauber setzen willst, holen wir erst die Variation
+                'variation_id' => null,
+            ],
+            ['value' => $combinationId]
+        );
+
+        // Optional: Kombinations-Referenz ebenfalls als Meta (falls SKU später umgestellt wird)
+        if ($variationRef !== null && $variationRef !== '') {
+            $product->meta()->updateOrCreate(
+                [
+                    'scope' => 'variation',
+                    'key' => 'aliens_combination_reference',
+                    'variation_id' => null,
+                ],
+                ['value' => $variationRef]
+            );
         }
 
-        if (!str_starts_with($k, $candidate . '__')) {
-          continue;
+        // Base-Referenz als Meta speichern ---
+        if ($baseRef !== null && $baseRef !== '') {
+            $product->meta()->updateOrCreate(
+                [
+                    'scope' => 'variation',
+                    'key' => 'aliens_variation_base_reference',
+                    'variation_id' => null,
+                ],
+                ['value' => $baseRef]
+            );
+        }
+    }
+
+    /**
+     * Baut das Produkt-Payload anhand des Import-Mappings.
+     *
+     * Enthält:
+     * - Feld-Mapping CSV → DB
+     * - Normalisierung von description / short_description
+     * - Fallback-Logik für short_description
+     *
+     * @param  array  $row  Assoziative CSV-Zeile
+     * @return array        DB-taugliches Produkt-Payload
+     */
+    protected function mapProductPayload(array $row): array
+    {
+        $map = $this->mapping['product'] ?? [];
+
+        $out = [];
+        foreach ($map as $dbField => $csvSpec) {
+            $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+            if ($val === null || $val === '') {
+                continue;
+            }
+            $out[$dbField] = $val;
         }
 
-        if ($val === null) {
-          continue;
+        // Beginn Einfügen
+        if (isset($out['description'])) {
+            $out['description'] = $this->normalizeAliensHtml((string) $out['description']);
         }
 
-        $s = is_string($val) ? trim($val) : (string) $val;
-        if ($s !== '') {
-          return $s;
+        if (isset($out['short_description'])) {
+            $out['short_description'] = $this->normalizeAliensHtml((string) $out['short_description']);
         }
-      }
+        // Ende Einfügen
+
+
+        // Fallback short_description
+        if (
+            (!isset($out['short_description']) || trim((string) $out['short_description']) === '')
+            && !empty($out['description'])
+        ) {
+            $out['short_description'] = \Illuminate\Support\Str::limit(strip_tags((string) $out['description']), 255);
+        }
+
+        return $out;
     }
 
-    return null;
-  }
-  /**
-   * Macht CSV-Header eindeutig.
-   *
-   * Aliens kann Header doppelt liefern. Doppelte Header werden durch Suffixe
-   * eindeutig gemacht (z. B. "Foo", "Foo_2", "Foo_3", ...).
-   *
-   * @param  array  $headers  Roh-Headerliste
-   * @return array            Eindeutige Headerliste
-   */
-  protected function makeUniqueHeaders(array $headers): array
-  {
-    $seen = [];
-    $out = [];
+    /**
+     * Baut das Variation-Payload anhand des Import-Mappings.
+     *
+     * Zusätzlich werden dynamische "Attribute Group:*"-Spalten gesammelt
+     * und als JSON in `attributes_json` gespeichert.
+     *
+     * @param  array  $row  Assoziative CSV-Zeile
+     * @return array        DB-taugliches Variation-Payload
+     */
+    protected function mapVariationPayload(array $row): array
+    {
+        $map = $this->mapping['variation_fields'] ?? [];
 
-    foreach ($headers as $h) {
-      $base = $h !== '' ? $h : 'column';
+        $out = [];
+        foreach ($map as $dbField => $csvSpec) {
+            $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+            if ($val === null || $val === '') {
+                continue;
+            }
+            $out[$dbField] = $val;
+        }
 
-      if (!isset($seen[$base])) {
-        $seen[$base] = 1;
-        $out[] = $base;
-        continue;
-      }
+        // --- Beginn Einfügen: Attribute Group:* in attributes_json übernehmen ---
+        $attrs = [];
 
-      $seen[$base]++;
-      $out[] = $base . '_' . $seen[$base];
+        foreach ($row as $k => $v) {
+            if (!is_string($k)) {
+                continue;
+            }
+
+            $key = trim($k);
+            if (!str_starts_with($key, 'Attribute Group:')) {
+                continue;
+            }
+
+            $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+            if ($val === null || $val === '') {
+                continue;
+            }
+
+            $attrs[$key] = $val;
+        }
+
+        if ($attrs !== []) {
+            $out['attributes_json'] = $attrs;
+        }
+        // --- Ende Einfügen ---
+
+
+        return $out;
     }
 
-    return $out;
-  }
+    /**
+     * Liefert den ersten nicht-leeren Wert aus der CSV-Zeile für einen Satz möglicher Headernamen.
+     *
+     * Unterstützt Aliens-spezifische Duplicate-Header, die durch `makeUniqueHeaders()`
+     * suffixiert werden (z. B. "Header__2", "Header__3", ...).
+     *
+     * @param  array  $row         Assoziative CSV-Zeile
+     * @param  array  $candidates  Mögliche Headernamen (in Prioritätsreihenfolge)
+     * @return string|null         Getrimmter Wert oder null, wenn nicht vorhanden/leer
+     */
+    protected function cell(array $row, array $candidates): ?string
+    {
+        // 1) exakte Matches (wie bisher)
+        foreach ($candidates as $key) {
+            if (array_key_exists($key, $row)) {
+                $val = $row[$key];
+                if ($val === null) {
+                    continue;
+                }
 
-  /**
-   * Kombiniert Headerliste + numerische CSV-Zeile zu einer assoziativen Zeile.
-   *
-   * - Falls Header/Zeilenlänge differieren, wird tolerant aufgefüllt.
-   * - String-Werte werden am Ende getrimmt.
-   *
-   * @param  array  $headers  Eindeutige Headerliste
-   * @param  array  $row      Numerische CSV-Zeile
-   * @return array            Assoziative CSV-Zeile
-   */
-  protected function combineRow(array $headers, array $row): array
-  {
-    $assoc = [];
-    $max = max(count($headers), count($row));
+                $s = is_string($val) ? trim($val) : (string) $val;
+                if ($s !== '') {
+                    return $s;
+                }
+            }
+        }
 
-    for ($i = 0; $i < $max; $i++) {
-      $key = $headers[$i] ?? ('column_' . $i);
-      $assoc[$key] = $row[$i] ?? null;
+        // 2) Fallback: unique header suffixe (candidate__2, candidate__3, ...)
+        foreach ($candidates as $candidate) {
+            foreach ($row as $k => $val) {
+                if (!is_string($k)) {
+                    continue;
+                }
+
+                if (!str_starts_with($k, $candidate . '__')) {
+                    continue;
+                }
+
+                if ($val === null) {
+                    continue;
+                }
+
+                $s = is_string($val) ? trim($val) : (string) $val;
+                if ($s !== '') {
+                    return $s;
+                }
+            }
+        }
+
+        return null;
+    }
+    /**
+     * Macht CSV-Header eindeutig.
+     *
+     * Aliens kann Header doppelt liefern. Doppelte Header werden durch Suffixe
+     * eindeutig gemacht (z. B. "Foo", "Foo_2", "Foo_3", ...).
+     *
+     * @param  array  $headers  Roh-Headerliste
+     * @return array            Eindeutige Headerliste
+     */
+    protected function makeUniqueHeaders(array $headers): array
+    {
+        $seen = [];
+        $out = [];
+
+        foreach ($headers as $h) {
+            $base = $h !== '' ? $h : 'column';
+
+            if (!isset($seen[$base])) {
+                $seen[$base] = 1;
+                $out[] = $base;
+                continue;
+            }
+
+            $seen[$base]++;
+            $out[] = $base . '_' . $seen[$base];
+        }
+
+        return $out;
     }
 
-    // trim strings
-    foreach ($assoc as $k => $v) {
-      if (is_string($v)) {
-        $assoc[$k] = trim($v);
-      }
+    /**
+     * Kombiniert Headerliste + numerische CSV-Zeile zu einer assoziativen Zeile.
+     *
+     * - Falls Header/Zeilenlänge differieren, wird tolerant aufgefüllt.
+     * - String-Werte werden am Ende getrimmt.
+     *
+     * @param  array  $headers  Eindeutige Headerliste
+     * @param  array  $row      Numerische CSV-Zeile
+     * @return array            Assoziative CSV-Zeile
+     */
+    protected function combineRow(array $headers, array $row): array
+    {
+        $assoc = [];
+        $max = max(count($headers), count($row));
+
+        for ($i = 0; $i < $max; $i++) {
+            $key = $headers[$i] ?? ('column_' . $i);
+            $assoc[$key] = $row[$i] ?? null;
+        }
+
+        // trim strings
+        foreach ($assoc as $k => $v) {
+            if (is_string($v)) {
+                $assoc[$k] = trim($v);
+            }
+        }
+
+        return $assoc;
     }
 
-    return $assoc;
-  }
+    /**
+     * Filtert ein Payload auf tatsächlich vorhandene Spalten des Ziel-Models.
+     *
+     * Schützt vor SQL-Fehlern, wenn ein Mapping Felder enthält, die (noch) nicht
+     * als DB-Spalten existieren.
+     *
+     * Hinweis: nutzt Schema::getColumnListing() zur Laufzeit.
+     *
+     * @param  string  $modelClass  FQCN des Eloquent-Models
+     * @param  array   $payload     Ungefiltertes Payload
+     * @return array               Payload nur mit existierenden DB-Spalten
+     */
+    protected function filterExistingColumns(string $modelClass, array $payload): array
+    {
+        static $columnCache = [];
 
-  /**
-   * Filtert ein Payload auf tatsächlich vorhandene Spalten des Ziel-Models.
-   *
-   * Schützt vor SQL-Fehlern, wenn ein Mapping Felder enthält, die (noch) nicht
-   * als DB-Spalten existieren.
-   *
-   * Hinweis: nutzt Schema::getColumnListing() zur Laufzeit.
-   *
-   * @param  string  $modelClass  FQCN des Eloquent-Models
-   * @param  array   $payload     Ungefiltertes Payload
-   * @return array               Payload nur mit existierenden DB-Spalten
-   */
-  protected function filterExistingColumns(string $modelClass, array $payload): array
-  {
-    $model = app($modelClass);
-    $table = $model->getTable();
-    $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
-    $set = array_flip($cols);
+        $model = app($modelClass);
+        $table = $model->getTable();
 
-    return array_intersect_key($payload, $set);
-  }
+        if (!isset($columnCache[$table])) {
+            $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            $columnCache[$table] = array_flip($cols);
+        }
 
-  /**
-   * Aktualisiert die LRU-Reihenfolge für einen Cache-Key.
-   *
-   * Entfernt den Key aus seiner aktuellen Position und hängt ihn ans Ende,
-   * sodass er als "zuletzt benutzt" gilt.
-   *
-   * @param  string  $key    Cache-Key
-   * @param  array   $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
-   * @return void
-   */
-  protected function touchCacheKey(string $key, array &$order): void
-  {
-    $pos = array_search($key, $order, true);
-    if ($pos !== false) {
-      unset($order[$pos]);
-      $order = array_values($order);
-      $order[] = $key;
-    }
-  }
-
-  /**
-   * Entfernt die ältesten Einträge aus dem Cache, bis die Maximalgröße eingehalten ist.
-   *
-   * Arbeitet zusammen mit `$order` (LRU-light). Entfernt Keys vom Anfang der Order-Liste
-   * und löscht die entsprechenden Cache-Einträge.
-   *
-   * @param  array  $cache  Referenz auf den Cache (key => Product)
-   * @param  array  $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
-   * @param  int    $max    Maximal erlaubte Cache-Größe
-   * @return void
-   */
-  protected function evictCacheIfNeeded(array &$cache, array &$order, int $max): void
-  {
-    while (count($order) > $max) {
-      $oldest = array_shift($order);
-      if ($oldest !== null) {
-        unset($cache[$oldest]);
-      }
-    }
-  }
-
-  /**
-   * Lädt ein Import-Mapping (product / variation_fields) für den Importer.
-   *
-   * Reihenfolge:
-   * 1) config("import_mappings.{name}")
-   * 2) Fallback auf Datei: config/import_mappings/{name}.php
-   *
-   * @param  string  $name  Mapping-Slug (z. B. "aliens")
-   * @return array          Mapping-Array
-   *
-   * @throws \RuntimeException Wenn kein Mapping gefunden wird oder kein Array zurückgibt
-   */
-  protected function loadMapping(string $name): array
-  {
-    $fromConfig = config("import_mappings." . $name);
-    if (is_array($fromConfig)) {
-      return $fromConfig;
+        return array_intersect_key($payload, $columnCache[$table]);
     }
 
-    $path = base_path("config/import_mappings/{$name}.php");
-    if (is_file($path)) {
-      $map = require $path;
-      if (!is_array($map)) {
-        throw new \RuntimeException("Mapping file {$path} must return an array.");
-      }
-      return $map;
+    /**
+     * Aktualisiert die LRU-Reihenfolge für einen Cache-Key.
+     *
+     * Entfernt den Key aus seiner aktuellen Position und hängt ihn ans Ende,
+     * sodass er als "zuletzt benutzt" gilt.
+     *
+     * @param  string  $key    Cache-Key
+     * @param  array   $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
+     * @return void
+     */
+    protected function touchCacheKey(string $key, array &$order): void
+    {
+        $pos = array_search($key, $order, true);
+        if ($pos !== false) {
+            unset($order[$pos]);
+            $order = array_values($order);
+            $order[] = $key;
+        }
     }
 
-    throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
-  }
-
-  /**
-   * Schreibt Feature:* Spalten aus der CSV als product_meta (feature.*).
-   *
-   * - Erkennt Spalten mit Prefix "Feature:"
-   * - Normalisiert Header (BOM/Whitespace) und Werte
-   * - Optional per Whitelist eingeschränkt
-   * - Speichert als key "feature.{slug}" im product_meta (scope=product)
-   *
-   * @param  Product  $product  Ziel-Produkt
-   * @param  array    $assoc    Assoziative CSV-Zeile
-   * @return void
-   */
-  private function upsertProductFeaturesMeta(Product $product, array $assoc): void
-  {
-    // Optional: Whitelist (empfohlen)
-    $allowed = [
-      'Normen',
-      'Typ',
-      'Material',
-      'Farbe',
-
-      'Festigkeit / Bruchlast / Belastbarkeit [kN]',
-      'Mindestbruchlast [kN]',
-      'Mindestbruchlast geschlossen [kN]',
-      'Mindestbruchlast offen [kN]',
-      'Mindestbruchlast quer [kN]',
-      'Mindestbruchlast längs [kN]',
-      'Lastaufnahme [kN]',
-      'Max. Fangstoß [kN]',
-      'Anzahl Normstürze [UIAA]',
-      'Durchmesser [mm]',
-    ];
-
-    foreach ($assoc as $colName => $raw) {
-      if (!is_string($colName)) {
-        continue;
-      }
-
-      // Header normalisieren (BOM/Whitespace/Sonderzeichen)
-      $col = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $colName) ?? $colName;
-      $col = trim($col);
-      $col = preg_replace('/\s+/u', ' ', $col) ?? $col;
-      $col = str_replace('Feature :', 'Feature:', $col);
-
-      if (!str_starts_with($col, 'Feature:')) {
-        continue;
-      }
-
-      $val = is_string($raw) ? trim($raw) : (string) $raw;
-      $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
-      $val = trim($val);
-
-      if ($val === '') {
-        continue;
-      }
-
-      $featureName = trim(substr($col, strlen('Feature:')));
-      $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
-      $featureName = trim($featureName);
-
-      if ($featureName === 'Normen') {
-        $s = $val;
-
-        $s = str_replace(['•', '·', '|'], ',', $s);
-        $s = preg_replace('/\s*,\s*/', ', ', $s) ?? $s;
-        $s = preg_replace('/\s+/', ' ', $s) ?? $s;
-
-        $val = trim($s, " ,");
-      }
-
-      if ($featureName === '') {
-        continue;
-      }
-
-      // Whitelist anwenden (wenn du erstmal alles willst: diesen Block entfernen)
-      if (!in_array($featureName, $allowed, true)) {
-        continue;
-      }
-
-      $metaKey = 'feature.' . Str::slug($featureName, '_');
-
-      ProductMeta::updateOrCreate(
-        [
-          'product_id' => $product->id,
-          'variation_id' => null,
-          'scope' => 'product',
-          'key' => $metaKey,
-        ],
-        [
-          'value' => $val,
-        ]
-      );
-    }
-  }
-
-  /**
-   * Normalisiert HTML-Inhalte aus dem Aliens-CSV.
-   *
-   * Aufgaben:
-   * - Entfernt bildbasierte Nummerierungs-Icons (Legacy-CMS)
-   * - Wandelt diese in strukturierte Wrapper um (oder entfernt sie vollständig)
-   * - Bereitet den HTML-Inhalt für sauberes Rendering im Admin vor
-   *
-   * Wichtig:
-   * - Wird ausschließlich beim Import angewendet
-   * - Bestehende Datensätze werden nicht automatisch migriert
-   *
-   * @param  string|null  $html  Rohes HTML aus der CSV
-   * @return string|null         Normalisiertes HTML
-   */
-
-  private function normalizeAliensHtml(?string $html): ?string
-  {
-    if (!$html) {
-      return $html;
+    /**
+     * Entfernt die ältesten Einträge aus dem Cache, bis die Maximalgröße eingehalten ist.
+     *
+     * Arbeitet zusammen mit `$order` (LRU-light). Entfernt Keys vom Anfang der Order-Liste
+     * und löscht die entsprechenden Cache-Einträge.
+     *
+     * @param  array  $cache  Referenz auf den Cache (key => Product)
+     * @param  array  $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
+     * @param  int    $max    Maximal erlaubte Cache-Größe
+     * @return void
+     */
+    protected function evictCacheIfNeeded(array &$cache, array &$order, int $max): void
+    {
+        while (count($order) > $max) {
+            $oldest = array_shift($order);
+            if ($oldest !== null) {
+                unset($cache[$oldest]);
+            }
+        }
     }
 
-    // 1) Die "Nummern-Bildchen"-Boxen in einen Token umwandeln
-    $token = '<!--ALIEN_STEP-->';
-    $pattern = '~<div[^>]*>\s*<a[^>]*>\s*<img[^>]*Individuelle_Nummerierung\.png[^>]*>\s*</a>\s*</div>~i';
+    /**
+     * Lädt ein Import-Mapping (product / variation_fields) für den Importer.
+     *
+     * Reihenfolge:
+     * 1) config("import_mappings.{name}")
+     * 2) Fallback auf Datei: config/import_mappings/{name}.php
+     *
+     * @param  string  $name  Mapping-Slug (z. B. "aliens")
+     * @return array          Mapping-Array
+     *
+     * @throws \RuntimeException Wenn kein Mapping gefunden wird oder kein Array zurückgibt
+     */
+    protected function loadMapping(string $name): array
+    {
+        $fromConfig = config("import_mappings." . $name);
+        if (is_array($fromConfig)) {
+            return $fromConfig;
+        }
 
-    $htmlWithTokens = preg_replace($pattern, $token, $html);
+        $path = base_path("config/import_mappings/{$name}.php");
+        if (is_file($path)) {
+            $map = require $path;
+            if (!is_array($map)) {
+                throw new \RuntimeException("Mapping file {$path} must return an array.");
+            }
+            return $map;
+        }
 
-    if (!$htmlWithTokens || !str_contains($htmlWithTokens, $token)) {
-      return $html;
+        throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
     }
 
-    // 1b) CMS-Icon-Boxen (z.B. Keylock.png) in Text-Links umwandeln (kein <img> mehr)
-    $iconPattern = '~<div[^>]*>\s*<a\s+href="([^"]+)"[^>]*>\s*<img[^>]*src="[^"]*/img/cms/([^"/]+)\.png"[^>]*?(?:title="([^"]*)")?[^>]*>\s*</a>\s*</div>~i';
+    /**
+     * Schreibt Feature:* Spalten aus der CSV als product_meta (feature.*).
+     *
+     * - Erkennt Spalten mit Prefix "Feature:"
+     * - Normalisiert Header (BOM/Whitespace) und Werte
+     * - Optional per Whitelist eingeschränkt
+     * - Speichert als key "feature.{slug}" im product_meta (scope=product)
+     *
+     * @param  Product  $product  Ziel-Produkt
+     * @param  array    $assoc    Assoziative CSV-Zeile
+     * @return void
+     */
+    private function upsertProductFeaturesMeta(Product $product, array $assoc): void
+    {
+        // Optional: Whitelist (empfohlen)
+        $allowed = [
+            'Normen',
+            'Typ',
+            'Material',
+            'Farbe',
 
-    $htmlWithTokens = preg_replace_callback($iconPattern, static function (array $m): string {
-      $href  = $m[1] ?? '#';
-      $file  = $m[2] ?? 'icon';
-      $title = $m[3] ?? '';
+            'Festigkeit / Bruchlast / Belastbarkeit [kN]',
+            'Mindestbruchlast [kN]',
+            'Mindestbruchlast geschlossen [kN]',
+            'Mindestbruchlast offen [kN]',
+            'Mindestbruchlast quer [kN]',
+            'Mindestbruchlast längs [kN]',
+            'Lastaufnahme [kN]',
+            'Max. Fangstoß [kN]',
+            'Anzahl Normstürze [UIAA]',
+            'Durchmesser [mm]',
+        ];
 
-      $label = trim($title) !== '' ? trim($title) : $file;
+        foreach ($assoc as $colName => $raw) {
+            if (!is_string($colName)) {
+                continue;
+            }
 
-      // rel noopener für target=_blank
-      return '<a class="alien-icon" href="' . $href . '" target="_blank" rel="noopener noreferrer">' . e($label) . '</a>';
-    }, $htmlWithTokens);
+            // Header normalisieren (BOM/Whitespace/Sonderzeichen)
+            $col = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $colName) ?? $colName;
+            $col = trim($col);
+            $col = preg_replace('/\s+/u', ' ', $col) ?? $col;
+            $col = str_replace('Feature :', 'Feature:', $col);
 
-    // 2) Alles nach dem ersten Token als "Step"-Blöcke wrappen
-    $parts  = explode($token, $htmlWithTokens);
-    $before = array_shift($parts);
+            if (!str_starts_with($col, 'Feature:')) {
+                continue;
+            }
 
-    $steps = [];
-    foreach ($parts as $part) {
-      $part = trim($part);
-      if ($part === '') {
-        continue;
-      }
-      $steps[] = $part;
+            $val = is_string($raw) ? trim($raw) : (string) $raw;
+            $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
+            $val = trim($val);
+
+            if ($val === '') {
+                continue;
+            }
+
+            $featureName = trim(substr($col, strlen('Feature:')));
+            $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
+            $featureName = trim($featureName);
+
+            if ($featureName === 'Normen') {
+                $s = $val;
+
+                $s = str_replace(['•', '·', '|'], ',', $s);
+                $s = preg_replace('/\s*,\s*/', ', ', $s) ?? $s;
+                $s = preg_replace('/\s+/', ' ', $s) ?? $s;
+
+                $val = trim($s, " ,");
+            }
+
+            if ($featureName === '') {
+                continue;
+            }
+
+            // Whitelist anwenden (wenn du erstmal alles willst: diesen Block entfernen)
+            if (!in_array($featureName, $allowed, true)) {
+                continue;
+            }
+
+            $metaKey = 'feature.' . Str::slug($featureName, '_');
+
+            ProductMeta::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'scope' => 'product',
+                    'key' => $metaKey,
+                ],
+                [
+                    'value' => $val,
+                ]
+            );
+        }
     }
 
-    if ($steps === []) {
-      // Token war da, aber kein Inhalt dahinter
-      return $before;
+    /**
+     * Normalisiert HTML-Inhalte aus dem Aliens-CSV.
+     *
+     * Aufgaben:
+     * - Entfernt bildbasierte Nummerierungs-Icons (Legacy-CMS)
+     * - Wandelt diese in strukturierte Wrapper um (oder entfernt sie vollständig)
+     * - Bereitet den HTML-Inhalt für sauberes Rendering im Admin vor
+     *
+     * Wichtig:
+     * - Wird ausschließlich beim Import angewendet
+     * - Bestehende Datensätze werden nicht automatisch migriert
+     *
+     * @param  string|null  $html  Rohes HTML aus der CSV
+     * @return string|null         Normalisiertes HTML
+     */
+
+    private function normalizeAliensHtml(?string $html): ?string
+    {
+        if (!$html) {
+            return $html;
+        }
+
+        // 1) Die "Nummern-Bildchen"-Boxen in einen Token umwandeln
+        $token = '<!--ALIEN_STEP-->';
+        $pattern = '~<div[^>]*>\s*<a[^>]*>\s*<img[^>]*Individuelle_Nummerierung\.png[^>]*>\s*</a>\s*</div>~i';
+
+        $htmlWithTokens = preg_replace($pattern, $token, $html);
+
+        if (!$htmlWithTokens || !str_contains($htmlWithTokens, $token)) {
+            return $html;
+        }
+
+        // 1b) CMS-Icon-Boxen (z.B. Keylock.png) in Text-Links umwandeln (kein <img> mehr)
+        $iconPattern = '~<div[^>]*>\s*<a\s+href="([^"]+)"[^>]*>\s*<img[^>]*src="[^"]*/img/cms/([^"/]+)\.png"[^>]*?(?:title="([^"]*)")?[^>]*>\s*</a>\s*</div>~i';
+
+        $htmlWithTokens = preg_replace_callback($iconPattern, static function (array $m): string {
+            $href  = $m[1] ?? '#';
+            $file  = $m[2] ?? 'icon';
+            $title = $m[3] ?? '';
+
+            $label = trim($title) !== '' ? trim($title) : $file;
+
+            // rel noopener für target=_blank
+            return '<a class="alien-icon" href="' . $href . '" target="_blank" rel="noopener noreferrer">' . e($label) . '</a>';
+        }, $htmlWithTokens);
+
+        // 2) Alles nach dem ersten Token als "Step"-Blöcke wrappen
+        $parts  = explode($token, $htmlWithTokens);
+        $before = array_shift($parts);
+
+        $steps = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $steps[] = $part;
+        }
+
+        if ($steps === []) {
+            // Token war da, aber kein Inhalt dahinter
+            return $before;
+        }
+
+        $wrappedSteps = '<div class="alien-steps">'
+            . implode('', array_map(
+                static fn(string $step) => '<div class="alien-step">' . $step . '</div>',
+                $steps
+            ))
+            . '</div>';
+
+        return $before . $wrappedSteps;
     }
 
-    $wrappedSteps = '<div class="alien-steps">'
-      . implode('', array_map(
-        static fn(string $step) => '<div class="alien-step">' . $step . '</div>',
-        $steps
-      ))
-      . '</div>';
+    /**
+     * Extracts and stores Aliens product image URLs from the current CSV row.
+     *
+     * Aliens exports are inconsistent regarding column headers (e.g. "Bild", "Bilder",
+     * "Image URL", "Hauptbild", ...). This method scans the row for image-related
+     * columns, splits cells that may contain multiple URLs, validates them, and stores
+     * the resulting unique list as JSON in product meta under the key "aliens_image_urls".
+     *
+     * Important:
+     * - We intentionally do NOT treat any generic "*url*" column as an image source,
+     *   because that would incorrectly capture product page URLs.
+     * - Only http(s) URLs that look like images are persisted.
+     */
+    private function isLikelyImageUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') return false;
 
-    return $before . $wrappedSteps;
-  }
+        // Muss URL sein
+        if (!preg_match('#^https?://#i', $url)) return false;
 
-  /**
-   * Extracts and stores Aliens product image URLs from the current CSV row.
-   *
-   * Aliens exports are inconsistent regarding column headers (e.g. "Bild", "Bilder",
-   * "Image URL", "Hauptbild", ...). This method scans the row for image-related
-   * columns, splits cells that may contain multiple URLs, validates them, and stores
-   * the resulting unique list as JSON in product meta under the key "aliens_image_urls".
-   *
-   * Important:
-   * - We intentionally do NOT treat any generic "*url*" column as an image source,
-   *   because that would incorrectly capture product page URLs.
-   * - Only http(s) URLs that look like images are persisted.
-   */
-  private function isLikelyImageUrl(string $url): bool
-  {
-    $url = trim($url);
-    if ($url === '') return false;
-
-    // Muss URL sein
-    if (!preg_match('#^https?://#i', $url)) return false;
-
-    // Bild-Endungen (häufigster/leichtester Filter)
-    return (bool) preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $url);
-  }
+        // Bild-Endungen (häufigster/leichtester Filter)
+        return (bool) preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $url);
+    }
 
 
-  /**
-   * Sammelt Produktbild-URLs aus der aktuellen CSV-Zeile
-   * und speichert sie gesammelt als JSON in product_meta.
-   *
-   * Erwartetes Verhalten:
-   * - Erkennt typische Bild-Spalten (z. B. "Bild 1", "Image 2", "Produktbild 3")
-   * - Akzeptiert nur absolute HTTP(S)-URLs
-   * - Speichert deduplizierte URLs unter:
-   *   scope=product, key=aliens_image_urls
-   *
-   * Die eigentliche Bildverarbeitung (Download, Ablage, Anzeige)
-   * erfolgt bewusst in einem separaten Schritt (Job/Command).
-   *
-   * @param  Product  $product  Aktuelles Parent-Produkt
-   * @param  array    $assoc    Assoziative CSV-Zeile
-   * @return void
-   */
-  private function upsertProductImagesMeta(Product $product, array $assoc): void
-  {
-    // Aliens liefert je nach Export unterschiedliche Header – wir sammeln breit.
-    $urls = [];
+    /**
+     * Sammelt Produktbild-URLs aus der aktuellen CSV-Zeile
+     * und speichert sie gesammelt als JSON in product_meta.
+     *
+     * Erwartetes Verhalten:
+     * - Erkennt typische Bild-Spalten (z. B. "Bild 1", "Image 2", "Produktbild 3")
+     * - Akzeptiert nur absolute HTTP(S)-URLs
+     * - Speichert deduplizierte URLs unter:
+     *   scope=product, key=aliens_image_urls
+     *
+     * Die eigentliche Bildverarbeitung (Download, Ablage, Anzeige)
+     * erfolgt bewusst in einem separaten Schritt (Job/Command).
+     *
+     * @param  Product  $product  Aktuelles Parent-Produkt
+     * @param  array    $assoc    Assoziative CSV-Zeile
+     * @return void
+     */
+    private function upsertProductImagesMeta(Product $product, array $assoc): void
+    {
+        // Aliens liefert je nach Export unterschiedliche Header – wir sammeln breit.
+        $urls = [];
 
-    foreach ($assoc as $colName => $raw) {
-      if (!is_string($colName)) {
-        continue;
-      }
+        foreach ($assoc as $colName => $raw) {
+            if (!is_string($colName)) {
+                continue;
+            }
 
-      $col = trim($colName);
+            $col = trim($colName);
 
-      // Aliens ist hier uneinheitlich: "Bild", "Bilder", "Image URL", "Hauptbild", ...
-      /* $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col)
+            // Aliens ist hier uneinheitlich: "Bild", "Bilder", "Image URL", "Hauptbild", ...
+            /* $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col)
         || (bool) preg_match('/\burl\b/i', $col); */
-      $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col);
+            $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col);
 
 
-      if (!$isImageColumn) {
-        continue;
-      }
+            if (!$isImageColumn) {
+                continue;
+            }
 
-      $val = is_string($raw) ? trim($raw) : (is_numeric($raw) ? (string) $raw : '');
-      if ($val === '') {
-        continue;
-      }
+            $val = is_string($raw) ? trim($raw) : (is_numeric($raw) ? (string) $raw : '');
+            if ($val === '') {
+                continue;
+            }
 
-      // Manche Zellen enthalten mehrere URLs (Komma / Whitespace / Newlines)
-      $parts = preg_split('/[\s,;\n\r]+/u', $val) ?: [];
+            // Manche Zellen enthalten mehrere URLs (Komma / Whitespace / Newlines)
+            $parts = preg_split('/[\s,;\n\r]+/u', $val) ?: [];
 
-      foreach ($parts as $part) {
-        $part = trim($part);
-        if ($part === '') {
-          continue;
+            foreach ($parts as $part) {
+                $part = trim($part);
+                if ($part === '') {
+                    continue;
+                }
+
+                // akzeptiere nur http(s) und typische Bild-Endungen (oder image CDN ohne Endung)
+                if (!preg_match('~^https?://~i', $part)) {
+                    continue;
+                }
+
+                // NEU: nur echte Bild-URLs (verhindert Produktseiten)
+                if (!preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $part)) {
+                    continue;
+                }
+
+                $urls[] = $part;
+            }
         }
 
-        // akzeptiere nur http(s) und typische Bild-Endungen (oder image CDN ohne Endung)
-        if (!preg_match('~^https?://~i', $part)) {
-          continue;
+        $urls = array_values(array_filter(
+            $urls,
+            fn($u) =>
+            is_string($u) && $this->isLikelyImageUrl($u)
+        ));
+
+        if ($urls === []) {
+            return;
         }
 
-        // NEU: nur echte Bild-URLs (verhindert Produktseiten)
-        if (!preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $part)) {
-          continue;
+        $product->meta()->updateOrCreate(
+            ['scope' => 'product', 'key' => 'aliens_image_urls', 'variation_id' => null],
+            ['value' => json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
+        );
+    }
+
+    /**
+     * Ermittelt die manufacturer_id für ein Produkt während des Imports.
+     *
+     * Verhalten:
+     * - Bei Aliens-Importen wird der tatsächliche Hersteller aus der CSV-Spalte
+     *   "Hersteller" gelesen, auf einen Manufacturer-Datensatz aufgelöst
+     *   (oder neu angelegt) und dessen ID zurückgegeben.
+     * - Bei allen anderen Importern wird der beim Import im UI ausgewählte
+     *   manufacturer_id verwendet.
+     *
+     * Zur Performance-Optimierung wird ein lokaler Cache genutzt, damit
+     * identische Herstellernamen nicht mehrfach aus der DB gelesen/angelegt werden.
+     *
+     * @param  array  $row  Aktuelle assoziative CSV-Zeile
+     * @return int|null     Hersteller-ID oder Fallback-ID
+     */
+    protected function resolveManufacturerId(array $row): ?int
+    {
+        // Nur bei Aliens pro Produkt aus CSV auflösen
+        if ($this->mappingFile !== 'aliens') {
+            return $this->manufacturerId;
         }
 
-        $urls[] = $part;
-      }
+        $name = $this->cell($row, ['Hersteller']);
+        $name = is_string($name) ? trim($name) : null;
+
+        if (!$name) {
+            return $this->manufacturerId;
+        }
+
+        $key = mb_strtolower($name);
+        if (isset($this->manufacturerNameCache[$key])) {
+            return $this->manufacturerNameCache[$key];
+        }
+
+        $m = Manufacturer::query()->firstOrCreate(
+            ['manufacturer' => $name],
+            ['manufacturer' => $name]
+        );
+
+        return $this->manufacturerNameCache[$key] = (int) $m->id;
     }
 
-    $urls = array_values(array_filter(
-      $urls,
-      fn($u) =>
-      is_string($u) && $this->isLikelyImageUrl($u)
-    ));
+    /**
+     * Finalisiert die Namensbildung für ein Parent-Produkt:
+     * - original_product_name aus CSV übernehmen
+     * - product_name über ProductNameBuilder erzeugen
+     *
+     * Wird absichtlich nur 1x pro Produkt ausgeführt (bei Produktwechsel + am Ende),
+     * damit wir nicht pro CSV-Zeile neu speichern.
+     *
+     * @param Product   $product
+     * @param array     $parentAssoc  Assoziative CSV-Zeile der Parent-Zeile (nicht Feature-only)
+     * @param int|null  $manufacturerId Optional: Hersteller-ID (perf/Cache)
+     * @return void
+     */
+    private function finalizeProductNaming(Product $product, array $parentAssoc, ?int $manufacturerId = null): void
+    {
+        /** @var DefaultProductNameBuilder $nameBuilder */
+        $nameBuilder = app(DefaultProductNameBuilder::class);
 
-    if ($urls === []) {
-      return;
+        /** @var ProductPropertyExtractor $propertyExtractor */
+        $propertyExtractor = app(ProductPropertyExtractor::class);
+
+        // 1) CSV-Originalname (Designation) ermitteln
+        // TODO: Kandidaten ggf. anpassen, wenn Deine CSV-Spalte anders heißt.
+        $designation = $this->cell($parentAssoc, [
+            'Produktname',
+            'Bezeichnung',
+            'Produktname',
+            'Artikelbezeichnung',
+            'Designation',
+        ]);
+
+        // Wenn wir keinen CSV-Namen haben, brechen wir ab (kein Müll schreiben)
+        if ($designation === null || $designation === '') {
+            return;
+        }
+
+        // 2) Kategorie: aktuell (wie besprochen) aus existierendem Produkt / Woo-Spiegelung.
+        // Wenn Du (noch) nichts spiegelst, bleibt es leer -> Builder lässt es weg.
+        // Passe den Column/Accessor an, sobald Du Kategorien speicherst.
+        $categoryName = '';
+        if (isset($product->category_name) && is_string($product->category_name)) {
+            $categoryName = $product->category_name;
+        }
+
+        // 3) Eigenschaften aus gespeicherten Variation-Attributen ziehen
+        $product->load('variations');
+        $properties = $propertyExtractor->extract($product);
+
+        // 4) Kind bestimmen (variable sobald mindestens 1 Variation existiert)
+        $kind = $product->variations()->exists()
+            ? ProductKind::Variable
+            : ProductKind::Simple;
+
+        // 5) Herstellername ermitteln (über ID, cached)
+        $manufacturerName = $this->resolveManufacturerName($manufacturerId ?? $product->manufacturer_id);
+
+        $ctx = new ProductNameContext(
+            kind: $kind,
+            manufacturerName: $manufacturerName,
+            categoryName: $categoryName,
+            designation: $designation,
+            properties: $properties,
+            manufacturerId: $manufacturerId ?? $product->manufacturer_id,
+        );
+
+        $result = $nameBuilder->build($ctx);
+
+        // 6) Persistieren
+        $product->original_product_name = $designation;
+        $product->product_name = $result->productName;
+        $product->save();
     }
 
-    $product->meta()->updateOrCreate(
-      ['scope' => 'product', 'key' => 'aliens_image_urls', 'variation_id' => null],
-      ['value' => json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]
-    );
-  }
+    /**
+     * Resolves the manufacturer display name for naming purposes.
+     *
+     * Uses a simple in-memory cache to avoid repeated DB queries during streaming import.
+     */
+    private function resolveManufacturerName(?int $manufacturerId): string
+    {
+        if (!$manufacturerId) {
+            return '';
+        }
 
-  /**
-   * Ermittelt die manufacturer_id für ein Produkt während des Imports.
-   *
-   * Verhalten:
-   * - Bei Aliens-Importen wird der tatsächliche Hersteller aus der CSV-Spalte
-   *   "Hersteller" gelesen, auf einen Manufacturer-Datensatz aufgelöst
-   *   (oder neu angelegt) und dessen ID zurückgegeben.
-   * - Bei allen anderen Importern wird der beim Import im UI ausgewählte
-   *   manufacturer_id verwendet.
-   *
-   * Zur Performance-Optimierung wird ein lokaler Cache genutzt, damit
-   * identische Herstellernamen nicht mehrfach aus der DB gelesen/angelegt werden.
-   *
-   * @param  array  $row  Aktuelle assoziative CSV-Zeile
-   * @return int|null     Hersteller-ID oder Fallback-ID
-   */
-  protected function resolveManufacturerId(array $row): ?int
-  {
-    // Nur bei Aliens pro Produkt aus CSV auflösen
-    if ($this->mappingFile !== 'aliens') {
-      return $this->manufacturerId;
+        // Cache-Array ist bei Dir schon vorhanden, aber aktuell "name => id".
+        // Dafür nehmen wir lieber einen separaten Cache für id => name.
+        static $idToName = [];
+
+        if (isset($idToName[$manufacturerId])) {
+            return $idToName[$manufacturerId];
+        }
+
+        $m = Manufacturer::query()->find($manufacturerId);
+
+        // In Deinem Model heißt das Feld offenbar "manufacturer"
+        $name = '';
+        if ($m) {
+            $name = (string) ($m->manufacturer ?? $m->name ?? '');
+        }
+
+        return $idToName[$manufacturerId] = $name;
     }
 
-    $name = $this->cell($row, ['Hersteller']);
-    $name = is_string($name) ? trim($name) : null;
+    /**
+     * Prüft, ob der Lieferant das Produkt in der CSV als ausverkauft markiert.
+     *
+     * Wichtig:
+     * - Das ist nur ein Lieferantenstatus.
+     * - Das Produkt wird trotzdem importiert.
+     * - Der Status kann später den Woo-Export verhindern.
+     */
+    private function isSupplierOutOfStock(array $row): bool
+    {
+        foreach ($row as $value) {
+            if (!is_scalar($value)) {
+                continue;
+            }
 
-    if (!$name) {
-      return $this->manufacturerId;
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+
+            if (Str::contains(Str::lower($text), 'ausverkauft')) {
+                return true;
+            }
+        }
+
+        return false;
     }
-
-    $key = mb_strtolower($name);
-    if (isset($this->manufacturerNameCache[$key])) {
-      return $this->manufacturerNameCache[$key];
-    }
-
-    $m = Manufacturer::query()->firstOrCreate(
-      ['manufacturer' => $name],
-      ['manufacturer' => $name]
-    );
-
-    return $this->manufacturerNameCache[$key] = (int) $m->id;
-  }
-
-  /**
-   * Finalisiert die Namensbildung für ein Parent-Produkt:
-   * - original_product_name aus CSV übernehmen
-   * - product_name über ProductNameBuilder erzeugen
-   *
-   * Wird absichtlich nur 1x pro Produkt ausgeführt (bei Produktwechsel + am Ende),
-   * damit wir nicht pro CSV-Zeile neu speichern.
-   *
-   * @param Product   $product
-   * @param array     $parentAssoc  Assoziative CSV-Zeile der Parent-Zeile (nicht Feature-only)
-   * @param int|null  $manufacturerId Optional: Hersteller-ID (perf/Cache)
-   * @return void
-   */
-  private function finalizeProductNaming(Product $product, array $parentAssoc, ?int $manufacturerId = null): void
-  {
-    /** @var DefaultProductNameBuilder $nameBuilder */
-    $nameBuilder = app(DefaultProductNameBuilder::class);
-
-    /** @var ProductPropertyExtractor $propertyExtractor */
-    $propertyExtractor = app(ProductPropertyExtractor::class);
-
-    // 1) CSV-Originalname (Designation) ermitteln
-    // TODO: Kandidaten ggf. anpassen, wenn Deine CSV-Spalte anders heißt.
-    $designation = $this->cell($parentAssoc, [
-      'Produktname',
-      'Bezeichnung',
-      'Produktname',
-      'Artikelbezeichnung',
-      'Designation',
-    ]);
-
-    // Wenn wir keinen CSV-Namen haben, brechen wir ab (kein Müll schreiben)
-    if ($designation === null || $designation === '') {
-      return;
-    }
-
-    // 2) Kategorie: aktuell (wie besprochen) aus existierendem Produkt / Woo-Spiegelung.
-    // Wenn Du (noch) nichts spiegelst, bleibt es leer -> Builder lässt es weg.
-    // Passe den Column/Accessor an, sobald Du Kategorien speicherst.
-    $categoryName = '';
-    if (isset($product->category_name) && is_string($product->category_name)) {
-      $categoryName = $product->category_name;
-    }
-
-    // 3) Eigenschaften aus gespeicherten Variation-Attributen ziehen
-    $properties = $propertyExtractor->extract($product->fresh());
-
-    // 4) Kind bestimmen (variable sobald mindestens 1 Variation existiert)
-    $kind = $product->variations()->exists()
-      ? ProductKind::Variable
-      : ProductKind::Simple;
-
-    // 5) Herstellername ermitteln (über ID, cached)
-    $manufacturerName = $this->resolveManufacturerName($manufacturerId ?? $product->manufacturer_id);
-
-    $ctx = new ProductNameContext(
-      kind: $kind,
-      manufacturerName: $manufacturerName,
-      categoryName: $categoryName,
-      designation: $designation,
-      properties: $properties,
-      manufacturerId: $manufacturerId ?? $product->manufacturer_id,
-    );
-
-    $result = $nameBuilder->build($ctx);
-
-    // 6) Persistieren
-    $product->original_product_name = $designation;
-    $product->product_name = $result->productName;
-    $product->save();
-  }
-
-  /**
-   * Resolves the manufacturer display name for naming purposes.
-   *
-   * Uses a simple in-memory cache to avoid repeated DB queries during streaming import.
-   */
-  private function resolveManufacturerName(?int $manufacturerId): string
-  {
-    if (!$manufacturerId) {
-      return '';
-    }
-
-    // Cache-Array ist bei Dir schon vorhanden, aber aktuell "name => id".
-    // Dafür nehmen wir lieber einen separaten Cache für id => name.
-    static $idToName = [];
-
-    if (isset($idToName[$manufacturerId])) {
-      return $idToName[$manufacturerId];
-    }
-
-    $m = Manufacturer::query()->find($manufacturerId);
-
-    // In Deinem Model heißt das Feld offenbar "manufacturer"
-    $name = '';
-    if ($m) {
-      $name = (string) ($m->manufacturer ?? $m->name ?? '');
-    }
-
-    return $idToName[$manufacturerId] = $name;
-  }
 }

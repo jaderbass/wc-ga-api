@@ -318,6 +318,8 @@ class GenericCsvProductImporter implements CsvImporterContract
           'groupKey'  => $groupKey,
           'rows'      => $rows->count(),
           'exception' => $e->getMessage(),
+          'file'      => $e->getFile(),
+          'line'      => $e->getLine(),
         ]);
       }
     }
@@ -365,6 +367,9 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
   {
+    $payload = null;
+    $writablePayload = null;
+
 
     // reference kann String oder Array sein
     $referenceKey  = $this->mapping['reference'] ?? null;
@@ -472,6 +477,14 @@ class GenericCsvProductImporter implements CsvImporterContract
       );
     }
 
+    // original_product_name muss gesetzt sein, sonst wird später der berechnete Name erneut als Designation verwendet.
+    if (
+      (!array_key_exists('original_product_name', $productPayload) || trim((string) ($productPayload['original_product_name'] ?? '')) === '')
+      && \Illuminate\Support\Facades\Schema::hasColumn('products', 'original_product_name')
+    ) {
+      $productPayload['original_product_name'] = trim((string) $groupKey);
+    }
+
     // Name/Slug/Feste Werte
     $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
     $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());
@@ -501,7 +514,7 @@ class GenericCsvProductImporter implements CsvImporterContract
       'group'           => $groupKey,
       'slug'            => $slug,
       'final_payload'   => $finalProductPayload,
-      'writable_payload'=> $writablePayload,
+      'writable_payload' => $writablePayload,
       'dropped_keys'    => $droppedKeys,
     ]);
 
@@ -555,8 +568,20 @@ class GenericCsvProductImporter implements CsvImporterContract
     } else {
       $query->where('slug', $slug);
     }
-    
+
     $product = $query->first();
+
+    // Zusatzsicherung: berechneten Namen niemals aus Importdaten überschreiben
+    if (array_key_exists('product_name', $writablePayload)) {
+      // unset($payload['product_name'], $writablePayload['product_name']);
+      if (is_array($payload)) {
+        unset($payload['product_name']);
+      }
+
+      if (isset($writablePayload) && is_array($writablePayload)) {
+        unset($writablePayload['product_name']);
+      }
+    }
 
     if ($product) {
       $product->forceFill($writablePayload)->save();
@@ -652,6 +677,8 @@ class GenericCsvProductImporter implements CsvImporterContract
           );
         }
 
+        $payload = null;
+
         // Feature Name/Value/Position als JSON-Liste (sofern befüllt)
         $fn = $row['Feature Name'] ?? null;
         $fv = $row['Feature Value'] ?? null;
@@ -662,7 +689,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $fp = is_string($fp) ? trim($fp) : null;
 
         if (($fn ?? '') !== '' || ($fv ?? '') !== '' || ($fp ?? '') !== '') {
-          $payload = [
+          $featuresListPayload  = [
             [
               'name' => $fn,
               'value' => $fv,
@@ -677,7 +704,7 @@ class GenericCsvProductImporter implements CsvImporterContract
               'scope'        => 'product',
               'key'          => 'features.list_json',
             ],
-            ['value' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
+            ['value' => json_encode($featuresListPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
           );
         }
       }
@@ -817,6 +844,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     // Attribute zuweisen
     $this->handleVariationAttributes($variation, $row);
+
+    // Persist computed parent name (variable products depend on variation attributes)
+    $this->persistComputedProductName($product);
   }
 
   /**
@@ -932,7 +962,6 @@ class GenericCsvProductImporter implements CsvImporterContract
         $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
       }
     }
-
   }
 
 
@@ -1020,7 +1049,7 @@ class GenericCsvProductImporter implements CsvImporterContract
    */
   protected function loadMapping(string $name): array
   {
-    $fromConfig = config("import_mappings.{$name}");
+    $fromConfig = config("import_mappings." . $name);
     if (is_array($fromConfig)) {
       return $fromConfig;
     }
@@ -1035,5 +1064,48 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
+  }
+
+  /**
+   * Persists the computed product name (NameBuilder) into the database.
+   *
+   * This should be called AFTER variation attributes have been synced,
+   * because variable product names depend on variation-level attributes
+   * (e.g. color, length).
+   *
+   * Conventions (consistent with Aliens):
+   * - products.original_product_name = raw name from source (CSV/XML/API)
+   * - products.product_name          = computed name from NameBuilder
+   *
+   * @param  \App\Models\Product  $product
+   * @return void
+   */
+  protected function persistComputedProductName(\App\Models\Product $product): void
+  {
+    $product->loadMissing(['manufacturer', 'variations.attributeValues.attribute']);
+
+    $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
+    $builder = app(\App\Services\ProductNaming\DefaultProductNameBuilder::class);
+
+    // Optionales Debug (ok, aber ohne $tpl)
+    Log::debug('NAMECTX', [
+      'product_id'    => $product->id,
+      'manufacturer'  => $ctx->manufacturerName,
+      'designation'   => $ctx->designation,
+      'properties'    => $ctx->properties,
+      'kind'          => $ctx->kind->value ?? (string) $ctx->kind,
+    ]);
+
+    $calc = $builder->build($ctx)->productName;
+    $calc = is_string($calc) ? trim($calc) : '';
+
+    if ($calc === '') {
+      return;
+    }
+
+    if ((string) $product->product_name !== $calc) {
+      $product->product_name = $calc;
+      $product->saveQuietly();
+    }
   }
 }

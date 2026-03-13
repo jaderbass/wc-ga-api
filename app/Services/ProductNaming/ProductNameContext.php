@@ -61,23 +61,32 @@ final class ProductNameContext
 
     $designation =
       (is_string($product->original_product_name) && trim($product->original_product_name) !== '')
-        ? trim($product->original_product_name)
-        : ((is_string($product->product_name) && trim($product->product_name) !== '')
-          ? trim($product->product_name)
-          : (string) $product->slug);
+      ? trim($product->original_product_name)
+      : (string) $product->slug;
+
+    $variationsCount = $product->relationLoaded('variations')
+      ? $product->variations->count()
+      : $product->variations()->count();
 
     $kind = match ($product->product_type) {
-      'variable' => ProductKind::Variable,
+      'variable' => ($variationsCount <= 1 ? ProductKind::Simple : ProductKind::Variable),
       'set'      => ProductKind::Set,
       default    => ProductKind::Simple,
     };
+
+    $properties = collect($extractor->extract($product) ?? [])
+      ->filter(fn($v) => is_string($v) && trim($v) !== '')
+      ->map(fn($v) => trim($v))
+      ->unique()
+      ->values()
+      ->all();
 
     return new self(
       kind: $kind,
       manufacturerName: $manufacturerName,
       categoryName: '',
       designation: $designation,
-      properties: $extractor->extract($product),
+      properties: $properties,
       manufacturerId: (int) $product->manufacturer_id,
     );
   }
