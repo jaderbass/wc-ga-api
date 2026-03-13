@@ -18,8 +18,13 @@ class CategoryResolver
      */
     protected array $rules = [
         'gurt' => 'Sitz- oder Arbeitsgurte',
+
         'seil' => 'Seile',
+        'reepschnur' => 'Seile',
+        'reepschnüre' => 'Seile',
+
         'karabiner' => 'Karabiner',
+
         'helm' => 'Schutzhelme',
     ];
 
