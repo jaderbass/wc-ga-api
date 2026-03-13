@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use App\Models\ManufacturerAudit;
 
 /**
@@ -51,6 +52,18 @@ class Manufacturer extends Model
     {
         return $this->hasMany(ManufacturerAudit::class);
     }
+
+    /**
+     * Scope a query to only include active manufacturers.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('active', true);
+    }
+
 
     /**
      * Die Attribut-Casts.
