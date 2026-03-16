@@ -12,20 +12,29 @@ use Illuminate\Support\Str;
 class CategoryResolver
 {
     /**
-     * Keyword-zu-Kategorie-Mapping.
+     * Kategorie-zu-Keyword-Mapping.
      *
-     * @var array<string, string>
+     * @var array<string, list<string>>
      */
     protected array $rules = [
-        'gurt' => 'Sitz- oder Arbeitsgurte',
-
-        'seil' => 'Seile',
-        'reepschnur' => 'Seile',
-        'reepschnüre' => 'Seile',
-
-        'karabiner' => 'Karabiner',
-
-        'helm' => 'Schutzhelme',
+        'Sitz- oder Arbeitsgurte' => [
+            'gurt',
+            'gurte',
+        ],
+        'Seile' => [
+            'seil',
+            'seile',
+            'reepschnur',
+            'reepschnüre',
+        ],
+        'Karabiner' => [
+            'karabiner',
+            'karabiners',
+        ],
+        'Schutzhelme' => [
+            'helm',
+            'helme',
+        ],
     ];
 
     /**
@@ -38,13 +47,16 @@ class CategoryResolver
      */
     public function resolveFromProductName(?string $productName): Collection
     {
-        $productName = Str::lower((string) $productName);
+        $normalizedName = $this->normalizeProductName($productName);
 
         $matchedCategoryNames = collect();
 
-        foreach ($this->rules as $keyword => $categoryName) {
-            if (Str::contains($productName, $keyword)) {
-                $matchedCategoryNames->push($categoryName);
+        foreach ($this->rules as $categoryName => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (Str::contains($normalizedName, $keyword)) {
+                    $matchedCategoryNames->push($categoryName);
+                    break;
+                }
             }
         }
 
@@ -59,5 +71,17 @@ class CategoryResolver
         return Category::query()
             ->whereIn('name', $matchedCategoryNames->all())
             ->get();
+    }
+
+    /**
+     * Normalisiert den Produktnamen für die Keyword-Suche.
+     */
+    protected function normalizeProductName(?string $productName): string
+    {
+        $value = Str::lower((string) $productName);
+        $value = str_replace(['/', '-', '_', ',', '.', ';', ':'], ' ', $value);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 }
