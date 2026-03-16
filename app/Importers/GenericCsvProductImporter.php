@@ -4,6 +4,7 @@ namespace App\Importers;
 
 use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
+use App\Services\Categories\ProductCategorySyncService;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductMeta;
@@ -591,6 +592,8 @@ class GenericCsvProductImporter implements CsvImporterContract
         $product->forceFill($writablePayload)->save();
       }
     }
+
+        app(ProductCategorySyncService::class)->sync($product);
 
     Log::info('Product upserted', [
       'id'              => $product->id,
