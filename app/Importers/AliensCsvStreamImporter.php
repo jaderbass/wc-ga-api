@@ -160,7 +160,8 @@ class AliensCsvStreamImporter
                 // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
                 if ($currentProduct !== null && is_array($lastParentAssoc)) {
                     $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-                    $this->syncCategories($currentProduct);
+                    app(\App\Services\Categories\ProductCategorySyncService::class)
+                        ->sync($currentProduct);
                 }
 
                 $currentProduct = $this->getOrUpsertProduct(
@@ -236,7 +237,8 @@ class AliensCsvStreamImporter
         // Letztes Produkt am Ende ebenfalls finalisieren
         if ($currentProduct !== null && is_array($lastParentAssoc)) {
             $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-            $this->syncCategories($currentProduct);
+            app(\App\Services\Categories\ProductCategorySyncService::class)
+                ->sync($currentProduct);
         }
 
 
@@ -1220,22 +1222,5 @@ class AliensCsvStreamImporter
         }
 
         return false;
-    }
-
-    /**
-     * Synchronisiert die Kategorien eines Produkts anhand des finalen Produktnamens.
-     */
-    protected function syncCategories(Product $product): void
-    {
-        $nameForCategoryMatch = $product->product_name
-            ?: $product->original_product_name
-            ?: null;
-
-        $categories = app(CategoryResolver::class)
-            ->resolveFromProductName($nameForCategoryMatch);
-
-        $product->categories()->sync(
-            $categories->pluck('id')->all()
-        );
     }
 }
