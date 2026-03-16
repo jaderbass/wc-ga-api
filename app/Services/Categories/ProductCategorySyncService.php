@@ -21,8 +21,10 @@ class ProductCategorySyncService
         $categories = app(CategoryResolver::class)
             ->resolveFromProductName($nameForCategoryMatch);
 
-        $product->categories()->sync(
-            $categories->pluck('id')->all()
-        );
+        $categoryIds = $categories->pluck('id')->all();
+
+        if (!empty($categoryIds)) {
+            $product->categories()->sync($categoryIds);
+        }
     }
 }
