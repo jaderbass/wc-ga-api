@@ -101,6 +101,11 @@ abstract class BaseImporter
                     $product->fill($payload);
                     $product->save();
 
+                    Log::info('DEBUG category sync reached', [
+                        'product_id' => $product->id,
+                        'product_name' => $product->product_name,
+                    ]);
+
                     $this->syncCategories($product);
 
 
@@ -185,6 +190,13 @@ abstract class BaseImporter
     {
         $categories = app(CategoryResolver::class)
             ->resolveFromProductName($product->product_name);
+
+        Log::info('DEBUG syncCategories()', [
+            'product_id' => $product->id,
+            'product_name' => $product->product_name,
+            'category_ids' => $categories->pluck('id')->all(),
+            'category_names' => $categories->pluck('name')->all(),
+        ]);
 
         $product->categories()->sync(
             $categories->pluck('id')->all()
