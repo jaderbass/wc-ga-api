@@ -77,6 +77,12 @@ final class VariationDisplayNameResolver
 
     private function resolveCategoryName(Product $product): string
     {
-        return (string) ($product->category_name ?? '');
+        $designation = trim((string) ($product->original_product_name ?? ''));
+
+        if ($designation === '') {
+            $designation = trim((string) ($product->slug ?? ''));
+        }
+
+        return ProductNameContext::resolveCategoryName($designation);
     }
 }
