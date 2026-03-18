@@ -186,7 +186,9 @@ class ProductNamePreviewCommand extends Command
 
         $this->line('Quelle:        ' . $source);
         $this->line('Referenz:      ' . $label);
-        $this->line('Produkttyp:    ' . $productType);
+        if (!empty($context->productType)) {
+            $this->line('Produkttyp:    ' . $context->productType);
+        }
         $this->line('Kind:          ' . $ctx->kind->value);
         $this->line('Hersteller:    ' . $ctx->manufacturerName);
         $this->line('Kategorie:     ' . ($ctx->categoryName !== '' ? $ctx->categoryName : '-'));
