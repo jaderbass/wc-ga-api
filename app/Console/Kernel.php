@@ -23,6 +23,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\SmokeTestAliensImportCommand::class,
         \App\Console\Commands\RebuildProductNamesCommand::class,
         \App\Console\Commands\BackfillProductNamesCommand::class,
+        \App\Console\Commands\ProductNamePreviewCommand::class,
         \App\Console\Commands\TestAliensImportCommand::class,
     ];
 
