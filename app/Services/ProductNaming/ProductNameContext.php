@@ -51,9 +51,6 @@ final class ProductNameContext
         /** @var ProductPropertyExtractor $extractor */
         $extractor = app(ProductPropertyExtractor::class);
 
-        /** @var CategoryResolver $categoryResolver */
-        $categoryResolver = app(CategoryResolver::class);
-
         $manufacturerName = '';
         if ($product->relationLoaded('manufacturer') && $product->manufacturer) {
             $manufacturerName = (string) ($product->manufacturer->manufacturer ?? '');
@@ -67,9 +64,7 @@ final class ProductNameContext
             ? trim($product->original_product_name)
             : (string) $product->slug;
 
-        $categoryName = (string) optional(
-            $categoryResolver->resolveFromProductName($designation)->first()
-        )->name;
+        $categoryName = self::resolveCategoryName($designation);
 
         $variationsCount = $product->relationLoaded('variations')
             ? $product->variations->count()
@@ -96,5 +91,21 @@ final class ProductNameContext
             properties: $properties,
             manufacturerId: (int) $product->manufacturer_id,
         );
+    }
+
+    /**
+     * Resolves the first matching category name for a designation.
+     *
+     * Falls nothing matches, the CategoryResolver currently falls back to
+     * "Allgemein".
+     */
+    public static function resolveCategoryName(string $designation): string
+    {
+        /** @var CategoryResolver $categoryResolver */
+        $categoryResolver = app(CategoryResolver::class);
+
+        return (string) optional(
+            $categoryResolver->resolveFromProductName($designation)->first()
+        )->name;
     }
 }
