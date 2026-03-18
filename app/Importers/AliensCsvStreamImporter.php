@@ -7,7 +7,6 @@ use App\Models\ProductVariation;
 use App\Models\ProductMeta;
 use App\Models\ImportRun;
 use App\Models\Manufacturer;
-use App\Services\Categories\CategoryResolver;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductKind;
 use App\Services\ProductNaming\ProductNameContext;
@@ -1130,12 +1129,7 @@ class AliensCsvStreamImporter
         }
 
         // 2) Kategorie: aus dem CategoryResolver
-        /** @var CategoryResolver $categoryResolver */
-        $categoryResolver = app(CategoryResolver::class);
-
-        $categoryName = (string) optional(
-            $categoryResolver->resolveFromProductName($designation)->first()
-        )->name;
+        $categoryName = ProductNameContext::resolveCategoryName($designation);
 
         // 3) Eigenschaften aus gespeicherten Variation-Attributen ziehen
         $product->load('variations');
