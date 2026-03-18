@@ -56,7 +56,11 @@ final class DefaultProductNameBuilder
 
         $name = $this->joinAndCleanup($parts, $separator);
 
-        return new ProductNameResult(productName: $name, parts: $parts);
+        return new ProductNameResult(
+            productName: $name,
+            parts: $parts,
+            tokens: $tokens,
+        );
     }
 
     /**

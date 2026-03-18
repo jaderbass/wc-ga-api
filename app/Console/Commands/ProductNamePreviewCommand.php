@@ -200,6 +200,16 @@ class ProductNamePreviewCommand extends Command
             $limit,
             $ctx->properties ? implode(' | ', $ctx->properties) : '-'
         ));
+        $this->line('');
+        $this->line('Tokens:');
+
+        foreach (['manufacturer', 'category', 'designation', 'p1', 'p2', 'p3'] as $token) {
+            $this->line(sprintf(
+                '  %-12s %s',
+                $token . ':',
+                $result->tokens[$token] ?? '-'
+            ));
+        }
         $this->line('Ergebnis:      ' . $resultName);
 
         if ($expected !== null && $expected !== '') {
