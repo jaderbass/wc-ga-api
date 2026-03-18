@@ -37,7 +37,7 @@ final class DefaultProductNameBuilder
         /** @var array<string, string|null> $tokens */
         $tokens = [
             'manufacturer' => $this->normalizeManufacturer($ctx->manufacturerName),
-            'category'     => $this->normalizePart($p1 = $ctx->categoryName),
+            'category'     => $this->normalizePart($ctx->categoryName),
             'designation'  => $this->normalizeDesignation(
                 $ctx->designation,
                 $ctx->manufacturerName
