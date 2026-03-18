@@ -12,7 +12,8 @@ use App\Support\ProductNameNormalizer;
  * - Designation normalized with capitalized words
  * - Parts separated by " - "
  * - Simple: Manufacturer - Category - Designation - P1 - P2 - P3
- * - Variable/Set: Manufacturer - Category - Designation - P1
+ * - Variable: Manufacturer - Category - Designation - P1
+ * - Set: currently treated like Simple, may get a dedicated rule later
  *
  * Notes:
  * - The builder does NOT decide category or property order.
@@ -30,9 +31,7 @@ final class DefaultProductNameBuilder
         $separator = (string) $tpl['separator'];
         $template = (array) $tpl['template'];
 
-        $p1 = $ctx->properties[0] ?? null;
-        $p2 = $ctx->properties[1] ?? null;
-        $p3 = $ctx->properties[2] ?? null;
+        $properties = $this->resolveNameProperties($ctx);
 
         /** @var array<string, string|null> $tokens */
         $tokens = [
@@ -42,9 +41,9 @@ final class DefaultProductNameBuilder
                 $ctx->designation,
                 $ctx->manufacturerName
             ),
-            'p1'           => $this->normalizePart($p1),
-            'p2'           => $this->normalizePart($p2),
-            'p3'           => $this->normalizePart($p3),
+            'p1'           => $this->normalizePart($properties[0] ?? null),
+            'p2'           => $this->normalizePart($properties[1] ?? null),
+            'p3'           => $this->normalizePart($properties[2] ?? null),
         ];
 
         $parts = [];
@@ -58,6 +57,38 @@ final class DefaultProductNameBuilder
         $name = $this->joinAndCleanup($parts, $separator);
 
         return new ProductNameResult(productName: $name, parts: $parts);
+    }
+
+    /**
+     * Returns the properties that may appear in the final product name.
+     *
+     * Rules:
+     * - Simple: max. 3 properties
+     * - Variable: max. 1 property
+     * - Set: currently max. 3 properties
+     *
+     * @return array<int, string>
+     */
+    private function resolveNameProperties(ProductNameContext $ctx): array
+    {
+        $properties = array_values(array_filter(
+            $ctx->properties,
+            static fn(mixed $value): bool => is_string($value) && trim($value) !== ''
+        ));
+
+        return array_slice($properties, 0, $this->resolvePropertyLimit($ctx));
+    }
+
+    /**
+     * Resolves the max. number of properties allowed in the final product name.
+     */
+    private function resolvePropertyLimit(ProductNameContext $ctx): int
+    {
+        return match ($ctx->kind) {
+            ProductKind::Variable => 1,
+            ProductKind::Simple,
+            ProductKind::Set => 3,
+        };
     }
 
     /**
