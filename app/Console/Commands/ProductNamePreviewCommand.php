@@ -193,7 +193,13 @@ class ProductNamePreviewCommand extends Command
         $this->line('Hersteller:    ' . $ctx->manufacturerName);
         $this->line('Kategorie:     ' . ($ctx->categoryName !== '' ? $ctx->categoryName : '-'));
         $this->line('Bezeichnung:   ' . $ctx->designation);
-        $this->line('Eigenschaften: ' . ($ctx->properties !== [] ? implode(' | ', array_filter($ctx->properties)) : '-'));
+        $limit = $ctx->kind->propertyLimit();
+
+        $this->line(sprintf(
+            "Eigenschaften (max %d): %s",
+            $limit,
+            $ctx->properties ? implode(' | ', $ctx->properties) : '-'
+        ));
         $this->line('Ergebnis:      ' . $resultName);
 
         if ($expected !== null && $expected !== '') {
