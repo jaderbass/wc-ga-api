@@ -75,7 +75,9 @@ class ProductNamePreviewCommand extends Command
             productType: (string) ($product->product_type ?? '-'),
             resultName: $result->productName,
             parts: $result->parts,
+            tokens: $result->tokens,
             template: $template,
+            separator: $result->separator,
             expected: null,
             debug: $debug,
         );
@@ -127,14 +129,16 @@ class ProductNamePreviewCommand extends Command
         $expected = (string) ($case['expected'] ?? '');
 
         $this->renderPreview(
-            source: 'Testfall',
-            label: (string) ($case['label'] ?? $caseKey),
+            source: 'Produkt',
+            label: (string) $product->id,
             ctx: $ctx,
-            productType: '-',
+            productType: (string) ($product->product_type ?? '-'),
             resultName: $result->productName,
             parts: $result->parts,
+            tokens: $result->tokens,
             template: $template,
-            expected: $expected,
+            separator: $result->separator,
+            expected: null,
             debug: $debug,
         );
 
@@ -176,7 +180,9 @@ class ProductNamePreviewCommand extends Command
         string $productType,
         string $resultName,
         array $parts,
+        array $tokens,
         array $template,
+        string $separator,
         ?string $expected,
         bool $debug
     ): void {
@@ -186,8 +192,8 @@ class ProductNamePreviewCommand extends Command
 
         $this->line('Quelle:        ' . $source);
         $this->line('Referenz:      ' . $label);
-        if (!empty($context->productType)) {
-            $this->line('Produkttyp:    ' . $context->productType);
+        if ($productType !== '') {
+            $this->line('Produkttyp:    ' . $productType);
         }
         $this->line('Kind:          ' . $ctx->kind->value);
         $this->line('Hersteller:    ' . $ctx->manufacturerName);
@@ -207,9 +213,24 @@ class ProductNamePreviewCommand extends Command
             $this->line(sprintf(
                 '  %-12s %s',
                 $token . ':',
-                $result->tokens[$token] ?? '-'
+                $tokens[$token] ?? '-'
             ));
         }
+
+        $this->line('');
+        $this->line(sprintf(
+            'Template:      %s',
+            $template !== []
+                ? implode(' | ', $template)
+                : '-'
+        ));
+
+        $this->line(sprintf(
+            'Separator:     %s',
+            $separator !== ''
+                ? $separator
+                : '-'
+        ));
         $this->line('Ergebnis:      ' . $resultName);
 
         if ($expected !== null && $expected !== '') {
@@ -220,8 +241,8 @@ class ProductNamePreviewCommand extends Command
             $this->newLine();
             $this->info('Debug');
             $this->line(str_repeat('-', 60));
-            $this->line('Separator:     ' . ($template['separator'] ?? ' - '));
-            $this->line('Template:      ' . implode(', ', $template['template'] ?? []));
+            $this->line('Separator:     ' . $separator);
+            $this->line('Template:      ' . ($template !== [] ? implode(', ', $template) : '-'));
             $this->line('Parts:         ' . ($parts !== [] ? implode(' | ', $parts) : '-'));
             $this->line('ManufacturerID:' . ($ctx->manufacturerId ?? '-'));
         }

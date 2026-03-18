@@ -60,6 +60,8 @@ final class DefaultProductNameBuilder
             productName: $name,
             parts: $parts,
             tokens: $tokens,
+            template: $template,
+            separator: $separator,
         );
     }
 
