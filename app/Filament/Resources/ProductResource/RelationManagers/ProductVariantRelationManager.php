@@ -15,6 +15,7 @@ use App\Models\ProductVariation;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProductVariantRelationManager extends RelationManager
 {
@@ -32,70 +33,111 @@ class ProductVariantRelationManager extends RelationManager
    */
   protected static ?string $title = 'Varianten';
 
-  /**
-   * Konfiguration der Varianten-Tabelle.
-   *
-   * - Lädt Attributwerte + zugehörige Attribute eager (verhindert N+1).
-   * - Zeigt SKU, Name, Preis und eine zusammengefasste Attribut-Ansicht.
-   *
-   * @param \Filament\Tables\Table $table
-   * @return \Filament\Tables\Table
-   */
-  public function table(Table $table): Table
-  {
-    return $table
-      // N+1 vermeiden: Attributwerte samt Attribut laden
-      ->modifyQueryUsing(function ($query) {
-        $query->with(['attributeValues.attribute']);
-      })
+    /**
+     * Konfiguration der Varianten-Tabelle.
+     *
+     * - Lädt Attributwerte + zugehörige Attribute eager.
+     * - Zeigt SKU, Variantenname und bis zu 5 Attribut-Spalten.
+     *
+     * @param \Filament\Tables\Table $table
+     * @return \Filament\Tables\Table
+     */
+    public function table(Table $table): Table
+    {
+        return $table
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                return $query->with(['attributeValues.attribute']);
+            })
+            ->recordTitleAttribute('sku')
+            ->columns([
+                Tables\Columns\TextColumn::make('sku')
+                    ->label('Artikelnummer')
+                    ->searchable(),
 
-      ->recordTitleAttribute('sku') // ggf. anpassen
+                ...$this->buildVariantAttributeColumns(),
+            ])
+            ->paginated([10, 25, 50])
+            ->defaultPaginationPageOption(10)
+            ->emptyStateHeading('Keine Varianten gefunden');
+    }
 
-      ->columns([
-        Tables\Columns\TextColumn::make('sku')
-          ->label('SKU')
-          ->toggleable(isToggledHiddenByDefault: true),
+    /**
+     * Baut bis zu 5 dynamische Attribut-Spalten für die Varianten-Tabelle.
+     *
+     * @return array<int, \Filament\Tables\Columns\TextColumn>
+     */
+    protected function buildVariantAttributeColumns(): array
+    {
+        $definitions = $this->getVariantAttributeDefinitions();
 
-        Tables\Columns\TextColumn::make('display_name')
-          ->label('Variante')
-          ->searchable(),
+        return array_map(function (array $definition): Tables\Columns\TextColumn {
+            $attributeId = $definition['id'];
+            $label = $definition['label'];
 
-        Tables\Columns\TextColumn::make('name')
-          ->label('Variantenname')
-          ->wrap()
-          ->searchable()
-          ->toggleable(),
+            return Tables\Columns\TextColumn::make('attribute_' . $attributeId)
+                ->label($label)
+                ->state(function (ProductVariation $record) use ($attributeId): string {
+                    $value = $record->attributeValues
+                        ->first(function ($attributeValue) use ($attributeId) {
+                            return (int) $attributeValue->attribute_id === $attributeId;
+                        });
 
-        // Zusammenfassung der Attribut-Kombinationen, z. B. "Farbe: Blau · Größe: L"
-        Tables\Columns\TextColumn::make('attributes_summary')
-          ->label('Attribute')
-          ->state(function (ProductVariation $record): string {
-            // attributeValues ist eine BelongsToMany zu ProductAttributeValue,
-            // jedes ProductAttributeValue ->attribute (ProductAttribute) mit name.
-            $pairs = $record->attributeValues
-              ->filter(fn($v) => $v && $v->attribute) // Safety
-              ->map(function ($value) {
-                $attrName  = trim((string) $value->attribute->name);
-                $valueName = trim((string) $value->value);
-                if ($attrName === '') {
-                  return $valueName;
+                    $displayValue = trim((string) ($value->value ?? ''));
+
+                    return $displayValue !== '' ? $displayValue : '—';
+                })
+                ->wrap();
+        }, $definitions);
+    }
+
+    /**
+     * Ermittelt die sichtbaren Attribut-Definitionen für die Varianten-Tabelle.
+     *
+     * Aktuell erfolgt die Reihenfolge stabil alphabetisch nach Attributnamen,
+     * da noch kein dediziertes Sortierfeld vorhanden ist.
+     *
+     * @return array<int, array{id:int,label:string}>
+     */
+    protected function getVariantAttributeDefinitions(): array
+    {
+        $ownerRecord = $this->getOwnerRecord();
+
+        if (! $ownerRecord || ! method_exists($ownerRecord, 'variations')) {
+            return [];
+        }
+
+        $variations = $ownerRecord->variations()
+            ->with(['attributeValues.attribute'])
+            ->get();
+
+        $attributes = [];
+
+        foreach ($variations as $variation) {
+            foreach ($variation->attributeValues as $attributeValue) {
+                if (! $attributeValue->attribute) {
+                    continue;
                 }
-                if ($valueName === '') {
-                  return $attrName;
+
+                $attributeId = (int) $attributeValue->attribute->id;
+                $attributeName = trim((string) $attributeValue->attribute->name);
+
+                if ($attributeId <= 0 || $attributeName === '') {
+                    continue;
                 }
-                return "{$attrName}: {$valueName}";
-              })
-              ->values()
-              ->all();
 
-            return empty($pairs) ? '—' : implode(' · ', $pairs);
-          })
-          ->wrap()
-          ->toggleable(),
-      ])
+                $attributes[$attributeId] = [
+                    'id' => $attributeId,
+                    'label' => $attributeName,
+                ];
+            }
+        }
 
-      ->paginated([10, 25, 50])
-      ->defaultPaginationPageOption(10)
-      ->emptyStateHeading('Keine Varianten gefunden');
-  }
+        $attributes = array_values($attributes);
+
+        usort($attributes, function (array $left, array $right): int {
+            return strcasecmp($left['label'], $right['label']);
+        });
+
+        return array_slice($attributes, 0, 5);
+    }
 }
