@@ -73,6 +73,18 @@ return [
         'expected' => 'PETZL - Seile - Axis - Black',
     ],
 
+    'variable-parent-mit-mehreren-attributen' => [
+        'label' => 'variable parent mit mehreren attributen',
+        'input' => [
+            'manufacturer' => 'Petzl',
+            'kind' => 'variable',
+            'category' => 'Seile',
+            'designation' => 'Petzl Volta',
+            'properties' => ['Orange', '60 m', '9,2 mm'],
+        ],
+        'expected' => 'PETZL - Seile - Volta - Orange',
+    ],
+
     'variable-parent-ohne-attribut' => [
         'label' => 'variable parent ohne attribut',
         'input' => [
