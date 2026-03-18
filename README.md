@@ -226,7 +226,7 @@ php artisan products:purge --force
 → Ziel: Alle bestehenden Produkte + Variationen eines bestimmten Herstellers entfernen (ID mit der Hersteller-ID ersetzen) z.B. für Petzl: 3
 
 ```bash
-php artisan products:purge --manufacturerId=<ID>
+php artisan products:purge --manufacturer=<ID>
 ```
 
 #### 1.2 Queue & Batches aufräumen
