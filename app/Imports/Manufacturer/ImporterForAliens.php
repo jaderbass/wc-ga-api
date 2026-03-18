@@ -4,6 +4,7 @@ namespace App\Imports\Manufacturer;
 
 use App\Models\Product;
 use Illuminate\Support\Facades\Log;
+use App\Services\Categories\CategoryResolver;
 
 /**
  * Importer für Aliens-Produktdaten.
@@ -14,97 +15,132 @@ use Illuminate\Support\Facades\Log;
  */
 class ImporterForAliens
 {
-  /**
-   * Verarbeitet eine hochgeladene CSV-Datei und speichert Produkte.
-   *
-   * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage
-   * @return void
-   */
-  public function handleUploadedFile(string $filePath): void
-  {
-    Log::info('CSV-Import gestartet', [
-      'importer' => self::class,
-      'file' => $filePath,
-      'model' => Product::class,
-      'map' => [
-        'productnumber' => 'Artikelnummer',
-        'productname' => 'Artikelbezeichnung',
-        'eancode' => 'EAN',
-        'price' => 'eVK netto',
-        'name' => 'Artikelbezeichnung',
-      ],
-    ]);
-
-    $handle = fopen(storage_path('app/' . $filePath), 'r');
-    $header = null;
-    $rowCount = 0;
-
-    while (($row = fgetcsv($handle, 1000, ';')) !== false) {
-      if (!$header) {
-        $header = $row;
-        continue;
-      }
-
-      $row = array_combine($header, $row);
-      $mappedData = $this->mapRow($row);
-      $rowCount++;
-
-      try {
-        $product = Product::create($mappedData);
-        Log::debug('Importiert', $product->toArray());
-      } catch (\Throwable $e) {
-        Log::error("Fehler beim Import in Zeile {$rowCount}", [
-          'exception' => $e->getMessage(),
-          'row' => $row
+    /**
+     * Verarbeitet eine hochgeladene CSV-Datei und speichert Produkte.
+     *
+     * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage
+     * @return void
+     */
+    public function handleUploadedFile(string $filePath): void
+    {
+        Log::info('CSV-Import gestartet', [
+            'importer' => self::class,
+            'file' => $filePath,
+            'model' => Product::class,
+            'map' => [
+                'productnumber' => 'Artikelnummer',
+                'productname' => 'Artikelbezeichnung',
+                'eancode' => 'EAN',
+                'price' => 'eVK netto',
+                'name' => 'Artikelbezeichnung',
+            ],
         ]);
-      }
+
+        $handle = fopen(storage_path('app/' . $filePath), 'r');
+        $header = null;
+        $rowCount = 0;
+
+        while (($row = fgetcsv($handle, 1000, ';')) !== false) {
+            if (!$header) {
+                $header = $row;
+                continue;
+            }
+
+            $row = array_combine($header, $row);
+            $mappedData = $this->mapRow($row);
+            $rowCount++;
+
+            try {
+                $product = Product::create($mappedData);
+
+                $this->syncCategories($product);
+
+                Log::info('DEBUG mappedData', $mappedData);
+
+                Log::info('DEBUG imported product name', [
+                    'product_id' => $product->id,
+                    'product_name' => $product->product_name,
+                    'original_product_name' => $product->original_product_name ?? null,
+                ]);
+
+                Log::debug('Importiert', $product->toArray());
+            } catch (\Throwable $e) {
+                Log::error("Fehler beim Import in Zeile {$rowCount}", [
+                    'exception' => $e->getMessage(),
+                    'row' => $row
+                ]);
+            }
+        }
+
+
+        fclose($handle);
+
+        Log::info('CSV-Import abgeschlossen', ['importierte_zeilen' => $rowCount]);
     }
 
-    fclose($handle);
+    /**
+     * Mappt eine CSV-Zeile auf die Felder der Products-Tabelle.
+     *
+     * @param array $row Array der CSV-Zeile (Spaltenname => Wert)
+     * @return array Gemappte Produktdaten
+     */
+    private function mapRow(array $row): array
+    {
+        $rawName = trim((string) ($row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt'));
+        $cleanName = $this->cleanAliensProductName($rawName);
 
-    Log::info('CSV-Import abgeschlossen', ['importierte_zeilen' => $rowCount]);
-  }
+        return [
+            'product_name' => $cleanName,
+            'product_number' => $row['Artikelnummer'] ?? null,
+            'short_description' => $cleanName !== '' ? $cleanName : null,
+            'ean' => $row['EAN'] ?? null,
+            'price' => $row['eVK netto'] ?? null,
+            'manufacturer_id' => 1, // Aliens
+            'slug' => $row['Artikelnummer'] ?? uniqid('produkt-'),
+            'status' => 'draft',
+        ];
+    }
 
-  /**
-   * Mappt eine CSV-Zeile auf die Felder der Products-Tabelle.
-   *
-   * @param array $row Array der CSV-Zeile (Spaltenname => Wert)
-   * @return array Gemappte Produktdaten
-   */
-  private function mapRow(array $row): array
-  {
-    $rawName = trim((string) ($row['Artikelbezeichnung'] ?? 'Unbenanntes Produkt'));
-    $cleanName = $this->cleanAliensProductName($rawName);
+    /**
+     * Entfernt Herstellerbezeichnungen aus dem Produktnamen,
+     * um doppelte Herstellerpräfixe im finalen Produktnamen zu vermeiden.
+     *
+     * Beispiel:
+     * "ALIENS Aufreissfalldämpfer Reactor Rope"
+     * -> "Aufreissfalldämpfer Reactor Rope"
+     *
+     * @param string $name
+     * @return string
+     */
+    private function cleanAliensProductName(string $name): string
+    {
+        return app(\App\Support\Imports\ManufacturerNameCleaner::class)->clean(
+            $name,
+            'ALIENS',
+            ['Aliens']
+        );
+    }
 
-    return [
-      'product_name' => $cleanName,
-      'product_number' => $row['Artikelnummer'] ?? null,
-      'short_description' => $cleanName !== '' ? $cleanName : null,
-      'ean' => $row['EAN'] ?? null,
-      'price' => $row['eVK netto'] ?? null,
-      'manufacturer_id' => 1, // Aliens
-      'slug' => $row['Artikelnummer'] ?? uniqid('produkt-'),
-      'status' => 'draft',
-    ];
-  }
+    /**
+     * Synchronisiert die Kategorien eines Produkts anhand des Produktnamens.
+     */
+    protected function syncCategories(Product $product): void
+    {
+        $nameForCategoryMatch = $product->product_name
+            ?: $product->original_product_name
+            ?: null;
 
-  /**
-   * Entfernt Herstellerbezeichnungen aus dem Produktnamen,
-   * um doppelte Herstellerpräfixe im finalen Produktnamen zu vermeiden.
-   *
-   * Beispiel:
-   * "ALIENS Aufreissfalldämpfer Reactor Rope"
-   * -> "Aufreissfalldämpfer Reactor Rope"
-   *
-   * @param string $name
-   * @return string
-   */
-  private function cleanAliensProductName(string $name): string
-  {
-    return app(\App\Support\Imports\ManufacturerNameCleaner::class)->clean(
-      $name,
-      'ALIENS',
-      ['Aliens']
-    );
-  }
+        $categories = app(CategoryResolver::class)
+            ->resolveFromProductName($nameForCategoryMatch);
+
+        Log::info('DEBUG syncCategories()', [
+            'product_id' => $product->id,
+            'name_for_match' => $nameForCategoryMatch,
+            'category_names' => $categories->pluck('name')->all(),
+        ]);
+
+        $product->categories()->sync(
+            $categories->pluck('id')->all()
+        );
+    }
 }

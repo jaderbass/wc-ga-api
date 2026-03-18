@@ -19,7 +19,7 @@ use App\Support\Concerns\HasImportAuthor;
 abstract class BaseCsvImporter
 {
   use HasImportAuthor;
-  
+
   /**
    * Gibt den Eloquent-Modellklassennamen zurück, auf den der Import zielt.
    *

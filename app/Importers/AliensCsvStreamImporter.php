@@ -7,6 +7,7 @@ use App\Models\ProductVariation;
 use App\Models\ProductMeta;
 use App\Models\ImportRun;
 use App\Models\Manufacturer;
+use App\Services\Categories\CategoryResolver;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductKind;
 use App\Services\ProductNaming\ProductNameContext;
@@ -152,13 +153,6 @@ class AliensCsvStreamImporter
             $featureValue    = $this->cell($assoc, ['Feature Value']);
             $featurePosition = $this->cell($assoc, ['Feature Position']);
 
-            // Wenn ein neues Parent-Produkt beginnt, finalisieren wir das vorherige.
-            // Dadurch passiert die Namensbildung genau 1x pro Produkt.
-            if ($productId !== null && $productId !== '' && $currentProduct !== null) {
-                $this->finalizeProductNaming($currentProduct, $assoc);
-            }
-
-
             // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
             if ($productId !== null && $productId !== '') {
                 $currentProductId = (string) $productId;
@@ -166,6 +160,8 @@ class AliensCsvStreamImporter
                 // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
                 if ($currentProduct !== null && is_array($lastParentAssoc)) {
                     $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
+                    app(\App\Services\Categories\ProductCategorySyncService::class)
+                        ->sync($currentProduct);
                 }
 
                 $currentProduct = $this->getOrUpsertProduct(
@@ -241,6 +237,8 @@ class AliensCsvStreamImporter
         // Letztes Produkt am Ende ebenfalls finalisieren
         if ($currentProduct !== null && is_array($lastParentAssoc)) {
             $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
+            app(\App\Services\Categories\ProductCategorySyncService::class)
+                ->sync($currentProduct);
         }
 
 
