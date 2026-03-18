@@ -1,7 +1,7 @@
 <?php
 
 return [
-    [
+    'simple-ohne-attribute' => [
         'label' => 'simple ohne attribute',
         'input' => [
             'manufacturer' => 'Edelrid',
@@ -13,7 +13,7 @@ return [
         'expected' => 'EDELRID - Karabiner - Hms Strike Screw',
     ],
 
-    [
+    'simple-mit-einem-attribut' => [
         'label' => 'simple mit einem attribut',
         'input' => [
             'manufacturer' => 'Petzl',
@@ -25,7 +25,7 @@ return [
         'expected' => 'PETZL - Schutzhelme - Vertex - White',
     ],
 
-    [
+    'simple-mit-zwei-attributen' => [
         'label' => 'simple mit zwei attributen',
         'input' => [
             'manufacturer' => 'Petzl',
@@ -37,7 +37,7 @@ return [
         'expected' => 'PETZL - Seile - Volta - Orange - 60 m',
     ],
 
-    [
+    'simple-mit-drei-attributen' => [
         'label' => 'simple mit drei attributen',
         'input' => [
             'manufacturer' => 'Aliens',
@@ -49,7 +49,7 @@ return [
         'expected' => 'ALIENS - Karabiner - Snap Link - Red - 100 cm - Auslaufprodukt',
     ],
 
-    [
+    'simple-mit-mehr-als-drei-attributen' => [
         'label' => 'simple mit mehr als drei attributen',
         'input' => [
             'manufacturer' => 'Edelrid',
@@ -59,10 +59,9 @@ return [
             'properties' => ['Black', 'Size M', 'Steel', 'Extra'],
         ],
         'expected' => 'EDELRID - Sitz- oder Arbeitsgurte - Core Plus - Black - Size M - Steel',
-        'note' => 'nur p1 bis p3 dürfen im Namen landen',
     ],
 
-    [
+    'variable-parent-nur-ein-attribut' => [
         'label' => 'variable parent nur ein attribut',
         'input' => [
             'manufacturer' => 'Petzl',
@@ -72,10 +71,9 @@ return [
             'properties' => ['Black', '200 m'],
         ],
         'expected' => 'PETZL - Seile - Axis - Black',
-        'note' => 'bei variable nur p1 im Parent-Namen',
     ],
 
-    [
+    'variable-parent-ohne-attribut' => [
         'label' => 'variable parent ohne attribut',
         'input' => [
             'manufacturer' => 'Aliens',
@@ -87,7 +85,7 @@ return [
         'expected' => 'ALIENS - Karabiner - Cam Set',
     ],
 
-    [
+    'doppelter-hersteller-wird-entfernt' => [
         'label' => 'doppelter hersteller wird entfernt',
         'input' => [
             'manufacturer' => 'Edelrid',
@@ -99,7 +97,7 @@ return [
         'expected' => 'EDELRID - Karabiner - Bulletproof Screw Fg',
     ],
 
-    [
+    'fallback-allgemein' => [
         'label' => 'fallback allgemeine kategorie',
         'input' => [
             'manufacturer' => 'Petzl',
@@ -111,7 +109,7 @@ return [
         'expected' => 'PETZL - Allgemein - Spezialtool X',
     ],
 
-    [
+    'set-vorerst-wie-template' => [
         'label' => 'set vorerst wie template',
         'input' => [
             'manufacturer' => 'Aliens',
@@ -121,6 +119,5 @@ return [
             'properties' => ['Auslaufprodukt'],
         ],
         'expected' => 'ALIENS - Karabiner - Rack Pack - Auslaufprodukt',
-        'note' => 'später evtl. sonderbehandlung für sets',
     ],
 ];
