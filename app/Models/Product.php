@@ -20,7 +20,7 @@ use Illuminate\Support\Str;
  * Produktmodell.
  * Generiert bei create/update automatisch einen eindeutigen Slug,
  * falls keiner gesetzt ist (Basis: product_name → sku → uuid).
- * 
+ *
  * Aktualisiert gemäß Änderungsanforderung (2025-08-25):
  *  - Neue Felder: external_url, declaration_of_compliance, manual_url, size,
  *    certification, author_firstname, author_lastname, author_name, author_mail
@@ -315,5 +315,13 @@ class Product extends Model
             fn($x) => ['key' => $x['key'], 'value' => $x['value']],
             $items
         ));
+    }
+
+    /**
+     * Kategorien des Produkts.
+     */
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(Category::class);
     }
 }
