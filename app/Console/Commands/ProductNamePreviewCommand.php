@@ -139,7 +139,6 @@ class ProductNamePreviewCommand extends Command
         );
 
         if ($expected !== '') {
-            $this->line('Erwartet:      ' . $expected);
             $this->line('Vergleich:     ' . ($result->productName === $expected ? 'OK' : 'ABWEICHUNG'));
         }
 
