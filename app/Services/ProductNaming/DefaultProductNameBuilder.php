@@ -76,19 +76,7 @@ final class DefaultProductNameBuilder
             static fn(mixed $value): bool => is_string($value) && trim($value) !== ''
         ));
 
-        return array_slice($properties, 0, $this->resolvePropertyLimit($ctx));
-    }
-
-    /**
-     * Resolves the max. number of properties allowed in the final product name.
-     */
-    private function resolvePropertyLimit(ProductNameContext $ctx): int
-    {
-        return match ($ctx->kind) {
-            ProductKind::Variable => 1,
-            ProductKind::Simple,
-            ProductKind::Set => 3,
-        };
+        return array_slice($properties, 0, $ctx->kind->propertyLimit());
     }
 
     /**

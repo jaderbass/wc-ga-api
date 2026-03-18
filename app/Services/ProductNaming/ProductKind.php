@@ -14,4 +14,16 @@ enum ProductKind: string
   case Simple = 'simple';
   case Variable = 'variable';
   case Set = 'set';
+
+    /**
+     * Returns the max. number of properties allowed in the final product name.
+     */
+    public function propertyLimit(): int
+    {
+        return match ($this) {
+            self::Variable => 1,
+            self::Simple,
+            self::Set => 3,
+        };
+    }
 }
