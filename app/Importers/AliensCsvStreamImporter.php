@@ -1129,13 +1129,13 @@ class AliensCsvStreamImporter
             return;
         }
 
-        // 2) Kategorie: aktuell (wie besprochen) aus existierendem Produkt / Woo-Spiegelung.
-        // Wenn Du (noch) nichts spiegelst, bleibt es leer -> Builder lässt es weg.
-        // Passe den Column/Accessor an, sobald Du Kategorien speicherst.
-        $categoryName = '';
-        if (isset($product->category_name) && is_string($product->category_name)) {
-            $categoryName = $product->category_name;
-        }
+        // 2) Kategorie: aus dem CategoryResolver
+        /** @var CategoryResolver $categoryResolver */
+        $categoryResolver = app(CategoryResolver::class);
+
+        $categoryName = (string) optional(
+            $categoryResolver->resolveFromProductName($designation)->first()
+        )->name;
 
         // 3) Eigenschaften aus gespeicherten Variation-Attributen ziehen
         $product->load('variations');
