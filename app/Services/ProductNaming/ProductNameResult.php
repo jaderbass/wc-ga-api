@@ -10,11 +10,13 @@ namespace App\Services\ProductNaming;
  */
 final class ProductNameResult
 {
-  /**
-   * @param array<int, string> $parts
-   */
-  public function __construct(
-    public readonly string $productName,
-    public readonly array $parts = [],
-  ) {}
+    /**
+     * @param array<int, string> $parts
+     * @param array<string, string|null> $tokens
+     */
+    public function __construct(
+        public readonly string $productName,
+        public readonly array $parts = [],
+        public readonly array $tokens = [],
+    ) {}
 }
