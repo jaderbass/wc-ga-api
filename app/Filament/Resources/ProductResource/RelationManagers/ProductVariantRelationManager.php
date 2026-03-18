@@ -71,18 +71,27 @@ class ProductVariantRelationManager extends RelationManager
         $definitions = $this->getVariantAttributeDefinitions();
 
         return array_map(function (array $definition): Tables\Columns\TextColumn {
-            $attributeId = $definition['id'];
-            $label = $definition['label'];
+            return Tables\Columns\TextColumn::make('attribute_' . md5($definition['key']))
+                ->label($definition['label'])
+                ->state(function (ProductVariation $record) use ($definition): string {
+                    if ($definition['source'] === 'relation') {
+                        $attributeId = (int) str_replace('attr_', '', $definition['key']);
 
-            return Tables\Columns\TextColumn::make('attribute_' . $attributeId)
-                ->label($label)
-                ->state(function (ProductVariation $record) use ($attributeId): string {
-                    $value = $record->attributeValues
-                        ->first(function ($attributeValue) use ($attributeId) {
-                            return (int) $attributeValue->attribute_id === $attributeId;
-                        });
+                        $value = $record->attributeValues
+                            ->first(fn($attributeValue) => (int) $attributeValue->attribute_id === $attributeId);
 
-                    $displayValue = trim((string) ($value->value ?? ''));
+                        $displayValue = trim((string) ($value->value ?? ''));
+
+                        return $displayValue !== '' ? $displayValue : '—';
+                    }
+
+                    $json = $record->attributes_json;
+
+                    if (! is_array($json)) {
+                        return '—';
+                    }
+
+                    $displayValue = trim((string) ($json[$definition['key']] ?? ''));
 
                     return $displayValue !== '' ? $displayValue : '—';
                 })
@@ -93,10 +102,10 @@ class ProductVariantRelationManager extends RelationManager
     /**
      * Ermittelt die sichtbaren Attribut-Definitionen für die Varianten-Tabelle.
      *
-     * Aktuell erfolgt die Reihenfolge stabil alphabetisch nach Attributnamen,
-     * da noch kein dediziertes Sortierfeld vorhanden ist.
+     * Verwendet bevorzugt relationale Attributwerte. Falls keine vorhanden sind,
+     * wird auf attributes_json zurückgegriffen.
      *
-     * @return array<int, array{id:int,label:string}>
+     * @return array<int, array{key:string,label:string,source:string}>
      */
     protected function getVariantAttributeDefinitions(): array
     {
@@ -110,25 +119,57 @@ class ProductVariantRelationManager extends RelationManager
             ->with(['attributeValues.attribute'])
             ->get();
 
+        $hasRelationalAttributes = $variations->contains(function ($variation): bool {
+            return $variation->attributeValues->isNotEmpty();
+        });
+
         $attributes = [];
 
-        foreach ($variations as $variation) {
-            foreach ($variation->attributeValues as $attributeValue) {
-                if (! $attributeValue->attribute) {
+        if ($hasRelationalAttributes) {
+            foreach ($variations as $variation) {
+                foreach ($variation->attributeValues as $attributeValue) {
+                    if (! $attributeValue->attribute) {
+                        continue;
+                    }
+
+                    $attributeId = (int) $attributeValue->attribute->id;
+                    $attributeName = trim((string) $attributeValue->attribute->name);
+
+                    if ($attributeId <= 0 || $attributeName === '') {
+                        continue;
+                    }
+
+                    $attributes['attr_' . $attributeId] = [
+                        'key' => 'attr_' . $attributeId,
+                        'label' => $attributeName,
+                        'source' => 'relation',
+                    ];
+                }
+            }
+        } else {
+            foreach ($variations as $variation) {
+                $json = $variation->attributes_json;
+
+                if (! is_array($json)) {
                     continue;
                 }
 
-                $attributeId = (int) $attributeValue->attribute->id;
-                $attributeName = trim((string) $attributeValue->attribute->name);
+                foreach ($json as $rawKey => $rawValue) {
+                    $key = trim((string) $rawKey);
 
-                if ($attributeId <= 0 || $attributeName === '') {
-                    continue;
+                    if ($key === '') {
+                        continue;
+                    }
+
+                    $label = preg_replace('/^Attribute Group:\s*/i', '', $key) ?? $key;
+                    $label = trim($label);
+
+                    $attributes[$key] = [
+                        'key' => $key,
+                        'label' => $label !== '' ? $label : $key,
+                        'source' => 'json',
+                    ];
                 }
-
-                $attributes[$attributeId] = [
-                    'id' => $attributeId,
-                    'label' => $attributeName,
-                ];
             }
         }
 
@@ -140,4 +181,5 @@ class ProductVariantRelationManager extends RelationManager
 
         return array_slice($attributes, 0, 5);
     }
+
 }
