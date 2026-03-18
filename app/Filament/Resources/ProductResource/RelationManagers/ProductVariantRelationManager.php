@@ -12,6 +12,7 @@
 namespace App\Filament\Resources\ProductResource\RelationManagers;
 
 use App\Models\ProductVariation;
+use App\Services\ProductNaming\VariationDisplayNameResolver;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -19,19 +20,19 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ProductVariantRelationManager extends RelationManager
 {
-  /**
-   * Name der Eloquent-Beziehung im Product-Model.
-   *
-   * @var string
-   */
-  protected static string $relationship = 'variations';
+    /**
+     * Name der Eloquent-Beziehung im Product-Model.
+     *
+     * @var string
+     */
+    protected static string $relationship = 'variations';
 
-  /**
-   * Statischer Titel des Relation-Managers (Tab-Titel + Tabellenüberschrift).
-   *
-   * @var string|null
-   */
-  protected static ?string $title = 'Varianten';
+    /**
+     * Statischer Titel des Relation-Managers (Tab-Titel + Tabellenüberschrift).
+     *
+     * @var string|null
+     */
+    protected static ?string $title = 'Varianten';
 
     /**
      * Konfiguration der Varianten-Tabelle.
@@ -53,6 +54,13 @@ class ProductVariantRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('sku')
                     ->label('Artikelnummer')
                     ->searchable(),
+
+                Tables\Columns\TextColumn::make('variant_name')
+                    ->label('Variantenname')
+                    ->state(function (ProductVariation $record): string {
+                        return app(VariationDisplayNameResolver::class)->resolve($record);
+                    })
+                    ->wrap(),
 
                 ...$this->buildVariantAttributeColumns(),
             ])
@@ -181,5 +189,4 @@ class ProductVariantRelationManager extends RelationManager
 
         return array_slice($attributes, 0, 5);
     }
-
 }
