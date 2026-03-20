@@ -18,6 +18,10 @@ use App\Models\Product;
  */
 final class ProductPropertyExtractor
 {
+    public function __construct(
+        private readonly ParentLeadPropertyResolver $parentLeadPropertyResolver,
+    ) {}
+
     /**
      * Preferred attribute names for variable products.
      *
@@ -26,9 +30,9 @@ final class ProductPropertyExtractor
      * @var array<int, string>
      */
     private const VARIABLE_ATTRIBUTE_PRIORITY = [
-        'Länge',
         'Durchmesser',
         'Größe',
+        'Länge',
         'Farbe',
     ];
 
@@ -40,7 +44,15 @@ final class ProductPropertyExtractor
     public function extract(Product $product): array
     {
         if ($product->product_type === 'variable') {
-            $value = $this->pickVariablePropertyValueFromVariations($product);
+            $groups = $this->collectVariablePropertyGroups($product);
+            $designation = $this->resolveDesignation($product);
+            $categoryName = ProductNameContext::resolveCategoryName($designation);
+
+            $value = $this->parentLeadPropertyResolver->resolve(
+                $categoryName,
+                $designation,
+                $groups,
+            );
 
             return $value !== null ? [$value] : [];
         }
@@ -54,50 +66,99 @@ final class ProductPropertyExtractor
         ];
     }
 
-    private function pickVariablePropertyValueFromVariations(Product $product): ?string
+    /**
+     * Collects grouped variable properties from all variations.
+     *
+     * Example result:
+     * [
+     *   'durchmesser' => ['11mm'],
+     *   'farbe' => ['Weiß/Rot', 'Schwarz'],
+     *   'laenge' => ['30m', '40m'],
+     * ]
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function collectVariablePropertyGroups(Product $product): array
     {
         $product->loadMissing('variations.attributeValues.attribute');
 
-        /** @var array<string, array<string, true>> $byAttributeName */
-        $byAttributeName = [];
+        /** @var array<string, array<string, true>> $groups */
+        $groups = [];
 
+        // 1) Preferred: pivot-based attribute values
         foreach ($product->variations as $variation) {
             foreach ($variation->attributeValues as $attrValue) {
-                $attrName = $attrValue->attribute?->name;
-                if (!is_string($attrName) || trim($attrName) === '') {
+                $attrName = trim((string) ($attrValue->attribute?->name ?? ''));
+                $value = trim((string) ($attrValue->value ?? ''));
+
+                if ($attrName === '' || $value === '') {
                     continue;
                 }
 
-                $value = trim((string) $attrValue->value);
-                if ($value === '') {
+                $type = $this->normalizeVariableAttributeType($attrName);
+
+                if ($type === null) {
                     continue;
                 }
 
-                $byAttributeName[$attrName][$value] = true;
+                $groups[$type][$value] = true;
             }
         }
 
-        if ($byAttributeName === []) {
-            return null;
+        // 2) Fallback: attributes_json on variation
+        if (empty($groups)) {
+            foreach ($product->variations as $variation) {
+                $json = $variation->attributes_json ?? null;
+
+                if (! is_array($json) || $json === []) {
+                    continue;
+                }
+
+                foreach ($json as $key => $rawValue) {
+                    $attrName = trim((string) $key);
+                    $value = trim((string) $rawValue);
+
+                    if ($attrName === '' || $value === '') {
+                        continue;
+                    }
+
+                    $type = $this->normalizeVariableAttributeType($attrName);
+
+                    if ($type === null) {
+                        continue;
+                    }
+
+                    $groups[$type][$value] = true;
+                }
+            }
         }
 
-        $lists = [];
-        foreach ($byAttributeName as $name => $set) {
+        $result = [];
+
+        foreach ($groups as $type => $set) {
             $values = array_keys($set);
             sort($values, SORT_NATURAL | SORT_FLAG_CASE);
-            $lists[$name] = $values;
+            $result[$type] = array_values($values);
         }
 
-        foreach (self::VARIABLE_ATTRIBUTE_PRIORITY as $preferred) {
-            if (!empty($lists[$preferred])) {
-                return $lists[$preferred][0] ?? null;
-            }
-        }
+        return $result;
+    }
 
-        uasort($lists, fn(array $a, array $b) => count($b) <=> count($a));
-        $firstKey = array_key_first($lists);
-
-        return $firstKey !== null ? ($lists[$firstKey][0] ?? null) : null;
+    /**
+     * Resolves the designation (base product name) for naming.
+     *
+     * Priority:
+     * - Uses original_product_name if present (preferred source from importer)
+     * - Falls back to slug if the original name is missing
+     *
+     * This ensures that the naming builder always receives a clean,
+     * non-generated base designation.
+     */
+    private function resolveDesignation(Product $product): string
+    {
+        return (is_string($product->original_product_name) && trim($product->original_product_name) !== '')
+            ? trim($product->original_product_name)
+            : (string) $product->slug;
     }
 
     /**
@@ -260,6 +321,58 @@ final class ProductPropertyExtractor
 
         if (preg_match('/\b(seil)?farbe\b/u', $k) || preg_match('/\bcolor\b/u', $k)) {
             return ['priority' => 40, 'value' => $value];
+        }
+
+        return null;
+    }
+
+
+    /**
+     * Normalizes an attribute name into a generic attribute type.
+     *
+     * This is used to group variation attributes from different manufacturers
+     * into consistent naming buckets such as:
+     * - durchmesser
+     * - groesse
+     * - version
+     * - laenge
+     * - farbe
+     *
+     * The matcher is intentionally tolerant and also supports compound labels
+     * like "Seillänge" or "Seilfarbe" as well as source prefixes like
+     * "Attribute Group: ...".
+     *
+     * Returns null if the attribute is not relevant for naming.
+     */
+    private function normalizeVariableAttributeType(string $name): ?string
+    {
+        $value = mb_strtolower(trim($name));
+
+        if ($value === '') {
+            return null;
+        }
+
+        $value = preg_replace('/^attribute\s+group:\s*/iu', '', $value) ?? $value;
+        $value = trim($value);
+
+        if (preg_match('/durchmesser|diameter/u', $value)) {
+            return 'durchmesser';
+        }
+
+        if (preg_match('/größe|groesse|size/u', $value)) {
+            return 'groesse';
+        }
+
+        if (preg_match('/version|verschluss|schnapper/u', $value)) {
+            return 'version';
+        }
+
+        if (preg_match('/seillänge|seillaenge|länge|laenge|length/u', $value)) {
+            return 'laenge';
+        }
+
+        if (preg_match('/seilfarbe|farbe|color/u', $value)) {
+            return 'farbe';
         }
 
         return null;
