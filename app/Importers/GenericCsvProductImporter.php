@@ -123,20 +123,16 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $mappingType = $this->detectMappingTypeFromHeaders($rawHeaders);
 
-        ImportLog::debug('Detected mapping type', [
-            'mapping_type' => $mappingType,
-        ]);
-
         $headers = $this->buildNormalizedHeaders($rawHeaders, $mappingType);
 
-        ImportLog::debug('CSV Header normalized', [
-            'mapping_type' => $mappingType,
-            'raw_sample'   => array_slice($rawHeaders, 0, 15),
-            'final_sample' => array_slice($headers, 0, 15),
+        ImportLog::debug('CSV Header BEFORE vs AFTER', [
+            'raw'   => $rawHeaders,
+            'final' => $headers,
         ]);
 
-        ImportLog::debug('CSV Header FULL', [
-            'headers' => $headers,
+        ImportLog::debug('CSV Header FINAL', [
+            'mapping_type' => $mappingType,
+            'headers'      => $headers,
         ]);
 
         $records = [];
@@ -146,6 +142,21 @@ class GenericCsvProductImporter implements CsvImporterContract
             $row = array_slice($row, 0, count($headers));
 
             $records[] = array_combine($headers, $row);
+        }
+
+        if ($mappingType === 'petzl') {
+            $records = $this->fillForwardPetzlMergedColumns($records);
+
+            $firstRow = $records[0] ?? [];
+
+            ImportLog::debug('Made-in key check', [
+                'has_made_in' => array_key_exists('Made in', $firstRow),
+                'value'       => $firstRow['Made in'] ?? null,
+            ]);
+
+            ImportLog::debug('Petzl fill-forward sample', [
+                'sample' => array_slice($records, 95, 12),
+            ]);
         }
 
         if ((empty($this->mapping) || !is_array($this->mapping)) && $mappingType !== null) {
@@ -161,11 +172,15 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $normalized = collect($records)->map(function (array $row) {
             foreach ($row as $k => $v) {
-                $row[$k] = is_string($v) ? trim($v) : $v;
+                $row[$k] = $this->normalizeCellValue($v);
             }
 
             return $row;
         });
+
+        ImportLog::debug('Normalized record sample', [
+            'sample' => array_slice($normalized->values()->toArray(), 0, 3),
+        ]);
 
         $groupBy = $this->mapping['group_by'] ?? null;
         $groupByCols = is_array($groupBy)
@@ -265,6 +280,48 @@ class GenericCsvProductImporter implements CsvImporterContract
                 ]);
             }
         }
+    }
+
+    /**
+     * Füllt bei Petzl CSV-Zeilen leere Werte in zusammengeführten Excel-Spalten
+     * aus der vorherigen Zeile auf.
+     *
+     * Hintergrund:
+     * In der Excel-Datei sind u. a. "Product name" und "Reference" teils über zwei
+     * Zeilen zusammengeführt. Beim CSV-Export steht der Wert dann nur in der ersten
+     * Zeile, die Folgezeile bleibt leer.
+     *
+     * @param array<int, array<string, mixed>> $records
+     * @return array<int, array<string, mixed>>
+     */
+    private function fillForwardPetzlMergedColumns(array $records): array
+    {
+        $carryColumns = [
+            'Status',
+            'Date status',
+            'Product name',
+            'Reference',
+        ];
+
+        $lastSeen = [];
+
+        foreach ($records as $index => $row) {
+            foreach ($carryColumns as $column) {
+                $value = $row[$column] ?? null;
+                $value = is_string($value) ? trim($value) : $value;
+
+                if ($value !== null && $value !== '') {
+                    $lastSeen[$column] = $value;
+                    continue;
+                }
+
+                if (array_key_exists($column, $lastSeen)) {
+                    $records[$index][$column] = $lastSeen[$column];
+                }
+            }
+        }
+
+        return $records;
     }
 
     /**
@@ -374,7 +431,10 @@ class GenericCsvProductImporter implements CsvImporterContract
         $out = [];
 
         foreach ($headers as $header) {
-            $base = is_string($header) ? trim($header) : (string) $header;
+            $base = $this->normalizeHeader(
+                is_string($header) ? $header : (string) $header,
+                false
+            );
 
             if ($base === '') {
                 $base = 'column';
@@ -412,7 +472,10 @@ class GenericCsvProductImporter implements CsvImporterContract
         $lastValueHeader = null;
 
         foreach ($headers as $header) {
-            $header = is_string($header) ? trim($header) : (string) $header;
+            $header = $this->normalizeHeader(
+                is_string($header) ? $header : (string) $header,
+                false
+            );
 
             if ($header === '') {
                 $header = 'column';
@@ -630,7 +693,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $authorId = $this->resolveAuthorId();
 
-    // --- Upsert schema-robust + Diagnose ---
+        // --- Upsert schema-robust + Diagnose ---
         /** @var \App\Models\Product $tmpModel */
         $tmpModel   = app(\App\Models\Product::class);
         $tableName  = $tmpModel->getTable();
@@ -1097,25 +1160,50 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
     }
 
-
-
     /**
-     * Normalisiert CSV-Headernamen robust:
-     * - entfernt Steuerzeichen / NBSP / BOM
-     * - reduziert Mehrfach-Spaces
-     * - trimmt
-     * - lowercased für case-insensitive Vergleiche
+     * Normalisiert CSV-Headernamen robust.
      *
      * @param string $header
+     * @param bool $toLower
      * @return string
      */
-    protected function normalizeHeader(string $header): string
+    protected function normalizeHeader(string $header, bool $toLower = true): string
     {
-        // unsichtbare/Steuerzeichen (inkl. NBSP \xA0 und BOM \xFEFF) entfernen
-        $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $header) ?? $header;
+        // BOM am Anfang entfernen
+        $s = preg_replace('/^\xEF\xBB\xBF/', '', $header) ?? $header;
+
+        // Zeilenumbrüche ersetzen
+        $s = str_replace(["\r", "\n"], ' ', $s);
+
+        // Steuerzeichen / NBSP / FEFF entfernen
+        $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $s) ?? $s;
+
         // Mehrfach-Spaces vereinheitlichen
         $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
-        return mb_strtolower(trim($s));
+
+        $s = trim($s);
+
+        return $toLower ? mb_strtolower($s) : $s;
+    }
+
+    /**
+     * Normalisiert einen CSV-Zellwert robust.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    protected function normalizeCellValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $s = preg_replace('/^\xEF\xBB\xBF/', '', $value) ?? $value;
+        $s = str_replace(["\r", "\n"], ' ', $s);
+        $s = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $s) ?? $s;
+        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+
+        return trim($s);
     }
 
     /**
