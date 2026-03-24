@@ -1083,32 +1083,23 @@ class GenericCsvProductImporter implements CsvImporterContract
    * @param  \App\Models\Product  $product
    * @return void
    */
-  protected function persistComputedProductName(\App\Models\Product $product): void
-  {
-    $product->loadMissing(['manufacturer', 'variations.attributeValues.attribute']);
+    protected function persistComputedProductName(\App\Models\Product $product): void
+    {
+        $product->loadMissing(['manufacturer', 'variations.attributeValues.attribute']);
 
-    $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
-    $builder = app(\App\Services\ProductNaming\DefaultProductNameBuilder::class);
+        $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
 
-    // Optionales Debug (ok, aber ohne $tpl)
-    Log::debug('NAMECTX', [
-      'product_id'    => $product->id,
-      'manufacturer'  => $ctx->manufacturerName,
-      'designation'   => $ctx->designation,
-      'properties'    => $ctx->properties,
-      'kind'          => $ctx->kind->value ?? (string) $ctx->kind,
-    ]);
+        Log::debug('NAMECTX', [
+            'product_id'    => $product->id,
+            'manufacturer'  => $ctx->manufacturerName,
+            'designation'   => $ctx->designation,
+            'properties'    => $ctx->properties,
+            'kind'          => $ctx->kind->value ?? (string) $ctx->kind,
+        ]);
 
-    $calc = $builder->build($ctx)->productName;
-    $calc = is_string($calc) ? trim($calc) : '';
+        /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
+        $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
-    if ($calc === '') {
-      return;
+        $updater->update($product);
     }
-
-    if ((string) $product->product_name !== $calc) {
-      $product->product_name = $calc;
-      $product->saveQuietly();
-    }
-  }
 }
