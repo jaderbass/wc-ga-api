@@ -104,10 +104,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $headerRowIndex = $this->detectHeaderRowIndex($rows);
 
-        ImportLog::debug('Detected header row index', [
-            'header_row_index' => $headerRowIndex,
-        ]);
-
         $rawHeaders = $rows[$headerRowIndex] ?? [];
         $rawHeaders = array_values($rawHeaders);
         $rawHeaders = array_map(function ($header) {
@@ -125,10 +121,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $headers = $this->buildNormalizedHeaders($rawHeaders, $mappingType);
 
-        ImportLog::debug('CSV Header FINAL', [
-            'headers' => $headers,
-        ]);
-
         $records = [];
         foreach ($dataRows as $row) {
             $row = array_values($row);
@@ -142,15 +134,6 @@ class GenericCsvProductImporter implements CsvImporterContract
             $records = $this->fillForwardPetzlMergedColumns($records);
 
             $firstRow = $records[0] ?? [];
-
-            ImportLog::debug('Made-in key check', [
-                'has_made_in' => array_key_exists('Made in', $firstRow),
-                'value'       => $firstRow['Made in'] ?? null,
-            ]);
-
-            ImportLog::debug('Petzl fill-forward sample', [
-                'sample' => array_slice($records, 95, 12),
-            ]);
         }
 
         if ((empty($this->mapping) || !is_array($this->mapping)) && $mappingType !== null) {
@@ -1045,12 +1028,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         if ($this->isPetzlVariationRow($row)) {
 
-            ImportLog::debug('Petzl variation specs', [
-                'reference' => $row['Reference'] ?? null,
-                'spec_1'    => $row['Specifications'] ?? null,
-                'spec_2'    => $row['Specifications_2'] ?? null,
-            ]);
-
             $attributeValueIds = array_merge(
                 $attributeValueIds,
                 $this->resolvePetzlVariationAttributeValueIds($row)
@@ -1414,16 +1391,6 @@ class GenericCsvProductImporter implements CsvImporterContract
         ]);
 
         $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
-
-        Log::debug('NAMECTX', [
-            'product_id'       => $product->id,
-            'product_type'     => $product->product_type,
-            'variations_count' => $product->variations->count(),
-            'manufacturer'     => $ctx->manufacturerName,
-            'designation'      => $ctx->designation,
-            'properties'       => $ctx->properties,
-            'kind'             => $ctx->kind->value ?? (string) $ctx->kind,
-        ]);
 
         /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
         $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
