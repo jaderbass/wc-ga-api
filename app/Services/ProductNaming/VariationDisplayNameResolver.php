@@ -153,8 +153,11 @@ final class VariationDisplayNameResolver
     /**
      * Resolves variation properties keyed by normalized attribute type.
      *
-     * Preferred source is the relational attribute pivot. If no relational
-     * attributes are present, the method falls back to attributes_json.
+     * Data sources:
+     * - preferred: relational attribute pivot
+     * - additional: attributes_json fallback/merge
+     *
+     * If both sources provide the same type, pivot wins.
      *
      * @return array<string, string>
      */
@@ -162,6 +165,7 @@ final class VariationDisplayNameResolver
     {
         $properties = [];
 
+        // 1) Pivot first
         if ($variation->relationLoaded('attributeValues')) {
             foreach ($variation->attributeValues as $attributeValue) {
                 $type = $this->normalizeVariableAttributeType(
@@ -178,14 +182,11 @@ final class VariationDisplayNameResolver
             }
         }
 
-        if ($properties !== []) {
-            return $properties;
-        }
-
+        // 2) JSON ergänzend
         $json = $variation->attributes_json;
 
         if (! is_array($json)) {
-            return [];
+            return $properties;
         }
 
         foreach ($json as $rawKey => $rawValue) {
@@ -196,7 +197,10 @@ final class VariationDisplayNameResolver
                 continue;
             }
 
-            $properties[$type] = $value;
+            // Pivot hat Vorrang, JSON füllt nur Lücken
+            if (! isset($properties[$type])) {
+                $properties[$type] = $value;
+            }
         }
 
         return $properties;

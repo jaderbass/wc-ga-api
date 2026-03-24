@@ -103,6 +103,12 @@ final class ProductPropertyExtractor
      *   'version' => ['Trilock'],
      * ]
      *
+     * Data sources:
+     * - preferred: pivot-based attribute values
+     * - additional: attributes_json on variations
+     *
+     * Both sources are merged to support mixed legacy/import states.
+     *
      * @return array<string, array<int, string>>
      */
     private function collectVariablePropertyGroups(Product $product): array
@@ -112,8 +118,8 @@ final class ProductPropertyExtractor
         /** @var array<string, array<string, true>> $groups */
         $groups = [];
 
-        // 1) Preferred: pivot-based attribute values
         foreach ($product->variations as $variation) {
+            // 1) Pivot-based attribute values
             foreach ($variation->attributeValues as $attrValue) {
                 $attrName = trim((string) ($attrValue->attribute?->name ?? ''));
                 $value = trim((string) ($attrValue->value ?? ''));
@@ -130,33 +136,29 @@ final class ProductPropertyExtractor
 
                 $groups[$type][$value] = true;
             }
-        }
 
-        // 2) Fallback: attributes_json on variations
-        if ($groups === []) {
-            foreach ($product->variations as $variation) {
-                $json = $variation->attributes_json ?? null;
+            // 2) attributes_json zusätzlich berücksichtigen
+            $json = $variation->attributes_json ?? null;
 
-                if (! is_array($json) || $json === []) {
+            if (! is_array($json) || $json === []) {
+                continue;
+            }
+
+            foreach ($json as $key => $rawValue) {
+                $attrName = trim((string) $key);
+                $value = trim((string) $rawValue);
+
+                if ($attrName === '' || $value === '') {
                     continue;
                 }
 
-                foreach ($json as $key => $rawValue) {
-                    $attrName = trim((string) $key);
-                    $value = trim((string) $rawValue);
+                $type = $this->normalizeVariableAttributeType($attrName);
 
-                    if ($attrName === '' || $value === '') {
-                        continue;
-                    }
-
-                    $type = $this->normalizeVariableAttributeType($attrName);
-
-                    if ($type === null) {
-                        continue;
-                    }
-
-                    $groups[$type][$value] = true;
+                if ($type === null) {
+                    continue;
                 }
+
+                $groups[$type][$value] = true;
             }
         }
 
