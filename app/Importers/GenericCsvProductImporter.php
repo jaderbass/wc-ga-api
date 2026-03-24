@@ -1231,19 +1231,40 @@ class GenericCsvProductImporter implements CsvImporterContract
     protected function firstOrCreateAttributeValue(string $attributeDisplayName, string $value): \App\Models\ProductAttributeValue
     {
         $attributeDisplayName = trim($attributeDisplayName);
+        $attributeDisplayNameResolved = $this->resolveAttributeDisplayName($attributeDisplayName);
         $value = trim($value);
 
         $attributeSlug = \Illuminate\Support\Str::slug($attributeDisplayName);
 
         $attribute = \App\Models\ProductAttribute::firstOrCreate(
             ['slug' => $attributeSlug],
-            ['name' => $attributeDisplayName]
+            ['name' => $attributeDisplayNameResolved]
         );
+
+        if ($attribute->name !== $attributeDisplayNameResolved) {
+            $attribute->name = $attributeDisplayNameResolved;
+            $attribute->save();
+        }
 
         return \App\Models\ProductAttributeValue::firstOrCreate(
             ['attribute_id' => $attribute->id, 'slug' => \Illuminate\Support\Str::slug($value)],
             ['value' => $value]
         );
+    }
+
+    /**
+     * Gibt den fachlichen Anzeigenamen für ein Attribut zurück.
+     *
+     * @param string $attributeDisplayName
+     * @return string
+     */
+    protected function resolveAttributeDisplayName(string $attributeDisplayName): string
+    {
+        return match (trim(mb_strtolower($attributeDisplayName))) {
+            'size' => 'Größe',
+            'color' => 'Farbe',
+            default => $attributeDisplayName,
+        };
     }
 
     /**
