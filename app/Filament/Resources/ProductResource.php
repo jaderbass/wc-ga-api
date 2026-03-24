@@ -97,6 +97,17 @@ class ProductResource extends Resource
                                 ->required()
                                 ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
                                 ->maxLength(255)
+                                ->columnSpan(8),
+
+                            Placeholder::make('baugruppe_label')
+                                ->label('Baugruppe')
+                                ->content(function (?Product $record): string {
+                                    return match ($record?->baugruppe) {
+                                        1 => '1 - Helm',
+                                        2 => '2 - Gurt',
+                                        default => '—',
+                                    };
+                                })
                                 ->columnSpan(4),
 
                             Placeholder::make('product_name_parts')
@@ -160,7 +171,7 @@ HTML;
                                     return new \Illuminate\Support\HtmlString($html);
                                 })
                                 ->helperText('Live Vorschau basierend auf den aktuellen Daten')
-                                ->columnSpan(8),
+                                ->columnSpanFull(),
 
 
                             TextInput::make('slug')
@@ -1014,75 +1025,6 @@ HTML;
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()->label('Löschen'),
-                    /**
-                     * Fügt eine Bulk-Action hinzu, um ausgewählte Produkte zu Woo zu synchronisieren.
-                     * - Optional: Only changed
-                     * - Optional: Dry-run
-                     * - Shop wählbar (Default-Shop vorbelegt)
-                     */
-                    // BulkAction::make('sync_to_woo')
-                    //   ->label('Zu Woo synchronisieren')
-                    //   ->icon('heroicon-o-arrow-up-on-square')
-                    //   ->deselectRecordsAfterCompletion()
-                    //   ->requiresConfirmation()
-                    //   ->form([
-                    //     Select::make('shop_id')
-                    //       ->label('Shop')
-                    //       ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
-                    //       ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
-                    //       ->required(),
-                    //     Toggle::make('only_changed')
-                    //       ->label('Nur geänderte senden')
-                    //       ->default(true),
-                    //     Toggle::make('dry_run')
-                    //       ->label('Dry-run (nur Vorschau)')
-                    //       ->default(false),
-                    //   ])
-                    //   ->action(function (Collection $records, array $data) {
-                    //     /** @var Shop $shop */
-                    //     $shop = Shop::findOrFail($data['shop_id']);
-                    //     /** @var WooProductService $svc */
-                    //     $svc = app(WooProductService::class);
-
-                    //     $ok = 0;
-                    //     $skip = 0;
-                    //     $fail = 0;
-                    //     $details = [];
-
-                    //     foreach ($records as $product) {
-                    //       try {
-                    //         $res = $svc->upsertProduct(
-                    //           $product,
-                    //           $shop,
-                    //           (bool)($data['dry_run'] ?? false),
-                    //           (bool)($data['only_changed'] ?? false),
-                    //         );
-
-                    //         if (($res['status'] ?? '') === 'error') {
-                    //           $fail++;
-                    //           $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
-                    //         } elseif (!empty($res['skipped'])) {
-                    //           $skip++;
-                    //           $details[] = "⏭ #{$product->id}: unverändert";
-                    //         } else {
-                    //           $ok++;
-                    //           $act = $res['action'] ?? 'update';
-                    //           $woo = $res['id'] ?? '?';
-                    //           $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
-                    //         }
-                    //       } catch (\Throwable $e) {
-                    //         $fail++;
-                    //         $details[] = "✖ #{$product->id}: " . $e->getMessage();
-                    //       }
-                    //     }
-
-                    //     $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
-                    //     Notification::make()
-                    //       ->title('Woo-Sync abgeschlossen')
-                    //       ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
-                    //       ->success()
-                    //       ->send();
-                    //   }),
                     SyncProductsBulkAction::make('sync_to_woo'),
                     SyncVariationsBulkAction::make('sync_variations_to_woo'),
                 ])
