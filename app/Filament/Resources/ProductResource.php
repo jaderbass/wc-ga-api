@@ -844,13 +844,12 @@ HTML;
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-            ])
-            ->actions([
-                Tables\Actions\EditAction::make(),
 
                 Tables\Actions\Action::make('rebuildName')
-                    ->label('Produktnamen neu berechnen')
+                    ->label('')
                     ->icon('heroicon-o-arrow-path')
+                    ->tooltip('Produktnamen basierend auf aktuellen Daten neu generieren')
+                    ->size('lg')
                     ->requiresConfirmation()
                     ->action(function ($record) {
                         /** @var \App\Models\Product $record */
