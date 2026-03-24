@@ -1011,6 +1011,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         // Persist computed parent name (variable products depend on variation attributes)
         $this->persistComputedProductName($product);
+        $this->persistComputedBaugruppe($product);
     }
 
     /**
@@ -1390,11 +1391,39 @@ class GenericCsvProductImporter implements CsvImporterContract
             'variations.attributeValues.attribute',
         ]);
 
-        $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
-
         /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
         $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
         $updater->update($product);
+    }
+
+    /**
+     * Ermittelt und persistiert die Baugruppe eines Produkts basierend auf dem
+     * bereits berechneten und gespeicherten Produktnamen.
+     *
+     * Die Ableitung erfolgt über den BaugruppeResolver und wird nur durchgeführt,
+     * wenn sich der Wert tatsächlich ändert, um unnötige Datenbank-Updates zu vermeiden.
+     *
+     * Voraussetzung:
+     * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
+     *
+     * @param \App\Models\Product $product
+     * @return void
+     */
+    protected function persistComputedBaugruppe(\App\Models\Product $product): void
+    {
+        $product->refresh();
+
+        /** @var \App\Services\Product\BaugruppeResolver $resolver */
+        $resolver = app(\App\Services\Product\BaugruppeResolver::class);
+
+        $baugruppe = $resolver->resolve((string) $product->product_name);
+
+        if ($product->baugruppe === $baugruppe) {
+            return;
+        }
+
+        $product->baugruppe = $baugruppe;
+        $product->save();
     }
 }
