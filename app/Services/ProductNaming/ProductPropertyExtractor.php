@@ -10,31 +10,21 @@ use App\Models\Product;
  *
  * Responsibility:
  * - Reads attribute values from DB models
- * - Maps them into a fixed, ordered list (p1, p2, p3)
+ * - Maps them into a fixed, ordered list
  * - Does NOT build names
- * - Does NOT format strings
+ * - Does NOT format final product names
  *
- * This keeps ProductNameBuilder simple and deterministic.
+ * For variable parent products:
+ * - Only one global lead property may be returned
+ * - Global means: same normalized attribute value across all variations
+ * - If no global property exists, category-specific fallback rules may apply
+ *   (e.g. rope diameter from designation)
  */
 final class ProductPropertyExtractor
 {
     public function __construct(
         private readonly ParentLeadPropertyResolver $parentLeadPropertyResolver,
     ) {}
-
-    /**
-     * Preferred attribute names for variable products.
-     *
-     * The first matching attribute with values wins.
-     *
-     * @var array<int, string>
-     */
-    private const VARIABLE_ATTRIBUTE_PRIORITY = [
-        'Durchmesser',
-        'Größe',
-        'Länge',
-        'Farbe',
-    ];
 
     /**
      * Builds the ordered property list for product naming.
@@ -44,14 +34,14 @@ final class ProductPropertyExtractor
     public function extract(Product $product): array
     {
         if ($product->product_type === 'variable') {
-            $groups = $this->collectVariablePropertyGroups($product);
+            $analysis = $this->analyzeVariablePropertyGroups($product);
             $designation = $this->resolveDesignation($product);
             $categoryName = ProductNameContext::resolveCategoryName($designation);
 
             $value = $this->parentLeadPropertyResolver->resolve(
                 $categoryName,
                 $designation,
-                $groups,
+                $analysis['global'],
             );
 
             return $value !== null ? [$value] : [];
@@ -67,13 +57,50 @@ final class ProductPropertyExtractor
     }
 
     /**
+     * Analyzes grouped variable properties across all variations.
+     *
+     * Returns:
+     * - global: attribute types with exactly one identical value across all variations
+     * - variable: attribute types with multiple values across variations
+     *
+     * @return array{
+     *   global: array<string, array<int, string>>,
+     *   variable: array<string, array<int, string>>
+     * }
+     */
+    private function analyzeVariablePropertyGroups(Product $product): array
+    {
+        $groups = $this->collectVariablePropertyGroups($product);
+
+        $global = [];
+        $variable = [];
+
+        foreach ($groups as $type => $values) {
+            $uniqueValues = array_values(array_unique(array_map('trim', $values)));
+            sort($uniqueValues, SORT_NATURAL | SORT_FLAG_CASE);
+
+            if (count($uniqueValues) === 1) {
+                $global[$type] = $uniqueValues;
+            } else {
+                $variable[$type] = $uniqueValues;
+            }
+        }
+
+        return [
+            'global' => $global,
+            'variable' => $variable,
+        ];
+    }
+
+    /**
      * Collects grouped variable properties from all variations.
      *
      * Example result:
      * [
      *   'durchmesser' => ['11mm'],
      *   'farbe' => ['Weiß/Rot', 'Schwarz'],
-     *   'laenge' => ['30m', '40m'],
+     *   'laenge' => ['30 Meter', '40 Meter'],
+     *   'version' => ['Trilock'],
      * ]
      *
      * @return array<string, array<int, string>>
@@ -105,8 +132,8 @@ final class ProductPropertyExtractor
             }
         }
 
-        // 2) Fallback: attributes_json on variation
-        if (empty($groups)) {
+        // 2) Fallback: attributes_json on variations
+        if ($groups === []) {
             foreach ($product->variations as $variation) {
                 $json = $variation->attributes_json ?? null;
 
@@ -145,23 +172,6 @@ final class ProductPropertyExtractor
     }
 
     /**
-     * Resolves the designation (base product name) for naming.
-     *
-     * Priority:
-     * - Uses original_product_name if present (preferred source from importer)
-     * - Falls back to slug if the original name is missing
-     *
-     * This ensures that the naming builder always receives a clean,
-     * non-generated base designation.
-     */
-    private function resolveDesignation(Product $product): string
-    {
-        return (is_string($product->original_product_name) && trim($product->original_product_name) !== '')
-            ? trim($product->original_product_name)
-            : (string) $product->slug;
-    }
-
-    /**
      * Collects naming properties (p1..p3) from either:
      * - variation attributeValues (pivot), or
      * - variation attributes_json (Aliens)
@@ -178,7 +188,7 @@ final class ProductPropertyExtractor
         foreach ($product->variations as $variation) {
             foreach ($variation->attributeValues as $value) {
                 $attrSlug = $value->attribute->slug ?? null;
-                if (!is_string($attrSlug) || $attrSlug === '') {
+                if (! is_string($attrSlug) || $attrSlug === '') {
                     continue;
                 }
 
@@ -200,15 +210,15 @@ final class ProductPropertyExtractor
             return $this->toSlots($map);
         }
 
-        // 2) Fallback: attributes_json on variation (Aliens)
+        // 2) Fallback: attributes_json on variation (Aliens etc.)
         foreach ($product->variations as $variation) {
             $json = $variation->attributes_json ?? null;
-            if (!is_array($json) || $json === []) {
+            if (! is_array($json) || $json === []) {
                 continue;
             }
 
             foreach ($json as $k => $v) {
-                if (!is_string($k)) {
+                if (! is_string($k)) {
                     continue;
                 }
 
@@ -227,6 +237,74 @@ final class ProductPropertyExtractor
         }
 
         return $this->toSlots($map);
+    }
+
+    /**
+     * Resolves the designation (base product name) for naming.
+     *
+     * Priority:
+     * - Uses original_product_name if present (preferred source from importer)
+     * - Falls back to slug if the original name is missing
+     *
+     * This ensures that the naming builder always receives a clean,
+     * non-generated base designation.
+     */
+    private function resolveDesignation(Product $product): string
+    {
+        return (is_string($product->original_product_name) && trim($product->original_product_name) !== '')
+            ? trim($product->original_product_name)
+            : (string) $product->slug;
+    }
+
+    /**
+     * Normalizes an attribute name into a generic attribute type.
+     *
+     * This is used to group variation attributes from different manufacturers
+     * into consistent naming buckets such as:
+     * - durchmesser
+     * - groesse
+     * - version
+     * - laenge
+     * - farbe
+     *
+     * The matcher is intentionally tolerant and also supports compound labels
+     * like "Seillänge", "Seilfarbe" or "Karabinerverschluß" as well as source
+     * prefixes like "Attribute Group: ...".
+     *
+     * Returns null if the attribute is not relevant for naming.
+     */
+    private function normalizeVariableAttributeType(string $name): ?string
+    {
+        $value = mb_strtolower(trim($name));
+
+        if ($value === '') {
+            return null;
+        }
+
+        $value = preg_replace('/^attribute\s+group:\s*/iu', '', $value) ?? $value;
+        $value = trim($value);
+
+        if (preg_match('/durchmesser|diameter/u', $value)) {
+            return 'durchmesser';
+        }
+
+        if (preg_match('/größe|groesse|size/u', $value)) {
+            return 'groesse';
+        }
+
+        if (preg_match('/version|verschluss|verschluß|schnapper|karabinerverschlu/u', $value)) {
+            return 'version';
+        }
+
+        if (preg_match('/seillänge|seillaenge|länge|laenge|length/u', $value)) {
+            return 'laenge';
+        }
+
+        if (preg_match('/seilfarbe|karabinerfarbe|farbe|color/u', $value)) {
+            return 'farbe';
+        }
+
+        return null;
     }
 
     /**
@@ -265,7 +343,7 @@ final class ProductPropertyExtractor
             return;
         }
 
-        if (!isset($byPriority[$priority])) {
+        if (! isset($byPriority[$priority])) {
             $byPriority[$priority] = $value;
         }
     }
@@ -299,7 +377,7 @@ final class ProductPropertyExtractor
     }
 
     /**
-     * Maps an Aliens attributes_json key to a naming candidate.
+     * Maps an attributes_json key to a naming candidate.
      *
      * @return array{priority:int, value:string}|null
      */
@@ -321,58 +399,6 @@ final class ProductPropertyExtractor
 
         if (preg_match('/\b(seil)?farbe\b/u', $k) || preg_match('/\bcolor\b/u', $k)) {
             return ['priority' => 40, 'value' => $value];
-        }
-
-        return null;
-    }
-
-
-    /**
-     * Normalizes an attribute name into a generic attribute type.
-     *
-     * This is used to group variation attributes from different manufacturers
-     * into consistent naming buckets such as:
-     * - durchmesser
-     * - groesse
-     * - version
-     * - laenge
-     * - farbe
-     *
-     * The matcher is intentionally tolerant and also supports compound labels
-     * like "Seillänge" or "Seilfarbe" as well as source prefixes like
-     * "Attribute Group: ...".
-     *
-     * Returns null if the attribute is not relevant for naming.
-     */
-    private function normalizeVariableAttributeType(string $name): ?string
-    {
-        $value = mb_strtolower(trim($name));
-
-        if ($value === '') {
-            return null;
-        }
-
-        $value = preg_replace('/^attribute\s+group:\s*/iu', '', $value) ?? $value;
-        $value = trim($value);
-
-        if (preg_match('/durchmesser|diameter/u', $value)) {
-            return 'durchmesser';
-        }
-
-        if (preg_match('/größe|groesse|size/u', $value)) {
-            return 'groesse';
-        }
-
-        if (preg_match('/version|verschluss|schnapper/u', $value)) {
-            return 'version';
-        }
-
-        if (preg_match('/seillänge|seillaenge|länge|laenge|length/u', $value)) {
-            return 'laenge';
-        }
-
-        if (preg_match('/seilfarbe|farbe|color/u', $value)) {
-            return 'farbe';
         }
 
         return null;
