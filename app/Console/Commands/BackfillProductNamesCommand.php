@@ -12,7 +12,7 @@ class BackfillProductNamesCommand extends Command
     protected $signature = 'products:names:backfill {--manufacturerId=} {--dry-run}';
     protected $description = 'Backfill computed product names into products.product_name';
 
-    public function handle(DefaultProductNameBuilder $builder): int
+    public function handle(\App\Services\ProductNaming\ProductNameUpdater $updater): int
     {
         $manufacturerId = $this->option('manufacturerId');
         $dryRun = (bool) $this->option('dry-run');
@@ -27,28 +27,29 @@ class BackfillProductNamesCommand extends Command
         $total = 0;
         $updated = 0;
 
-        $q->chunkById(200, function ($products) use ($builder, $dryRun, &$total, &$updated) {
+        $q->chunkById(200, function ($products) use ($updater, $dryRun, &$total, &$updated) {
             foreach ($products as $product) {
                 $total++;
 
-                $ctx = ProductNameContext::fromProduct($product);
-                $calc = $builder->build($ctx)->productName;
-
+                $result = $updater->compute($product);
+                $calc = trim((string) $result->productName);
                 $db = (string) ($product->product_name ?? '');
+
                 if ($calc === '' || $calc === $db) {
                     continue;
                 }
 
-                if (!$dryRun) {
+                if (! $dryRun) {
                     // original nur setzen, wenn noch leer
                     if (is_string($product->original_product_name) && trim($product->original_product_name) === '') {
                         $product->original_product_name = $db;
+                        $product->saveQuietly();
                     } elseif ($product->original_product_name === null) {
                         $product->original_product_name = $db;
+                        $product->saveQuietly();
                     }
 
-                    $product->product_name = $calc;
-                    $product->saveQuietly();
+                    $updater->update($product);
                 }
 
                 $updated++;
