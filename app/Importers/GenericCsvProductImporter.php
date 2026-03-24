@@ -125,14 +125,8 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $headers = $this->buildNormalizedHeaders($rawHeaders, $mappingType);
 
-        ImportLog::debug('CSV Header BEFORE vs AFTER', [
-            'raw'   => $rawHeaders,
-            'final' => $headers,
-        ]);
-
         ImportLog::debug('CSV Header FINAL', [
-            'mapping_type' => $mappingType,
-            'headers'      => $headers,
+            'headers' => $headers,
         ]);
 
         $records = [];
@@ -454,13 +448,9 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
-     * Macht Petzl-Header eindeutig und ordnet wiederholte "Unit"-Spalten
-     * der jeweils direkt vorherigen Wertespalte zu.
-     *
-     * Beispiel:
-     * Volume;Unit;Length;Unit
-     * wird zu
-     * Volume;Volume_Unit;Length;Length_Unit
+     * Macht Petzl-Header eindeutig und ordnet:
+     * - Unit-Spalten der vorherigen Spalte zu
+     * - leere Header (aus Excel-Merge) der vorherigen Spalte zu (z. B. Specifications_2)
      *
      * @param array<int, string> $headers
      * @return array<int, string>
@@ -472,16 +462,16 @@ class GenericCsvProductImporter implements CsvImporterContract
         $lastValueHeader = null;
 
         foreach ($headers as $header) {
-            $header = $this->normalizeHeader(
-                is_string($header) ? $header : (string) $header,
-                false
-            );
+            $header = $this->normalizeHeader(is_string($header) ? $header : (string) $header, false);
 
             if ($header === '') {
-                $header = 'column';
-            }
-
-            if ($this->isUnitHeader($header)) {
+                // 👉 WICHTIG: leere Header vom Excel-Merge
+                if ($lastValueHeader !== null) {
+                    $base = $lastValueHeader . '_2';
+                } else {
+                    $base = 'column';
+                }
+            } elseif ($this->isUnitHeader($header)) {
                 $base = $lastValueHeader !== null
                     ? $lastValueHeader . '_Unit'
                     : 'Unit';
@@ -499,11 +489,6 @@ class GenericCsvProductImporter implements CsvImporterContract
             $seen[$base]++;
             $out[] = $base . '_' . $seen[$base];
         }
-
-        ImportLog::debug('Petzl header transform', [
-            'input'  => $headers,
-            'output' => $out,
-        ]);
 
         return $out;
     }
@@ -1058,46 +1043,34 @@ class GenericCsvProductImporter implements CsvImporterContract
         $attributeValueIds = [];
         $variationMapping  = $this->mapping['variation'] ?? [];
 
-        foreach ($variationMapping as $attributeName => $csvSpec) {
-            $value = $this->cell($row, $csvSpec);
-            if ($value === null || $value === '') {
-                continue;
+        if ($this->isPetzlVariationRow($row)) {
+
+            ImportLog::debug('Petzl variation specs', [
+                'reference' => $row['Reference'] ?? null,
+                'spec_1'    => $row['Specifications'] ?? null,
+                'spec_2'    => $row['Specifications_2'] ?? null,
+            ]);
+
+            $attributeValueIds = array_merge(
+                $attributeValueIds,
+                $this->resolvePetzlVariationAttributeValueIds($row)
+            );
+        } else {
+            foreach ($variationMapping as $attributeName => $csvSpec) {
+                $value = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+                if ($value === null || $value === '') {
+                    continue;
+                }
+
+                $attributeValue = $this->firstOrCreateAttributeValue((string) $attributeName, (string) $value);
+                $attributeValueIds[] = $attributeValue->id;
             }
-
-            $attributeDisplayName = (string) $attributeName;
-            $attributeSlug        = \Illuminate\Support\Str::slug($attributeDisplayName);
-
-            $attribute = \App\Models\ProductAttribute::firstOrCreate(
-                ['slug' => $attributeSlug],
-                ['name' => $attributeDisplayName]
-            );
-
-            $attributeValue = \App\Models\ProductAttributeValue::firstOrCreate(
-                ['attribute_id' => $attribute->id, 'slug' => \Illuminate\Support\Str::slug($value)],
-                ['value' => $value]
-            );
-
-            $attributeValueIds[] = $attributeValue->id;
         }
 
         if (! empty($attributeValueIds)) {
-            $variation->attributeValues()->sync($attributeValueIds);
+            $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
         }
 
-        /**
-         * Speichert Aliens-Feature-Spalten automatisch als product_meta.
-         *
-         * Unterstützt:
-         * - Alle Spalten mit Prefix "Feature:"
-         * - Zusätzlich strukturierte Triples:
-         *   - Feature Name
-         *   - Feature Value
-         *   - Feature Position
-         *
-         * Die Daten werden bewusst nicht normalisiert,
-         * sondern 1:1 aus der CSV übernommen, um maximale
-         * Nachverfolgbarkeit zum Lieferantenfeed zu behalten.
-         */
         if ($this->flag('auto_attribute_groups', false) === true) {
             foreach ($row as $colName => $raw) {
                 if (!is_string($colName)) {
@@ -1125,7 +1098,6 @@ class GenericCsvProductImporter implements CsvImporterContract
                     continue;
                 }
 
-                // Kombi-Group (mit "|") erstmal roh ablegen (kann später separat behandelt werden)
                 if (str_contains($attributeDisplayName, '|')) {
                     ProductMeta::updateOrCreate(
                         [
@@ -1139,18 +1111,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                     continue;
                 }
 
-                $attributeSlug = Str::slug($attributeDisplayName);
-
-                $attribute = ProductAttribute::firstOrCreate(
-                    ['slug' => $attributeSlug],
-                    ['name' => $attributeDisplayName]
-                );
-
-                $attributeValue = ProductAttributeValue::firstOrCreate(
-                    ['attribute_id' => $attribute->id, 'slug' => Str::slug($value)],
-                    ['value' => $value]
-                );
-
+                $attributeValue = $this->firstOrCreateAttributeValue($attributeDisplayName, $value);
                 $attributeValueIds[] = $attributeValue->id;
             }
 
@@ -1158,6 +1119,131 @@ class GenericCsvProductImporter implements CsvImporterContract
                 $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
             }
         }
+    }
+
+    /**
+     * Prüft, ob eine CSV-Zeile aus dem Petzl-Import stammt.
+     *
+     * Grundlage:
+     * - typische Petzl-Spalten wie "Product name", "Reference"
+     * - sowie vorhandene Specifications-Spalten
+     *
+     * @param array<string, mixed> $row
+     * @return bool
+     */
+    protected function isPetzlVariationRow(array $row): bool
+    {
+        return array_key_exists('Product name', $row)
+            && array_key_exists('Reference', $row)
+            && (
+                array_key_exists('Specifications', $row)
+                || array_key_exists('Specifications_2', $row)
+            );
+    }
+
+    /**
+     * Ermittelt Attributwerte (z. B. size, color) für eine Petzl-Variante
+     * aus den Specifications-Spalten.
+     *
+     * Hintergrund:
+     * - Petzl nutzt zusammengeführte Excel-Spalten
+     * - daraus entstehen "Specifications" und "Specifications_2"
+     * - die Werte können je nach Produkt links oder rechts stehen
+     *
+     * @param array<string, mixed> $row
+     * @return array<int, int> Liste von ProductAttributeValue IDs
+     */
+    protected function resolvePetzlVariationAttributeValueIds(array $row): array
+    {
+        $ids = [];
+
+        $specCandidates = [
+            $row['Specifications'] ?? null,
+            $row['Specifications_2'] ?? null,
+        ];
+
+        $specValues = [];
+        foreach ($specCandidates as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+
+            $value = trim($value);
+            if ($value === '') {
+                continue;
+            }
+
+            $specValues[] = $value;
+        }
+
+        foreach ($specValues as $value) {
+            if ($this->looksLikePetzlSize($value)) {
+                $ids[] = $this->firstOrCreateAttributeValue('size', $value)->id;
+                continue;
+            }
+
+            $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Heuristik zur Erkennung von Größenangaben bei Petzl.
+     *
+     * Erkennt u. a.:
+     * - S, M, L, XL, XXL
+     * - numerische Größen (0, 1, 2, ...)
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlSize(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        if (preg_match('/^(XXS|XS|S|M|L|XL|XXL)$/i', $value)) {
+            return true;
+        }
+
+        if (preg_match('/^\d+$/', $value)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Erstellt (oder findet) ein Attribut und dessen Wert.
+     *
+     * Kapselt die Standardlogik für:
+     * - ProductAttribute
+     * - ProductAttributeValue
+     *
+     * @param string $attributeDisplayName
+     * @param string $value
+     * @return \App\Models\ProductAttributeValue
+     */
+    protected function firstOrCreateAttributeValue(string $attributeDisplayName, string $value): \App\Models\ProductAttributeValue
+    {
+        $attributeDisplayName = trim($attributeDisplayName);
+        $value = trim($value);
+
+        $attributeSlug = \Illuminate\Support\Str::slug($attributeDisplayName);
+
+        $attribute = \App\Models\ProductAttribute::firstOrCreate(
+            ['slug' => $attributeSlug],
+            ['name' => $attributeDisplayName]
+        );
+
+        return \App\Models\ProductAttributeValue::firstOrCreate(
+            ['attribute_id' => $attribute->id, 'slug' => \Illuminate\Support\Str::slug($value)],
+            ['value' => $value]
+        );
     }
 
     /**
