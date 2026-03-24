@@ -1374,31 +1374,34 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
-     * Persists the computed product name (NameBuilder) into the database.
+     * Berechnet und persistiert den Produktnamen auf Basis der aktuellen
+     * Produkt- und Varianten-Daten.
      *
-     * This should be called AFTER variation attributes have been synced,
-     * because variable product names depend on variation-level attributes
-     * (e.g. color, length).
+     * Wichtig:
+     * Die Varianten-Relation wird bewusst frisch geladen, da diese Methode
+     * während des Imports mehrfach pro Produkt aufgerufen wird und bereits
+     * geladene Relations sonst veraltete Daten enthalten können.
      *
-     * Conventions (consistent with Aliens):
-     * - products.original_product_name = raw name from source (CSV/XML/API)
-     * - products.product_name          = computed name from NameBuilder
-     *
-     * @param  \App\Models\Product  $product
+     * @param \App\Models\Product $product
      * @return void
      */
     protected function persistComputedProductName(\App\Models\Product $product): void
     {
-        $product->loadMissing(['manufacturer', 'variations.attributeValues.attribute']);
+        $product->refresh()->load([
+            'manufacturer',
+            'variations.attributeValues.attribute',
+        ]);
 
         $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
 
         Log::debug('NAMECTX', [
-            'product_id'    => $product->id,
-            'manufacturer'  => $ctx->manufacturerName,
-            'designation'   => $ctx->designation,
-            'properties'    => $ctx->properties,
-            'kind'          => $ctx->kind->value ?? (string) $ctx->kind,
+            'product_id'       => $product->id,
+            'product_type'     => $product->product_type,
+            'variations_count' => $product->variations->count(),
+            'manufacturer'     => $ctx->manufacturerName,
+            'designation'      => $ctx->designation,
+            'properties'       => $ctx->properties,
+            'kind'             => $ctx->kind->value ?? (string) $ctx->kind,
         ]);
 
         /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
