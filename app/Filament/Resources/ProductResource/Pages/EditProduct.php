@@ -24,16 +24,10 @@ class EditProduct extends EditRecord
                     /** @var \App\Models\Product $record */
                     $record = $this->record;
 
-                    $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($record);
+                    /** @var \App\Models\Product $record */
+                    $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
-                    /** @var \App\Services\ProductNaming\DefaultProductNameBuilder $builder */
-                    $builder = app(\App\Services\ProductNaming\DefaultProductNameBuilder::class);
-
-                    $result = $builder->build($ctx);
-
-                    $record->update([
-                        'product_name' => $result->productName,
-                    ]);
+                    $updater->update($record);
 
                     $this->record->refresh();
 
