@@ -33,10 +33,6 @@ final class ParentLeadPropertyResolver
             return null;
         }
 
-        if (count($groups) === 1) {
-            return null;
-        }
-
         $priority = $this->priorityForCategory($categoryName);
 
         foreach ($priority as $type) {
