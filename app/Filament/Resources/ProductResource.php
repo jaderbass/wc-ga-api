@@ -99,15 +99,13 @@ class ProductResource extends Resource
                                 ->maxLength(255)
                                 ->columnSpan(8),
 
-                            Placeholder::make('baugruppe_label')
+                            TextInput::make('assembly_group')
                                 ->label('Baugruppe')
-                                ->content(function (?Product $record): string {
-                                    return match ($record?->baugruppe) {
-                                        1 => '1 - Helm',
-                                        2 => '2 - Gurt',
-                                        default => '—',
-                                    };
-                                })
+                                ->numeric()
+                                ->integer()
+                                ->minValue(1)
+                                ->required()
+                                ->helperText('Kann manuell angepasst werden. Standard ist 1.')
                                 ->columnSpan(4),
 
                             Placeholder::make('product_name_parts')
