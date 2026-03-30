@@ -11,7 +11,7 @@ namespace App\Services\Product;
  * Die Reihenfolge der Regeln ist relevant: Die erste passende Regel gewinnt.
  * Wenn keine Regel zutrifft, wird standardmäßig Baugruppe 1 zurückgegeben.
  */
-class BaugruppeResolver
+class AssemblyGroupResolver
 {
     /**
      * Ermittelt die Baugruppe anhand des übergebenen Produktnamens.
