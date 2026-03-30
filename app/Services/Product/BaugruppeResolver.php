@@ -9,7 +9,7 @@ namespace App\Services\Product;
  * (case-insensitive) aus dem final berechneten Produktnamen abgeleitet.
  *
  * Die Reihenfolge der Regeln ist relevant: Die erste passende Regel gewinnt.
- * Gibt null zurück, wenn keine Regel zutrifft.
+ * Wenn keine Regel zutrifft, wird standardmäßig Baugruppe 1 zurückgegeben.
  */
 class BaugruppeResolver
 {
@@ -17,17 +17,17 @@ class BaugruppeResolver
      * Ermittelt die Baugruppe anhand des übergebenen Produktnamens.
      *
      * Die Regeln werden aus der Konfiguration geladen und nacheinander geprüft.
-     * Gibt null zurück, wenn keine passende Regel gefunden wurde.
+     * Wenn keine passende Regel gefunden wird, wird Baugruppe 1 zurückgegeben.
      *
      * @param string|null $productName
-     * @return int|null
+     * @return int
      */
-    public function resolve(?string $productName): ?int
+    public function resolve(?string $productName): int
     {
         $name = mb_strtolower(trim((string) $productName));
 
         if ($name === '') {
-            return null;
+            return 1;
         }
 
         $rules = config('baugruppe.rules', []);
@@ -45,6 +45,6 @@ class BaugruppeResolver
             }
         }
 
-        return null;
+        return 1;
     }
 }
