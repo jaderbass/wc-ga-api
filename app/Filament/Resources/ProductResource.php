@@ -97,7 +97,7 @@ class ProductResource extends Resource
                                 ->required()
                                 ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
                                 ->maxLength(255)
-                                ->columnSpan(8),
+                                ->columnSpan(7),
 
                             TextInput::make('assembly_group')
                                 ->label('Baugruppe')
@@ -108,10 +108,31 @@ class ProductResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn($state, callable $set) => $set('assembly_group_source', 'manual'))
                                 ->helperText('Kann manuell angepasst werden. Standard ist 1.')
-                                ->columnSpan(4),
+                                ->columnSpan(3),
+
+                            Placeholder::make('assembly_group_source_badge')
+                                ->label('Quelle')
+                                ->content(function (?Product $record) {
+                                    $source = $record?->assembly_group_source ?? 'auto';
+
+                                    $label = $source === 'manual' ? '✏️ Manuell' : '⚙️ Automatisch';
+
+                                    $style = match ($source) {
+                                        'manual' => 'display:inline-flex;align-items:center;border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.75rem;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;',
+                                        default => 'display:inline-flex;align-items:center;border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.75rem;font-weight:600;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;',
+                                    };
+
+                                    return new \Illuminate\Support\HtmlString(sprintf(
+                                        '<span style="%s">%s</span>',
+                                        $style,
+                                        e($label)
+                                    ));
+                                })
+                                ->columnSpan(2),
 
                             Hidden::make('assembly_group_source')
-                                ->default('auto'),
+                                ->default('auto')
+                                ->dehydrated(true),
 
                             Placeholder::make('product_name_parts')
                                 ->label('Namensbestandteile')
