@@ -1415,14 +1415,17 @@ class GenericCsvProductImporter implements CsvImporterContract
     {
         $product->refresh();
 
-        if ((int) $product->assembly_group >= 1) {
-            return;
-        }
-
         /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
         $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
 
-        $product->assembly_group = $resolver->resolve((string) $product->product_name);
+        $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+        $currentAssemblyGroup = (int) $product->assembly_group;
+
+        if ($currentAssemblyGroup === $resolvedAssemblyGroup) {
+            return;
+        }
+
+        $product->assembly_group = $resolvedAssemblyGroup;
         $product->save();
     }
 }
