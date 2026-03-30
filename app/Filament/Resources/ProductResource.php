@@ -108,6 +108,30 @@ class ProductResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn($state, callable $set) => $set('assembly_group_source', 'manual'))
                                 ->helperText('Kann manuell angepasst werden. Standard ist 1.')
+                                ->suffixAction(
+                                    Forms\Components\Actions\Action::make('resetAssemblyGroupToAuto')
+                                        ->label('Auto')
+                                        ->icon('heroicon-m-arrow-path')
+                                        ->tooltip('Automatische Berechnung wieder aktivieren')
+                                        ->visible(fn(?Product $record) => $record?->assembly_group_source === 'manual')
+                                        ->action(function (?Product $record, callable $set) {
+                                            if (! $record) {
+                                                return;
+                                            }
+
+                                            /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+                                            $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
+
+                                            $resolvedAssemblyGroup = $resolver->resolve((string) $record->product_name);
+
+                                            $record->assembly_group = $resolvedAssemblyGroup;
+                                            $record->assembly_group_source = 'auto';
+                                            $record->save();
+
+                                            $set('assembly_group', $resolvedAssemblyGroup);
+                                            $set('assembly_group_source', 'auto');
+                                        })
+                                )
                                 ->columnSpan(3),
 
                             Placeholder::make('assembly_group_source_badge')
