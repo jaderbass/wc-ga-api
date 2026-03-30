@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Product;
-use App\Services\Product\BaugruppeResolver;
+use App\Services\Product\AssemblyGroupResolver;
 use Illuminate\Console\Command;
 
 class BackfillProductAssemblyGroupCommand extends Command
@@ -25,10 +25,10 @@ class BackfillProductAssemblyGroupCommand extends Command
     /**
      * Execute the console command.
      *
-     * @param \App\Services\Product\BaugruppeResolver $resolver
+     * @param \App\Services\Product\AssemblyGroupResolver $resolver
      * @return int
      */
-    public function handle(BaugruppeResolver $resolver): int
+    public function handle(AssemblyGroupResolver $resolver): int
     {
         $dryRun = (bool) $this->option('dry-run');
 
