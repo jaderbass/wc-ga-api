@@ -5,7 +5,7 @@ namespace App\Importers;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Services\Categories\ProductCategorySyncService;
-use App\Services\Product\BaugruppeResolver;
+use App\Services\Product\AssemblyGroupResolver;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductMeta;
@@ -1419,8 +1419,8 @@ class GenericCsvProductImporter implements CsvImporterContract
             return;
         }
 
-        /** @var \App\Services\Product\BaugruppeResolver $resolver */
-        $resolver = app(\App\Services\Product\BaugruppeResolver::class);
+        /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+        $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
 
         $product->assembly_group = $resolver->resolve((string) $product->product_name);
         $product->save();
