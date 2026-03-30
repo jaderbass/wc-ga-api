@@ -20,7 +20,7 @@ class BackfillProductAssemblyGroupCommand extends Command
      *
      * @var string
      */
-    protected $description = 'Berechnet die Baugruppe für bestehende Produkte anhand des Produktnamens neu.';
+    protected $description = 'Berechnet assembly_group für Produkte neu und respektiert manuelle Werte.';
 
     /**
      * Execute the console command.
@@ -28,47 +28,52 @@ class BackfillProductAssemblyGroupCommand extends Command
      * @param \App\Services\Product\AssemblyGroupResolver $resolver
      * @return int
      */
-    public function handle(AssemblyGroupResolver $resolver): int
+    public function handle(): int
     {
         $dryRun = (bool) $this->option('dry-run');
 
-        $updated = 0;
-        $unchanged = 0;
+        /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+        $resolver = app(AssemblyGroupResolver::class);
+
+        $checked = 0;
+        $changed = 0;
 
         Product::query()
-            ->select(['id', 'product_name', 'assembly_group'])
+            ->where('assembly_group_source', 'auto')
+            ->select(['id', 'product_name', 'assembly_group', 'assembly_group_source'])
             ->orderBy('id')
-            ->chunkById(200, function ($products) use ($resolver, $dryRun, &$updated, &$unchanged) {
+            ->chunkById(200, function ($products) use ($resolver, $dryRun, &$checked, &$changed) {
                 foreach ($products as $product) {
+                    $checked++;
+
                     $newValue = $resolver->resolve($product->product_name);
 
-                    if ($product->assembly_group === $newValue) {
-                        $unchanged++;
+                    if ((int) $product->assembly_group === $newValue) {
                         continue;
                     }
+
+                    $changed++;
 
                     $this->line(sprintf(
                         '#%d | %s | %s -> %s',
                         $product->id,
-                        (string) $product->product_name,
+                        $product->product_name ?? '—',
                         var_export($product->assembly_group, true),
-                        var_export($newValue, true)
+                        var_export($newValue, true),
                     ));
 
                     if (! $dryRun) {
                         $product->assembly_group = $newValue;
+                        $product->assembly_group_source = 'auto';
                         $product->save();
                     }
-
-                    $updated++;
                 }
             });
 
         $this->newLine();
-        $this->info('Fertig.');
-        $this->line("Geändert: {$updated}");
-        $this->line("Unverändert: {$unchanged}");
-        $this->line('Modus: ' . ($dryRun ? 'Dry-Run' : 'Speichern'));
+        $this->info("Geprüft: {$checked}");
+        $this->info("Geändert: {$changed}");
+        $this->info($dryRun ? 'Dry-Run: keine Daten gespeichert.' : 'Fertig.');
 
         return self::SUCCESS;
     }
