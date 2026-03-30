@@ -1411,9 +1411,26 @@ class GenericCsvProductImporter implements CsvImporterContract
      * @param \App\Models\Product $product
      * @return void
      */
+    /**
+     * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
+     * bereits berechneten und gespeicherten Produktnamen.
+     *
+     * Die Ableitung erfolgt über den Resolver und wird nur durchgeführt, wenn
+     * der Wert nicht manuell gepflegt wurde.
+     *
+     * Voraussetzung:
+     * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
+     *
+     * @param \App\Models\Product $product
+     * @return void
+     */
     protected function persistComputedAssemblyGroup(\App\Models\Product $product): void
     {
         $product->refresh();
+
+        if (($product->assembly_group_source ?? 'auto') === 'manual') {
+            return;
+        }
 
         /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
         $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
@@ -1422,10 +1439,16 @@ class GenericCsvProductImporter implements CsvImporterContract
         $currentAssemblyGroup = (int) $product->assembly_group;
 
         if ($currentAssemblyGroup === $resolvedAssemblyGroup) {
+            if (($product->assembly_group_source ?? 'auto') !== 'auto') {
+                $product->assembly_group_source = 'auto';
+                $product->save();
+            }
+
             return;
         }
 
         $product->assembly_group = $resolvedAssemblyGroup;
+        $product->assembly_group_source = 'auto';
         $product->save();
     }
 }
