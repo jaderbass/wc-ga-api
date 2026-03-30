@@ -105,8 +105,13 @@ class ProductResource extends Resource
                                 ->integer()
                                 ->minValue(1)
                                 ->required()
+                                ->live()
+                                ->afterStateUpdated(fn($state, callable $set) => $set('assembly_group_source', 'manual'))
                                 ->helperText('Kann manuell angepasst werden. Standard ist 1.')
                                 ->columnSpan(4),
+
+                            Hidden::make('assembly_group_source')
+                                ->default('auto'),
 
                             Placeholder::make('product_name_parts')
                                 ->label('Namensbestandteile')
