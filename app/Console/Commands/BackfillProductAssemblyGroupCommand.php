@@ -6,14 +6,14 @@ use App\Models\Product;
 use App\Services\Product\BaugruppeResolver;
 use Illuminate\Console\Command;
 
-class BackfillProductBaugruppeCommand extends Command
+class BackfillProductAssemblyGroupCommand extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'products:backfill-baugruppe {--dry-run : Nur prüfen, nichts speichern}';
+    protected $signature = 'products:backfill-assembly-group {--dry-run : Nur prüfen, nichts speichern}';
 
     /**
      * The console command description.
@@ -36,13 +36,13 @@ class BackfillProductBaugruppeCommand extends Command
         $unchanged = 0;
 
         Product::query()
-            ->select(['id', 'product_name', 'baugruppe'])
+            ->select(['id', 'product_name', 'assembly_group'])
             ->orderBy('id')
             ->chunkById(200, function ($products) use ($resolver, $dryRun, &$updated, &$unchanged) {
                 foreach ($products as $product) {
                     $newValue = $resolver->resolve($product->product_name);
 
-                    if ($product->baugruppe === $newValue) {
+                    if ($product->assembly_group === $newValue) {
                         $unchanged++;
                         continue;
                     }
@@ -51,12 +51,12 @@ class BackfillProductBaugruppeCommand extends Command
                         '#%d | %s | %s -> %s',
                         $product->id,
                         (string) $product->product_name,
-                        var_export($product->baugruppe, true),
+                        var_export($product->assembly_group, true),
                         var_export($newValue, true)
                     ));
 
                     if (! $dryRun) {
-                        $product->baugruppe = $newValue;
+                        $product->assembly_group = $newValue;
                         $product->save();
                     }
 
