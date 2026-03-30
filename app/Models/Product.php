@@ -45,6 +45,8 @@ class Product extends Model
         'product_number',
         'ean',
         'product_name',
+        'assembly_group',
+        'assembly_group_source',
         'width',
         'length',
         'height',
@@ -72,6 +74,9 @@ class Product extends Model
         'box_length'          => 'integer',
         'box_width'           => 'integer',
         'box_height'          => 'integer',
+        'assembly_group'      => 'integer',
+        'created_at'          => 'datetime',
+        'updated_at'          => 'datetime',
     ];
 
     /**
