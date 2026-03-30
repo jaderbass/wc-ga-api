@@ -5,6 +5,7 @@ namespace App\Importers;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Services\Categories\ProductCategorySyncService;
+use App\Services\Product\BaugruppeResolver;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductMeta;
@@ -1011,7 +1012,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         // Persist computed parent name (variable products depend on variation attributes)
         $this->persistComputedProductName($product);
-        $this->persistComputedBaugruppe($product);
+        $this->persistComputedAssemblyGroup($product);
     }
 
     /**
@@ -1398,11 +1399,11 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
-     * Ermittelt und persistiert die Baugruppe eines Produkts basierend auf dem
+     * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
      * bereits berechneten und gespeicherten Produktnamen.
      *
      * Die Ableitung erfolgt über den BaugruppeResolver und wird nur durchgeführt,
-     * wenn sich der Wert tatsächlich ändert, um unnötige Datenbank-Updates zu vermeiden.
+     * wenn noch kein gültiger Wert gesetzt ist. So bleiben manuelle Änderungen erhalten.
      *
      * Voraussetzung:
      * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
@@ -1410,20 +1411,18 @@ class GenericCsvProductImporter implements CsvImporterContract
      * @param \App\Models\Product $product
      * @return void
      */
-    protected function persistComputedBaugruppe(\App\Models\Product $product): void
+    protected function persistComputedAssemblyGroup(\App\Models\Product $product): void
     {
         $product->refresh();
+
+        if ((int) $product->assembly_group >= 1) {
+            return;
+        }
 
         /** @var \App\Services\Product\BaugruppeResolver $resolver */
         $resolver = app(\App\Services\Product\BaugruppeResolver::class);
 
-        $baugruppe = $resolver->resolve((string) $product->product_name);
-
-        if ($product->baugruppe === $baugruppe) {
-            return;
-        }
-
-        $product->baugruppe = $baugruppe;
+        $product->assembly_group = $resolver->resolve((string) $product->product_name);
         $product->save();
     }
 }
