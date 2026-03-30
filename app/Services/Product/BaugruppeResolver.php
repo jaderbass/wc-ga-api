@@ -30,7 +30,7 @@ class BaugruppeResolver
             return 1;
         }
 
-        $rules = config('baugruppe.rules', []);
+        $rules = config('assembly_group.rules', []);
 
         foreach ($rules as $rule) {
             $needle = mb_strtolower(trim((string) ($rule['contains'] ?? '')));
