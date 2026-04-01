@@ -169,28 +169,19 @@ class CategoryResource extends Resource
             ])
             ->defaultSort('name')
             ->actions([
-                Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
                     ->label('Löschen')
-                    ->disabled(function (Category $record): bool {
+                    ->requiresConfirmation()
+                    ->visible(function (Category $record): bool {
                         if ($record->name === 'Allgemein') {
-                            return true;
+                            return false;
                         }
 
-                        return $record->products()->exists();
-                    })
-                    ->tooltip(function (Category $record): ?string {
-                        if ($record->name === 'Allgemein') {
-                            return 'Die Standardkategorie "Allgemein" darf nicht gelöscht werden.';
-                        }
+                        return ! $record->products()->exists();
+                    }),
 
-                        if ($record->products()->exists()) {
-                            return 'Diese Kategorie ist Produkten zugewiesen und kann daher nicht gelöscht werden.';
-                        }
 
-                        return null;
-                    })
-                    ->requiresConfirmation(),
+                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
