@@ -243,31 +243,118 @@ HTML;
                                 ->formatStateUsing(fn($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
                                 ->columnSpan(4),
 
-                            Placeholder::make('categories_display')
-                                ->label('Kategorien')
-                                ->content(function (?Product $record): HtmlString|string {
-                                    if (! $record) {
-                                        return '—';
-                                    }
+                            Group::make()
+                                ->schema([
+                                    Select::make('categories')
+                                        ->label('Kategorien')
+                                        ->multiple()
+                                        ->options(fn() => \App\Models\Category::query()
+                                            ->orderBy('name')
+                                            ->pluck('name', 'id')
+                                            ->all())
+                                        ->searchable()
+                                        ->preload()
+                                        ->formatStateUsing(function (?Product $record): array {
+                                            if (! $record) {
+                                                return [];
+                                            }
 
-                                    $categories = $record->categories()
-                                        ->orderBy('name')
-                                        ->pluck('name')
-                                        ->all();
+                                            return $record->categories()
+                                                ->orderBy('name')
+                                                ->pluck('categories.id')
+                                                ->map(fn($id): string => (string) $id)
+                                                ->all();
+                                        })
+                                        ->saveRelationshipsUsing(function (Product $record, ?array $state): void {
+                                            $selectedCategoryIds = collect($state ?? [])
+                                                ->map(fn($id): int => (int) $id)
+                                                ->unique()
+                                                ->values()
+                                                ->all();
 
-                                    if ($categories === []) {
-                                        return '—';
-                                    }
+                                            $existingAssignments = $record->categories()
+                                                ->pluck('category_product.assignment_type', 'categories.id');
 
-                                    $badges = collect($categories)
-                                        ->map(fn(string $name): string => sprintf(
-                                            '<span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-200 mr-1 mb-1">%s</span>',
-                                            e($name)
-                                        ))
-                                        ->implode('');
+                                            $manualCategoryIds = $existingAssignments
+                                                ->filter(fn(string $type): bool => $type === 'manual')
+                                                ->keys()
+                                                ->map(fn($id): int => (int) $id)
+                                                ->all();
 
-                                    return new HtmlString('<div class="flex flex-wrap gap-1">' . $badges . '</div>');
-                                }),
+                                            $manualCategoryIdsToDetach = array_diff($manualCategoryIds, $selectedCategoryIds);
+
+                                            if ($manualCategoryIdsToDetach !== []) {
+                                                $record->categories()->detach($manualCategoryIdsToDetach);
+                                            }
+
+                                            foreach ($selectedCategoryIds as $categoryId) {
+                                                if (! $existingAssignments->has($categoryId)) {
+                                                    $record->categories()->attach($categoryId, [
+                                                        'assignment_type' => 'manual',
+                                                    ]);
+
+                                                    continue;
+                                                }
+
+                                                $currentType = $existingAssignments->get($categoryId);
+
+                                                if ($currentType !== 'manual') {
+                                                    $record->categories()->updateExistingPivot($categoryId, [
+                                                        'assignment_type' => 'manual',
+                                                    ]);
+                                                }
+                                            }
+                                        })
+                                        ->helperText('Auswahl speichert Kategorien manuell. M = manuell, A = automatisch.'),
+
+                                    Placeholder::make('categories_assignment_info')
+                                        ->label('')
+                                        ->content(function (?Product $record): HtmlString|string {
+                                            if (! $record) {
+                                                return '—';
+                                            }
+
+                                            $categories = $record->categories()
+                                                ->orderBy('name')
+                                                ->get();
+
+                                            if ($categories->isEmpty()) {
+                                                return '—';
+                                            }
+
+                                            $items = $categories->map(function ($category): string {
+                                                $type = $category->pivot->assignment_type ?? 'auto';
+
+                                                $icon = $type === 'manual' ? '✏️' : '⚙️';
+                                                $label = $type === 'manual' ? 'M' : 'A';
+
+                                                return sprintf(
+                                                    '<span style="
+                    display:inline-flex;
+                    align-items:center;
+                    padding:0.25rem 0.5rem;
+                    font-size:0.8rem;
+                    border-radius:0.375rem;
+                    background:#111827;
+                    border:1px solid #374151;
+                    color:#f9fafb;
+                    margin-right:0.5rem;
+                    margin-bottom:0.25rem;
+                ">
+                    %s&nbsp;%s&nbsp;(%s)
+                </span>',
+                                                    e($category->name),
+                                                    $icon,
+                                                    $label
+                                                );
+                                            })->implode('');
+
+                                            return new HtmlString(
+                                                '<div style="display:flex;flex-wrap:wrap;">' . $items . '</div>'
+                                            );
+                                        }),
+                                ])
+                                ->columnSpan(4),
 
                             TextInput::make('product_number')
                                 ->label('Produktnummer')

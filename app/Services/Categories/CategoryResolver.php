@@ -12,30 +12,11 @@ use Illuminate\Support\Str;
 class CategoryResolver
 {
     /**
-     * Kategorie-zu-Keyword-Mapping.
+     * Zwischengespeicherte Kategorien mit Regeln für die Laufzeit des Requests.
      *
-     * @var array<string, list<string>>
+     * @var Collection<int, Category>|null
      */
-    protected array $rules = [
-        'Sitz- oder Arbeitsgurte' => [
-            'gurt',
-            'gurte',
-        ],
-        'Seile' => [
-            'seil',
-            'seile',
-            'reepschnur',
-            'reepschnüre',
-        ],
-        'Karabiner' => [
-            'karabiner',
-            'karabiners',
-        ],
-        'Schutzhelme' => [
-            'helm',
-            'helme',
-        ],
-    ];
+    protected ?Collection $categoriesWithRules = null;
 
     /**
      * Ermittelt passende Kategorien für einen Produktnamen.
@@ -49,28 +30,46 @@ class CategoryResolver
     {
         $normalizedName = $this->normalizeProductName($productName);
 
-        $matchedCategoryNames = collect();
+        $matchedCategories = $this->getCategoriesWithRules()
+            ->filter(function (Category $category) use ($normalizedName): bool {
+                foreach ($category->rules as $rule) {
+                    $keyword = $this->normalizeKeyword($rule->keyword);
 
-        foreach ($this->rules as $categoryName => $keywords) {
-            foreach ($keywords as $keyword) {
-                if (Str::contains($normalizedName, $keyword)) {
-                    $matchedCategoryNames->push($categoryName);
-                    break;
+                    if ($keyword !== '' && Str::contains($normalizedName, $keyword)) {
+                        return true;
+                    }
                 }
-            }
-        }
 
-        $matchedCategoryNames = $matchedCategoryNames
-            ->unique()
+                return false;
+            })
             ->values();
 
-        if ($matchedCategoryNames->isEmpty()) {
-            $matchedCategoryNames = collect(['Allgemein']);
+        if ($matchedCategories->isEmpty()) {
+            return Category::query()
+                ->where('name', 'Allgemein')
+                ->get();
         }
 
-        return Category::query()
-            ->whereIn('name', $matchedCategoryNames->all())
+        return $matchedCategories;
+    }
+
+    /**
+     * Lädt Kategorien mit Regeln einmal pro Request.
+     *
+     * @return Collection<int, Category>
+     */
+    protected function getCategoriesWithRules(): Collection
+    {
+        if ($this->categoriesWithRules !== null) {
+            return $this->categoriesWithRules;
+        }
+
+        $this->categoriesWithRules = Category::query()
+            ->with(['rules'])
+            ->whereHas('rules')
             ->get();
+
+        return $this->categoriesWithRules;
     }
 
     /**
@@ -80,6 +79,17 @@ class CategoryResolver
     {
         $value = Str::lower((string) $productName);
         $value = str_replace(['/', '-', '_', ',', '.', ';', ':'], ' ', $value);
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    /**
+     * Normalisiert ein Keyword für die Suche.
+     */
+    protected function normalizeKeyword(?string $keyword): string
+    {
+        $value = Str::lower((string) $keyword);
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
         return trim($value);
