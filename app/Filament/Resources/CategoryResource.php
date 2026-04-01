@@ -4,10 +4,10 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
-use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
@@ -69,6 +69,42 @@ class CategoryResource extends Resource
                         ]),
                     ])
                     ->collapsible(),
+
+                FormSection::make('Automatisierungsregeln')
+                    ->description('Suchbegriffe für die automatische Kategorisierung')
+                    ->schema([
+                        Repeater::make('rules')
+                            ->relationship()
+                            ->label('Regeln')
+                            ->schema([
+                                Grid::make(12)->schema([
+                                    TextInput::make('keyword')
+                                        ->label('Keyword')
+                                        ->required()
+                                        ->maxLength(255)
+                                        ->placeholder('z. B. karabiner')
+                                        ->columnSpan(8),
+
+                                    TextInput::make('sort_order')
+                                        ->label('Sortierung')
+                                        ->numeric()
+                                        ->integer()
+                                        ->default(0)
+                                        ->minValue(0)
+                                        ->columnSpan(4),
+                                ]),
+                            ])
+                            ->defaultItems(0)
+                            ->addActionLabel('Regel hinzufügen')
+                            ->reorderable()
+                            ->collapsible()
+                            ->itemLabel(function (array $state): ?string {
+                                $keyword = trim((string) ($state['keyword'] ?? ''));
+
+                                return $keyword !== '' ? $keyword : 'Neue Regel';
+                            }),
+                    ])
+                    ->collapsible(),
             ]);
     }
 
@@ -96,6 +132,11 @@ class CategoryResource extends Resource
                 Tables\Columns\TextColumn::make('products_count')
                     ->label('Produkte')
                     ->counts('products')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('rules_count')
+                    ->label('Regeln')
+                    ->counts('rules')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('created_at')
