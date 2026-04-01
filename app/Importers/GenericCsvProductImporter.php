@@ -1161,6 +1161,11 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
+            if ($this->looksLikePetzlClosure($value)) {
+                $ids[] = $this->firstOrCreateAttributeValue('closure', $value)->id;
+                continue;
+            }
+
             $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
         }
 
@@ -1194,6 +1199,31 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         return false;
+    }
+
+    /**
+     * Erkennt typische Petzl-Verschluss-/Lock-Angaben.
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlClosure(string $value): bool
+    {
+        $value = trim(mb_strtoupper($value));
+
+        if ($value === '') {
+            return false;
+        }
+
+        return in_array($value, [
+            'BALL-LOCK',
+            'SCREW-LOCK',
+            'TRIACT-LOCK',
+            'TWIST-LOCK',
+            'SL',
+            'BL',
+            'TL',
+        ], true);
     }
 
     /**
@@ -1242,6 +1272,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         return match (trim(mb_strtolower($attributeDisplayName))) {
             'size' => 'Größe',
             'color' => 'Farbe',
+            'closure' => 'Verschluss',
             default => $attributeDisplayName,
         };
     }
