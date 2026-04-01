@@ -31,6 +31,10 @@ class CategoryResolver
             'karabiner',
             'karabiners',
         ],
+        'Verbindungsmittel' => [
+            'karabiner',
+            'karabiners',
+        ],
         'Schutzhelme' => [
             'helm',
             'helme',
