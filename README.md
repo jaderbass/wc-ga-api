@@ -18,8 +18,8 @@
 - [📡 Webhooks (Inbound)](#-webhooks-inbound)
 - [🧾 Logging & Fehleranalyse](#-logging--fehleranalyse)
 - [🧹 Wartung & Refactoring](#-wartung--refactoring)
-- [Eigene Artisan-Commands](#eigene-artisan-commands)
-- [Checkliste: Petzl Import über UI – sauber & reproduzierbar](#checkliste-petzl-import-über-ui--sauber--reproduzierbar)
+- [🛠️ Eigene Artisan-Commands](#️-eigene-artisan-commands)
+- [✅ Checkliste: Petzl Import über UI – sauber & reproduzierbar](#-checkliste-petzl-import-über-ui--sauber--reproduzierbar)
 - [🧰 Entwickler-Tools](#-entwickler-tools)
 - [👨‍💻 Autor](#-autor)
 
@@ -277,7 +277,7 @@ Verarbeitung:
 
 ---
 
-## Eigene Artisan-Commands
+## 🛠️ Eigene Artisan-Commands
 
 | Kommando | Was es tut |
 | ---------- | ------------ |
@@ -294,7 +294,7 @@ Verarbeitung:
 
 ---
 
-## Checkliste: Petzl Import über UI – sauber & reproduzierbar
+## ✅ Checkliste: Petzl Import über UI – sauber & reproduzierbar
 
 ### 1) Aufräumen (vor dem UI-Import)
 
