@@ -107,6 +107,7 @@ class CategoryResource extends Resource
                             ->reorderable()
                             ->reorderableWithButtons()
                             ->collapsible()
+                            ->collapsed()
                             ->itemLabel(function (array $state): ?string {
                                 $keyword = trim((string) ($state['keyword'] ?? ''));
 
