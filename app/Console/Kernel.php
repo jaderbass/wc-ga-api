@@ -25,6 +25,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\BackfillProductNamesCommand::class,
         \App\Console\Commands\ProductNamePreviewCommand::class,
         \App\Console\Commands\TestAliensImportCommand::class,
+        \App\Console\Commands\BackfillProductBaugruppeCommand::class,
     ];
 
     /**

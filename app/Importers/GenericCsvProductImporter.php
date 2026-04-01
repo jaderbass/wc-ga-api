@@ -5,6 +5,7 @@ namespace App\Importers;
 use App\Importers\Contracts\CsvImporterContract;
 use App\Support\ImportLog;
 use App\Services\Categories\ProductCategorySyncService;
+use App\Services\Product\AssemblyGroupResolver;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\ProductMeta;
@@ -1011,6 +1012,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         // Persist computed parent name (variable products depend on variation attributes)
         $this->persistComputedProductName($product);
+        $this->persistComputedAssemblyGroup($product);
     }
 
     /**
@@ -1390,11 +1392,63 @@ class GenericCsvProductImporter implements CsvImporterContract
             'variations.attributeValues.attribute',
         ]);
 
-        $ctx = \App\Services\ProductNaming\ProductNameContext::fromProduct($product);
-
         /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
         $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
         $updater->update($product);
+    }
+
+    /**
+     * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
+     * bereits berechneten und gespeicherten Produktnamen.
+     *
+     * Die Ableitung erfolgt über den BaugruppeResolver und wird nur durchgeführt,
+     * wenn noch kein gültiger Wert gesetzt ist. So bleiben manuelle Änderungen erhalten.
+     *
+     * Voraussetzung:
+     * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
+     *
+     * @param \App\Models\Product $product
+     * @return void
+     */
+    /**
+     * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
+     * bereits berechneten und gespeicherten Produktnamen.
+     *
+     * Die Ableitung erfolgt über den Resolver und wird nur durchgeführt, wenn
+     * der Wert nicht manuell gepflegt wurde.
+     *
+     * Voraussetzung:
+     * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
+     *
+     * @param \App\Models\Product $product
+     * @return void
+     */
+    protected function persistComputedAssemblyGroup(\App\Models\Product $product): void
+    {
+        $product->refresh();
+
+        if (($product->assembly_group_source ?? 'auto') === 'manual') {
+            return;
+        }
+
+        /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+        $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
+
+        $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+        $currentAssemblyGroup = (int) $product->assembly_group;
+
+        if ($currentAssemblyGroup === $resolvedAssemblyGroup) {
+            if (($product->assembly_group_source ?? 'auto') !== 'auto') {
+                $product->assembly_group_source = 'auto';
+                $product->save();
+            }
+
+            return;
+        }
+
+        $product->assembly_group = $resolvedAssemblyGroup;
+        $product->assembly_group_source = 'auto';
+        $product->save();
     }
 }

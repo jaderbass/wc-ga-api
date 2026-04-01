@@ -97,7 +97,66 @@ class ProductResource extends Resource
                                 ->required()
                                 ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
                                 ->maxLength(255)
-                                ->columnSpan(4),
+                                ->columnSpan(7),
+
+                            TextInput::make('assembly_group')
+                                ->label('Baugruppe')
+                                ->numeric()
+                                ->integer()
+                                ->minValue(1)
+                                ->required()
+                                ->live()
+                                ->afterStateUpdated(fn($state, callable $set) => $set('assembly_group_source', 'manual'))
+                                ->helperText('Kann manuell angepasst werden. Standard ist 1.')
+                                ->suffixAction(
+                                    Forms\Components\Actions\Action::make('resetAssemblyGroupToAuto')
+                                        ->label('Auto')
+                                        ->icon('heroicon-m-arrow-path')
+                                        ->tooltip('Automatische Berechnung wieder aktivieren')
+                                        ->visible(fn(?Product $record) => $record?->assembly_group_source === 'manual')
+                                        ->action(function (?Product $record, callable $set) {
+                                            if (! $record) {
+                                                return;
+                                            }
+
+                                            /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+                                            $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
+
+                                            $resolvedAssemblyGroup = $resolver->resolve((string) $record->product_name);
+
+                                            $record->assembly_group = $resolvedAssemblyGroup;
+                                            $record->assembly_group_source = 'auto';
+                                            $record->save();
+
+                                            $set('assembly_group', $resolvedAssemblyGroup);
+                                            $set('assembly_group_source', 'auto');
+                                        })
+                                )
+                                ->columnSpan(3),
+
+                            Placeholder::make('assembly_group_source_badge')
+                                ->label('Quelle')
+                                ->content(function (?Product $record) {
+                                    $source = $record?->assembly_group_source ?? 'auto';
+
+                                    $label = $source === 'manual' ? '✏️ Manuell' : '⚙️ Automatisch';
+
+                                    $style = match ($source) {
+                                        'manual' => 'display:inline-flex;align-items:center;border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.75rem;font-weight:600;background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;',
+                                        default => 'display:inline-flex;align-items:center;border-radius:0.375rem;padding:0.25rem 0.5rem;font-size:0.75rem;font-weight:600;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;',
+                                    };
+
+                                    return new \Illuminate\Support\HtmlString(sprintf(
+                                        '<span style="%s">%s</span>',
+                                        $style,
+                                        e($label)
+                                    ));
+                                })
+                                ->columnSpan(2),
+
+                            Hidden::make('assembly_group_source')
+                                ->default('auto')
+                                ->dehydrated(true),
 
                             Placeholder::make('product_name_parts')
                                 ->label('Namensbestandteile')
@@ -160,7 +219,7 @@ HTML;
                                     return new \Illuminate\Support\HtmlString($html);
                                 })
                                 ->helperText('Live Vorschau basierend auf den aktuellen Daten')
-                                ->columnSpan(8),
+                                ->columnSpanFull(),
 
 
                             TextInput::make('slug')
@@ -1006,75 +1065,6 @@ HTML;
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()->label('Löschen'),
-                    /**
-                     * Fügt eine Bulk-Action hinzu, um ausgewählte Produkte zu Woo zu synchronisieren.
-                     * - Optional: Only changed
-                     * - Optional: Dry-run
-                     * - Shop wählbar (Default-Shop vorbelegt)
-                     */
-                    // BulkAction::make('sync_to_woo')
-                    //   ->label('Zu Woo synchronisieren')
-                    //   ->icon('heroicon-o-arrow-up-on-square')
-                    //   ->deselectRecordsAfterCompletion()
-                    //   ->requiresConfirmation()
-                    //   ->form([
-                    //     Select::make('shop_id')
-                    //       ->label('Shop')
-                    //       ->options(Shop::query()->orderByDesc('is_default')->orderBy('name')->pluck('name', 'id'))
-                    //       ->default(fn() => Shop::query()->where('is_default', true)->value('id'))
-                    //       ->required(),
-                    //     Toggle::make('only_changed')
-                    //       ->label('Nur geänderte senden')
-                    //       ->default(true),
-                    //     Toggle::make('dry_run')
-                    //       ->label('Dry-run (nur Vorschau)')
-                    //       ->default(false),
-                    //   ])
-                    //   ->action(function (Collection $records, array $data) {
-                    //     /** @var Shop $shop */
-                    //     $shop = Shop::findOrFail($data['shop_id']);
-                    //     /** @var WooProductService $svc */
-                    //     $svc = app(WooProductService::class);
-
-                    //     $ok = 0;
-                    //     $skip = 0;
-                    //     $fail = 0;
-                    //     $details = [];
-
-                    //     foreach ($records as $product) {
-                    //       try {
-                    //         $res = $svc->upsertProduct(
-                    //           $product,
-                    //           $shop,
-                    //           (bool)($data['dry_run'] ?? false),
-                    //           (bool)($data['only_changed'] ?? false),
-                    //         );
-
-                    //         if (($res['status'] ?? '') === 'error') {
-                    //           $fail++;
-                    //           $details[] = "✖ #{$product->id}: " . ($res['message'] ?? 'Unbekannter Fehler');
-                    //         } elseif (!empty($res['skipped'])) {
-                    //           $skip++;
-                    //           $details[] = "⏭ #{$product->id}: unverändert";
-                    //         } else {
-                    //           $ok++;
-                    //           $act = $res['action'] ?? 'update';
-                    //           $woo = $res['id'] ?? '?';
-                    //           $details[] = "✔ #{$product->id} → {$act} (Woo #{$woo})";
-                    //         }
-                    //       } catch (\Throwable $e) {
-                    //         $fail++;
-                    //         $details[] = "✖ #{$product->id}: " . $e->getMessage();
-                    //       }
-                    //     }
-
-                    //     $summary = "OK: {$ok} · Übersprungen: {$skip} · Fehler: {$fail}";
-                    //     Notification::make()
-                    //       ->title('Woo-Sync abgeschlossen')
-                    //       ->body($summary . "\n" . implode("\n", array_slice($details, 0, 8)) . (count($details) > 8 ? "\n…" : ''))
-                    //       ->success()
-                    //       ->send();
-                    //   }),
                     SyncProductsBulkAction::make('sync_to_woo'),
                     SyncVariationsBulkAction::make('sync_variations_to_woo'),
                 ])
