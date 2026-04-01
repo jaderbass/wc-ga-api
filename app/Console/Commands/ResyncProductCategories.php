@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\ResyncProductCategoriesJob;
 use App\Models\Product;
 use App\Services\Categories\ProductCategorySyncService;
 use Illuminate\Console\Command;
@@ -17,10 +18,11 @@ class ResyncProductCategories extends Command
      * @var string
      */
     protected $signature = 'categories:resync
-                            {--product-id= : Nur ein bestimmtes Produkt synchronisieren}
-                            {--manufacturer-id= : Nur Produkte eines Herstellers synchronisieren}
-                            {--chunk=200 : Chunk-Größe für die Verarbeitung}
-                            {--dry-run : Nur anzeigen, welche Produkte verarbeitet würden}';
+                        {--product-id= : Nur ein bestimmtes Produkt synchronisieren}
+                        {--manufacturer-id= : Nur Produkte eines Herstellers synchronisieren}
+                        {--chunk=200 : Chunk-Größe für die Verarbeitung}
+                        {--dry-run : Nur anzeigen, welche Produkte verarbeitet würden}
+                        {--queue : Verarbeitung als Queue-Job starten}';
 
     /**
      * Die Beschreibung des Console-Commands.
@@ -38,6 +40,7 @@ class ResyncProductCategories extends Command
         $manufacturerId = $this->option('manufacturer-id');
         $chunkSize = max(1, (int) $this->option('chunk'));
         $dryRun = (bool) $this->option('dry-run');
+        $queue = (bool) $this->option('queue');
 
         $query = Product::query()->select(['id', 'manufacturer_id', 'product_name']);
 
@@ -53,6 +56,24 @@ class ResyncProductCategories extends Command
 
         if ($total === 0) {
             $this->warn('Keine passenden Produkte gefunden.');
+
+            return self::SUCCESS;
+        }
+
+        if ($queue) {
+            if ($dryRun) {
+                $this->warn('Die Optionen --queue und --dry-run können nicht kombiniert werden.');
+
+                return self::INVALID;
+            }
+
+            ResyncProductCategoriesJob::dispatch(
+                $productId !== null && $productId !== '' ? (int) $productId : null,
+                $manufacturerId !== null && $manufacturerId !== '' ? (int) $manufacturerId : null,
+                $chunkSize,
+            )->onQueue('imports');
+
+            $this->info('Resync-Job wurde zur Queue hinzugefügt.');
 
             return self::SUCCESS;
         }
