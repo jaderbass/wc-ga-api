@@ -15,27 +15,27 @@ class EditProduct extends EditRecord
         return [
             Actions\DeleteAction::make(),
 
-            Actions\Action::make('rebuildName')
-                ->label('Produktnamen neu generieren')
-                ->icon('heroicon-o-arrow-path')
-                ->color('gray')
-                ->requiresConfirmation()
-                ->action(function () {
-                    /** @var \App\Models\Product $record */
-                    $record = $this->record;
+            // Actions\Action::make('rebuildName')
+            //     ->label('Produktnamen neu generieren')
+            //     ->icon('heroicon-o-arrow-path')
+            //     ->color('gray')
+            //     ->requiresConfirmation()
+            //     ->action(function () {
+            //         /** @var \App\Models\Product $record */
+            //         $record = $this->record;
 
-                    /** @var \App\Models\Product $record */
-                    $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
+            //         /** @var \App\Models\Product $record */
+            //         $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
-                    $updater->update($record);
+            //         $updater->update($record);
 
-                    $this->record->refresh();
+            //         $this->record->refresh();
 
-                    \Filament\Notifications\Notification::make()
-                        ->title('Produktnamen neu generiert')
-                        ->success()
-                        ->send();
-                }),
+            //         \Filament\Notifications\Notification::make()
+            //             ->title('Produktnamen neu generiert')
+            //             ->success()
+            //             ->send();
+            //     }),
         ];
     }
 }

@@ -37,7 +37,7 @@ final class ProductNameUpdater
      */
     public function compute(Product $product): ProductNameResult
     {
-        $product->loadMissing([
+        $product->refresh()->load([
             'manufacturer',
             'variations.attributeValues.attribute',
         ]);
