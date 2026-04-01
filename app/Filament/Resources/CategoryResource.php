@@ -83,6 +83,22 @@ class CategoryResource extends Resource
                                         ->required()
                                         ->maxLength(255)
                                         ->placeholder('z. B. karabiner')
+                                        ->dehydrateStateUsing(function (?string $state): string {
+                                            $value = mb_strtolower(trim((string) $state), 'UTF-8');
+                                            $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+                                            return $value;
+                                        })
+                                        ->rule(function () {
+                                            return function (string $attribute, $value, \Closure $fail): void {
+                                                $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+                                                $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+
+                                                if ($normalized === '') {
+                                                    $fail('Das Keyword darf nicht leer sein.');
+                                                }
+                                            };
+                                        })
                                         ->columnSpan(8),
 
                                     TextInput::make('sort_order')
@@ -154,10 +170,31 @@ class CategoryResource extends Resource
             ->defaultSort('name')
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->label('Löschen')
+                    ->disabled(function (Category $record): bool {
+                        if ($record->name === 'Allgemein') {
+                            return true;
+                        }
+
+                        return $record->products()->exists();
+                    })
+                    ->tooltip(function (Category $record): ?string {
+                        if ($record->name === 'Allgemein') {
+                            return 'Die Standardkategorie "Allgemein" darf nicht gelöscht werden.';
+                        }
+
+                        if ($record->products()->exists()) {
+                            return 'Diese Kategorie ist Produkten zugewiesen und kann daher nicht gelöscht werden.';
+                        }
+
+                        return null;
+                    })
+                    ->requiresConfirmation(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()->label('Löschen'),
+                    // Tables\Actions\DeleteBulkAction::make()->label('Löschen'),
                 ]),
             ]);
     }
