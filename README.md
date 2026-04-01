@@ -27,7 +27,7 @@ Dieses Projekt automatisiert den Import, die Verwaltung und den Export von Produ
 zwischen dem Laravel-/Filament-Backend und WooCommerce-Shops.
 
 Entwickelt von **JAderBass web’n’more** (Jörg Aderhold)  
-Stand: 2025-10-17
+Stand: 2026-04-01
 
 ---
 
