@@ -86,6 +86,7 @@ class EditCategory extends EditRecord
      * - normalisiert Leerzeichen
      * - wandelt in Kleinbuchstaben um
      * - entfernt leere und doppelte Keywords
+     * - setzt die Sortierung anhand der Reihenfolge im Repeater
      *
      * @param array<int, array<string, mixed>> $rules
      * @return array<int, array<string, mixed>>
@@ -95,7 +96,7 @@ class EditCategory extends EditRecord
         $seen = [];
         $result = [];
 
-        foreach ($rules as $index => $rule) {
+        foreach ($rules as $rule) {
             $keyword = mb_strtolower(trim((string) ($rule['keyword'] ?? '')), 'UTF-8');
             $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
 
@@ -107,7 +108,7 @@ class EditCategory extends EditRecord
 
             $result[] = [
                 'keyword' => $keyword,
-                'sort_order' => isset($rule['sort_order']) ? (int) $rule['sort_order'] : $index,
+                'sort_order' => count($result),
             ];
         }
 

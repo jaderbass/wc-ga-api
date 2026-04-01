@@ -99,20 +99,13 @@ class CategoryResource extends Resource
                                                 }
                                             };
                                         })
-                                        ->columnSpan(8),
-
-                                    TextInput::make('sort_order')
-                                        ->label('Sortierung')
-                                        ->numeric()
-                                        ->integer()
-                                        ->default(0)
-                                        ->minValue(0)
-                                        ->columnSpan(4),
+                                        ->columnSpanFull(),
                                 ]),
                             ])
                             ->defaultItems(0)
                             ->addActionLabel('Regel hinzufügen')
                             ->reorderable()
+                            ->reorderableWithButtons()
                             ->collapsible()
                             ->itemLabel(function (array $state): ?string {
                                 $keyword = trim((string) ($state['keyword'] ?? ''));
