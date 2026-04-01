@@ -28,7 +28,8 @@ class Category extends Model
      */
     public function products(): BelongsToMany
     {
-        return $this->belongsToMany(Product::class);
+        return $this->belongsToMany(Product::class)
+            ->withPivot('assignment_type');
     }
 
     /**
@@ -45,5 +46,15 @@ class Category extends Model
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /**
+     * Regeln zur automatischen Kategorisierung.
+     */
+    public function rules(): HasMany
+    {
+        return $this->hasMany(CategoryRule::class)
+            ->orderBy('sort_order')
+            ->orderBy('keyword');
     }
 }
