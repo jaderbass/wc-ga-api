@@ -12,6 +12,13 @@ use Illuminate\Support\Str;
 class CategoryResolver
 {
     /**
+     * Zwischengespeicherte Kategorien mit Regeln für die Laufzeit des Requests.
+     *
+     * @var Collection<int, Category>|null
+     */
+    protected ?Collection $categoriesWithRules = null;
+
+    /**
      * Ermittelt passende Kategorien für einen Produktnamen.
      *
      * Wenn keine Regel greift, wird "Allgemein" zurückgegeben.
@@ -23,21 +30,19 @@ class CategoryResolver
     {
         $normalizedName = $this->normalizeProductName($productName);
 
-        $categories = Category::query()
-            ->with(['rules'])
-            ->get();
+        $matchedCategories = $this->getCategoriesWithRules()
+            ->filter(function (Category $category) use ($normalizedName): bool {
+                foreach ($category->rules as $rule) {
+                    $keyword = $this->normalizeKeyword($rule->keyword);
 
-        $matchedCategories = $categories->filter(function (Category $category) use ($normalizedName): bool {
-            foreach ($category->rules as $rule) {
-                $keyword = $this->normalizeKeyword($rule->keyword);
-
-                if ($keyword !== '' && Str::contains($normalizedName, $keyword)) {
-                    return true;
+                    if ($keyword !== '' && Str::contains($normalizedName, $keyword)) {
+                        return true;
+                    }
                 }
-            }
 
-            return false;
-        })->values();
+                return false;
+            })
+            ->values();
 
         if ($matchedCategories->isEmpty()) {
             return Category::query()
@@ -46,6 +51,25 @@ class CategoryResolver
         }
 
         return $matchedCategories;
+    }
+
+    /**
+     * Lädt Kategorien mit Regeln einmal pro Request.
+     *
+     * @return Collection<int, Category>
+     */
+    protected function getCategoriesWithRules(): Collection
+    {
+        if ($this->categoriesWithRules !== null) {
+            return $this->categoriesWithRules;
+        }
+
+        $this->categoriesWithRules = Category::query()
+            ->with(['rules'])
+            ->whereHas('rules')
+            ->get();
+
+        return $this->categoriesWithRules;
     }
 
     /**
