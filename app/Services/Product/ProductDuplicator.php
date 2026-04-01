@@ -64,10 +64,21 @@ class ProductDuplicator
             'updated_at',
         ]);
 
-        // Neue Identität erzwingen
         $newProduct->woo_product_id = null;
         $newProduct->sku = null;
-        $newProduct->slug = null; // wird im Model automatisch neu erzeugt
+
+        // Für die UI direkt unterscheidbar
+        $newProduct->product_name = $this->makeDuplicateProductName(
+            (string) ($sourceProduct->product_name ?? '')
+        );
+
+        // Rohname beibehalten, falls vorhanden
+        if (property_exists($newProduct, 'original_product_name')) {
+            $newProduct->original_product_name = $sourceProduct->original_product_name;
+        }
+
+        // Slug nicht auf Event verlassen, sondern explizit neu erzeugen
+        $newProduct->slug = $this->makeUniqueProductSlug($newProduct->product_name);
 
         $newProduct->save();
 
@@ -145,13 +156,79 @@ class ProductDuplicator
 
         $newVariation->product_id = $newProduct->id;
         $newVariation->woo_variation_id = null;
-        $newVariation->sku = null;
         $newVariation->external_id = null;
+        $newVariation->sku = $this->makeDuplicateVariationSku($sourceVariation);
         $newVariation->regular_price = null;
         $newVariation->sale_price = null;
 
         $newVariation->save();
 
         return $newVariation;
+    }
+
+    /**
+     * Erzeugt einen sichtbaren Namen für das Duplikat.
+     *
+     * @param string $sourceName
+     * @return string
+     */
+    protected function makeDuplicateProductName(string $sourceName): string
+    {
+        $sourceName = trim($sourceName);
+
+        if ($sourceName === '') {
+            return 'KOPIE - Produkt';
+        }
+
+        if (preg_match('/^KOPIE(?: \d+)? - /u', $sourceName)) {
+            return $sourceName;
+        }
+
+        return 'KOPIE - ' . $sourceName;
+    }
+
+    /**
+     * Erzeugt einen eindeutigen Slug für das neue Produkt.
+     *
+     * @param string $baseName
+     * @return string
+     */
+    protected function makeUniqueProductSlug(string $baseName): string
+    {
+        $baseSlug = \Illuminate\Support\Str::slug($baseName);
+
+        if ($baseSlug === '') {
+            $baseSlug = 'produktkopie';
+        }
+
+        $slug = $baseSlug;
+        $i = 2;
+
+        while (\App\Models\Product::query()->where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $i;
+            $i++;
+        }
+
+        return $slug;
+    }
+
+    /**
+     * Erzeugt eine eindeutige technische SKU für duplizierte Varianten.
+     *
+     * @param ProductVariation $sourceVariation
+     * @return string
+     */
+    protected function makeDuplicateVariationSku(ProductVariation $sourceVariation): string
+    {
+        $base = 'dup-var-' . $sourceVariation->id;
+        $sku = $base;
+        $i = 2;
+
+        while (\App\Models\ProductVariation::query()->where('sku', $sku)->exists()) {
+            $sku = $base . '-' . $i;
+            $i++;
+        }
+
+        return $sku;
     }
 }
