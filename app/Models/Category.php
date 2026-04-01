@@ -47,4 +47,14 @@ class Category extends Model
     {
         return $this->hasMany(self::class, 'parent_id');
     }
+
+    /**
+     * Regeln zur automatischen Kategorisierung.
+     */
+    public function rules(): HasMany
+    {
+        return $this->hasMany(CategoryRule::class)
+            ->orderBy('sort_order')
+            ->orderBy('keyword');
+    }
 }

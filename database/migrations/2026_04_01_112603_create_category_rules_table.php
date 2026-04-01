@@ -11,9 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('category_rules', function (Blueprint $table) {
+        Schema::create('category_rules', function (Blueprint $table): void {
             $table->id();
+
+            $table->foreignId('category_id')
+                ->constrained()
+                ->cascadeOnDelete();
+
+            $table->string('keyword');
+            $table->unsignedInteger('sort_order')->default(0);
+
             $table->timestamps();
+
+            $table->index('keyword');
+            $table->unique(['category_id', 'keyword']);
         });
     }
 
