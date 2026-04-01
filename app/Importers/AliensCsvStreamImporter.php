@@ -1161,6 +1161,22 @@ class AliensCsvStreamImporter
         /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
         $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
         $updater->update($product);
+
+        /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
+        $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
+
+        if (($product->assembly_group_source ?? 'auto') !== 'manual') {
+            $product->refresh();
+
+            $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+            $currentAssemblyGroup = (int) $product->assembly_group;
+
+            if ($currentAssemblyGroup !== $resolvedAssemblyGroup || ($product->assembly_group_source ?? 'auto') !== 'auto') {
+                $product->assembly_group = $resolvedAssemblyGroup;
+                $product->assembly_group_source = 'auto';
+                $product->save();
+            }
+        }
     }
 
     /**
