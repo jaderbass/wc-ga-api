@@ -1025,17 +1025,9 @@ HTML;
                     ->requiresConfirmation()
                     ->action(function ($record) {
                         /** @var \App\Models\Product $record */
+                        $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
 
-                        $ctx = ProductNameContext::fromProduct($record);
-
-                        /** @var \App\Services\ProductNaming\DefaultProductNameBuilder $builder */
-                        $builder = app(DefaultProductNameBuilder::class);
-
-                        $result = $builder->build($ctx);
-
-                        $record->update([
-                            'product_name' => $result->productName,
-                        ]);
+                        $updater->update($record);
 
                         Notification::make()
                             ->title('Produktname aktualisiert')
