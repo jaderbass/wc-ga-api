@@ -1156,8 +1156,11 @@ class AliensCsvStreamImporter
 
         // 6) Persistieren
         $product->original_product_name = $designation;
-        $product->product_name = $result->productName;
         $product->save();
+
+        /** @var \App\Services\ProductNaming\ProductNameUpdater $updater */
+        $updater = app(\App\Services\ProductNaming\ProductNameUpdater::class);
+        $updater->update($product);
     }
 
     /**
