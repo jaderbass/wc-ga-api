@@ -906,6 +906,10 @@ class GenericCsvProductImporter implements CsvImporterContract
             $imported++;
         }
 
+        // Nach dem Variantenimport immer finalen Namen + Slug berechnen
+        $this->persistComputedProductName($product);
+        $this->persistComputedAssemblyGroup($product);
+
         // Nachzählung (falls Relation vorhanden)
         try {
             $relCount = method_exists($product, 'variations') ? $product->variations()->count() : null;
@@ -1009,10 +1013,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         // Attribute zuweisen
         $this->handleVariationAttributes($variation, $row);
-
-        // Persist computed parent name (variable products depend on variation attributes)
-        $this->persistComputedProductName($product);
-        $this->persistComputedAssemblyGroup($product);
     }
 
     /**
