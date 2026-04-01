@@ -4,6 +4,7 @@ namespace App\Services\ProductNaming;
 
 use App\Models\Product;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Rebuilds and persists the generated product name and slug for a product.
@@ -69,6 +70,13 @@ final class ProductNameUpdater
 
         $productName = trim($result->productName);
         $slug = $this->buildUniqueSlug($product, $productName);
+
+        Log::info('ProductNameUpdater.update', [
+            'product_id' => $product->id,
+            'old_name'   => $product->product_name,
+            'new_name'   => $productName,
+            'new_slug'   => $slug,
+        ]);
 
         $product->update([
             'product_name' => $productName,

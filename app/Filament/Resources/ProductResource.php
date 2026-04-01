@@ -19,6 +19,7 @@ use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
 use App\Models\ImportRun;
+use App\Services\Product\ProductDuplicator;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductNameContext;
 use App\Support\TextNormalizer;
@@ -39,6 +40,7 @@ use Filament\Infolists\Components\ImageEntry;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
 use Filament\Notifications\Notification;
@@ -990,6 +992,30 @@ HTML;
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+
+                TableAction::make('duplicate')
+                    ->label('Duplizieren')
+                    ->icon('heroicon-o-document-duplicate')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Produkt duplizieren')
+                    ->modalDescription('Es wird ein neues Produkt auf Basis dieses Produkts erstellt. Kategorien und Varianten werden übernommen, Woo-/Sync-Felder werden zurückgesetzt.')
+                    ->action(function (Product $record) {
+                        /** @var ProductDuplicator $duplicator */
+                        $duplicator = app(ProductDuplicator::class);
+
+                        $newProduct = $duplicator->duplicate($record);
+
+                        Notification::make()
+                            ->title('Produkt dupliziert')
+                            ->body('Das neue Produkt wurde angelegt und kann jetzt bearbeitet werden.')
+                            ->success()
+                            ->send();
+
+                        return redirect(static::getUrl('edit', [
+                            'record' => $newProduct,
+                        ]));
+                    }),
 
                 Tables\Actions\Action::make('rebuildName')
                     ->label('')
