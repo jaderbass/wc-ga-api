@@ -243,8 +243,58 @@ HTML;
                                 ->formatStateUsing(fn($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
                                 ->columnSpan(4),
 
-                            Placeholder::make('categories_display')
+                            Select::make('categories')
                                 ->label('Kategorien')
+                                ->relationship('categories', 'name')
+                                ->multiple()
+                                ->preload()
+                                ->searchable()
+                                ->saveRelationshipsUsing(function (Product $record, ?array $state): void {
+                                    $selectedCategoryIds = collect($state ?? [])
+                                        ->map(fn($id): int => (int) $id)
+                                        ->unique()
+                                        ->values()
+                                        ->all();
+
+                                    $existingAssignments = $record->categories()
+                                        ->pluck('category_product.assignment_type', 'categories.id');
+
+                                    $manualCategoryIds = $existingAssignments
+                                        ->filter(fn(string $type): bool => $type === 'manual')
+                                        ->keys()
+                                        ->map(fn($id): int => (int) $id)
+                                        ->all();
+
+                                    $manualCategoryIdsToDetach = array_diff($manualCategoryIds, $selectedCategoryIds);
+
+                                    if ($manualCategoryIdsToDetach !== []) {
+                                        $record->categories()->detach($manualCategoryIdsToDetach);
+                                    }
+
+                                    foreach ($selectedCategoryIds as $categoryId) {
+                                        $alreadyAssigned = $existingAssignments->has($categoryId);
+
+                                        if (! $alreadyAssigned) {
+                                            $record->categories()->attach($categoryId, [
+                                                'assignment_type' => 'manual',
+                                            ]);
+                                            continue;
+                                        }
+
+                                        $currentType = $existingAssignments->get($categoryId);
+
+                                        if ($currentType !== 'manual') {
+                                            $record->categories()->updateExistingPivot($categoryId, [
+                                                'assignment_type' => 'manual',
+                                            ]);
+                                        }
+                                    }
+                                })
+                                ->helperText('Ausgewählte Kategorien werden manuell gesetzt und nicht von der Automatik überschrieben.')
+                                ->columnSpan(4),
+
+                            Placeholder::make('categories_assignment_info')
+                                ->label('Aktuelle Zuordnung')
                                 ->content(function (?Product $record): HtmlString|string {
                                     if (! $record) {
                                         return '—';
@@ -252,22 +302,31 @@ HTML;
 
                                     $categories = $record->categories()
                                         ->orderBy('name')
-                                        ->pluck('name')
-                                        ->all();
+                                        ->get();
 
-                                    if ($categories === []) {
+                                    if ($categories->isEmpty()) {
                                         return '—';
                                     }
 
-                                    $badges = collect($categories)
-                                        ->map(fn(string $name): string => sprintf(
-                                            '<span class="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-200 mr-1 mb-1">%s</span>',
-                                            e($name)
-                                        ))
-                                        ->implode('');
+                                    $badges = $categories->map(function ($category): string {
+                                        $type = $category->pivot->assignment_type ?? 'auto';
+
+                                        $suffix = $type === 'manual' ? '✏️ manuell' : '⚙️ automatisch';
+                                        $class = $type === 'manual'
+                                            ? 'bg-green-100 text-green-800 ring-green-200'
+                                            : 'bg-gray-100 text-gray-700 ring-gray-200';
+
+                                        return sprintf(
+                                            '<span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset mr-1 mb-1 %s">%s <span class="ml-1 opacity-75">(%s)</span></span>',
+                                            $class,
+                                            e($category->name),
+                                            e($suffix)
+                                        );
+                                    })->implode('');
 
                                     return new HtmlString('<div class="flex flex-wrap gap-1">' . $badges . '</div>');
-                                }),
+                                })
+                                ->columnSpanFull(),
 
                             TextInput::make('product_number')
                                 ->label('Produktnummer')
