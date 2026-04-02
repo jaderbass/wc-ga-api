@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\CategoryResource\Pages;
 
 use App\Filament\Resources\CategoryResource;
+use App\Jobs\ResyncProductCategoriesJob;
 use App\Models\Category;
 use Filament\Actions;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
 /**
@@ -29,14 +31,32 @@ class EditCategory extends EditRecord
     /**
      * Liefert die Header-Actions der Bearbeitungsseite.
      *
-     * Die Delete-Action wird nur dann angezeigt, wenn das Löschen
-     * der aktuellen Kategorie fachlich erlaubt ist.
-     *
      * @return array<int, Actions\Action>
      */
     protected function getHeaderActions(): array
     {
-        $actions = [];
+        $actions = [
+            Actions\Action::make('resyncCategories')
+                ->label('Produkte neu zuordnen')
+                ->icon('heroicon-o-arrow-path')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('Produkte neu zuordnen')
+                ->modalDescription('Alle Produkte werden anhand der aktuellen Kategorie-Regeln neu synchronisiert. Manuell gesetzte Kategorien bleiben erhalten.')
+                ->action(function (): void {
+                    ResyncProductCategoriesJob::dispatch(
+                        productId: null,
+                        manufacturerId: null,
+                        chunkSize: 200,
+                    )->onQueue('imports');
+
+                    Notification::make()
+                        ->title('Neuzuordnung gestartet')
+                        ->body('Die Produkte werden im Hintergrund anhand der aktuellen Kategorie-Regeln neu zugeordnet.')
+                        ->success()
+                        ->send();
+                }),
+        ];
 
         if ($this->canDeleteRecord()) {
             $actions[] = Actions\DeleteAction::make();
