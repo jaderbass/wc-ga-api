@@ -194,21 +194,5 @@ class CategoryResource extends Resource
         ];
     }
 
-    public static function getNavigationBadge(): ?string
-    {
-        $running = \App\Models\CategoryResyncRun::query()
-            ->whereIn('status', ['queued', 'running'])
-            ->exists();
-
-        return $running ? 'läuft' : null;
-    }
-
-    public static function getNavigationBadgeColor(): ?string
-    {
-        $running = \App\Models\CategoryResyncRun::query()
-            ->whereIn('status', ['queued', 'running'])
-            ->exists();
-
-        return $running ? 'warning' : null;
-    }
+    
 }
