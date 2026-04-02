@@ -5,6 +5,7 @@ namespace App\Filament\Resources\CategoryResource\Pages;
 use App\Filament\Resources\CategoryResource;
 use App\Jobs\ResyncProductCategoriesJob;
 use App\Models\Category;
+use App\Models\CategoryResyncRun;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
@@ -44,13 +45,21 @@ class EditCategory extends EditRecord
                 ->modalHeading('Produkte neu zuordnen')
                 ->modalDescription('Alle Produkte werden anhand der aktuellen Kategorie-Regeln neu synchronisiert. Manuell gesetzte Kategorien bleiben erhalten.')
                 ->action(function (): void {
-                    ResyncProductCategoriesJob::dispatch(
+                    $run = \App\Models\CategoryResyncRun::create([
+                        'status' => 'queued',
+                        'processed' => 0,
+                        'total' => 0,
+                        'message' => 'Neuzuordnung wurde zur Verarbeitung eingeplant.',
+                    ]);
+
+                    \App\Jobs\ResyncProductCategoriesJob::dispatch(
                         productId: null,
                         manufacturerId: null,
                         chunkSize: 200,
+                        runId: $run->id,
                     )->onQueue('imports');
 
-                    Notification::make()
+                    \Filament\Notifications\Notification::make()
                         ->title('Neuzuordnung gestartet')
                         ->body('Die Produkte werden im Hintergrund anhand der aktuellen Kategorie-Regeln neu zugeordnet.')
                         ->success()
