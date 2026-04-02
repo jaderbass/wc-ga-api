@@ -45,4 +45,4 @@
     @endif
 
     {{ $this->table }}
-</x-filament-panels::page>
+<x-filament-panels::page wire:poll.5s>
