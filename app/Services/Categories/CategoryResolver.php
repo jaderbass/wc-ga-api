@@ -90,6 +90,7 @@ class CategoryResolver
     protected function normalizeKeyword(?string $keyword): string
     {
         $value = Str::lower((string) $keyword);
+        $value = str_replace(['/', '-', '_', ',', '.', ';', ':'], ' ', $value);
         $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
         return trim($value);
