@@ -196,19 +196,37 @@ class CategoryResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        $running = CategoryResyncRun::query()
+        $activeRun = CategoryResyncRun::query()
             ->whereIn('status', ['queued', 'running'])
-            ->exists();
+            ->latest('id')
+            ->first();
 
-        return $running ? 'läuft' : null;
+        if ($activeRun) {
+            return 'läuft';
+        }
+
+        $finishedRun = CategoryResyncRun::query()
+            ->where('status', 'finished')
+            ->latest('id')
+            ->first();
+
+        return $finishedRun ? 'ok' : null;
     }
 
     public static function getNavigationBadgeColor(): ?string
     {
-        $running = CategoryResyncRun::query()
-            ->whereIn('status', ['queued', 'running'])
-            ->exists();
+        if (CategoryResyncRun::query()->whereIn('status', ['queued', 'running'])->exists()) {
+            return 'warning';
+        }
 
-        return $running ? 'warning' : null;
+        if (CategoryResyncRun::query()->where('status', 'failed')->exists()) {
+            return 'danger';
+        }
+
+        if (CategoryResyncRun::query()->where('status', 'finished')->exists()) {
+            return 'success';
+        }
+
+        return null;
     }
 }
