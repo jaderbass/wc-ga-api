@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
+use App\Models\CategoryResyncRun;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\Grid;
@@ -80,7 +81,7 @@ class CategoryResource extends Resource
                                 Grid::make(12)->schema([
                                     TextInput::make('keyword')
                                         ->label('Keyword')
-                                        ->required()
+                                        // ->required()
                                         ->maxLength(255)
                                         ->placeholder('z. B. karabiner')
                                         ->dehydrateStateUsing(function (?string $state): string {
@@ -89,16 +90,16 @@ class CategoryResource extends Resource
 
                                             return $value;
                                         })
-                                        ->rule(function () {
-                                            return function (string $attribute, $value, \Closure $fail): void {
-                                                $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
-                                                $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+                                        // ->rule(function () {
+                                        //     return function (string $attribute, $value, \Closure $fail): void {
+                                        //         $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
+                                        //         $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
 
-                                                if ($normalized === '') {
-                                                    $fail('Das Keyword darf nicht leer sein.');
-                                                }
-                                            };
-                                        })
+                                        //         if ($normalized === '') {
+                                        //             $fail('Das Keyword darf nicht leer sein.');
+                                        //         }
+                                        //     };
+                                        // })
                                         ->columnSpanFull(),
                                 ]),
                             ])
@@ -191,5 +192,23 @@ class CategoryResource extends Resource
             'create' => Pages\CreateCategory::route('/create'),
             'edit' => Pages\EditCategory::route('/{record}/edit'),
         ];
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $running = CategoryResyncRun::query()
+            ->whereIn('status', ['queued', 'running'])
+            ->exists();
+
+        return $running ? 'läuft' : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $running = CategoryResyncRun::query()
+            ->whereIn('status', ['queued', 'running'])
+            ->exists();
+
+        return $running ? 'warning' : null;
     }
 }
