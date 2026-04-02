@@ -16,7 +16,7 @@ class CategoryResolver
      *
      * @var Collection<int, Category>|null
      */
-    protected ?Collection $categoriesWithRules = null;
+    // protected ?Collection $categoriesWithRules = null;
 
     /**
      * Ermittelt passende Kategorien für einen Produktnamen.
@@ -60,16 +60,10 @@ class CategoryResolver
      */
     protected function getCategoriesWithRules(): Collection
     {
-        if ($this->categoriesWithRules !== null) {
-            return $this->categoriesWithRules;
-        }
-
-        $this->categoriesWithRules = Category::query()
+        return Category::query()
             ->with(['rules'])
             ->whereHas('rules')
             ->get();
-
-        return $this->categoriesWithRules;
     }
 
     /**
