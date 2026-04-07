@@ -76,7 +76,7 @@ class CategoryResource extends Resource
                     ->schema([
                         Repeater::make('rules')
                             ->relationship()
-
+                            ->orderColumn('sort_order')
                             ->mutateRelationshipDataBeforeCreateUsing(function (array $data): ?array {
                                 $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
                                 $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
@@ -103,12 +103,6 @@ class CategoryResource extends Resource
                                     'keyword' => $keyword,
                                 ];
                             })
-                            // ->dehydrateStateUsing(function ($state) {
-                            //     return collect($state)
-                            //         ->filter(fn($item) => filled(trim($item['keyword'] ?? '')))
-                            //         ->values()
-                            //         ->all();
-                            // })
                             ->label('Regeln')
                             ->schema([
                                 Grid::make(12)->schema([
