@@ -1420,6 +1420,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             '150 flex',
             'mgo',
             'mgo open 110',
+            'mgo open 60',
             'without locking system',
             'non-locking',
             'with girth hitch for connection to the hook anchor hook',
