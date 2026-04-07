@@ -145,6 +145,7 @@ final class VariationDisplayNameResolver
         return array_values(array_filter([
             $propertiesByType['durchmesser'] ?? null,
             $propertiesByType['groesse'] ?? null,
+            $propertiesByType['typ'] ?? null,
             $propertiesByType['version'] ?? null,
             $propertiesByType['farbe'] ?? null,
             $propertiesByType['laenge'] ?? null,
@@ -237,6 +238,10 @@ final class VariationDisplayNameResolver
 
         if (preg_match('/größe|groesse|size/u', $value)) {
             return 'groesse';
+        }
+
+        if (preg_match('/typ|type|modell|model/u', $value)) {
+            return 'typ';
         }
 
         if (preg_match('/version|verschluss|schnapper|karabinerverschlu/u', $value)) {
