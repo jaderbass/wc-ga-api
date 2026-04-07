@@ -3,6 +3,7 @@
 namespace App\Services\Categories;
 
 use App\Models\CategoryResyncRun;
+use Illuminate\Support\Carbon;
 
 class CategoryResyncStatus
 {
@@ -47,13 +48,32 @@ class CategoryResyncStatus
     }
 
     /**
+     * Prüft, ob der aktuelle Status überhaupt noch angezeigt werden soll.
+     */
+    public static function shouldBeVisible(): bool
+    {
+        $run = static::latest();
+
+        if (! $run) {
+            return false;
+        }
+
+        return match ($run->status) {
+            'queued', 'running' => true,
+            'finished' => static::isRecentlyFinished($run, 30),
+            'failed' => true,
+            default => false,
+        };
+    }
+
+    /**
      * Liefert einen kurzen, UI-tauglichen Status-Text.
      */
     public static function text(): ?string
     {
         $run = static::latest();
 
-        if (! $run) {
+        if (! $run || ! static::shouldBeVisible()) {
             return null;
         }
 
@@ -87,7 +107,13 @@ class CategoryResyncStatus
      */
     public static function status(): ?string
     {
-        return static::latest()?->status;
+        $run = static::latest();
+
+        if (! $run || ! static::shouldBeVisible()) {
+            return null;
+        }
+
+        return $run->status;
     }
 
     /**
@@ -96,5 +122,17 @@ class CategoryResyncStatus
     public static function exists(): bool
     {
         return static::latest() !== null;
+    }
+
+    /**
+     * Prüft, ob der Lauf vor maximal X Sekunden beendet wurde.
+     */
+    protected static function isRecentlyFinished(CategoryResyncRun $run, int $seconds): bool
+    {
+        if (! $run->finished_at instanceof Carbon) {
+            return false;
+        }
+
+        return $run->finished_at->greaterThanOrEqualTo(now()->subSeconds($seconds));
     }
 }
