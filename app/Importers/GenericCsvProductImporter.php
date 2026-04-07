@@ -1162,12 +1162,12 @@ class GenericCsvProductImporter implements CsvImporterContract
         foreach ($specValues as $value) {
             $rope = $this->parsePetzlRopeSpec($value);
 
-            if (!empty($rope)) {
-                if (!empty($rope['type'])) {
+            if (! empty($rope)) {
+                if (! empty($rope['type'])) {
                     $ids[] = $this->firstOrCreateAttributeValue('type', $rope['type'])->id;
                 }
 
-                if (!empty($rope['diameter'])) {
+                if (! empty($rope['diameter'])) {
                     $ids[] = $this->firstOrCreateAttributeValue('diameter', $rope['diameter'])->id;
                 }
 
@@ -1184,8 +1184,21 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
+            if ($this->looksLikePetzlDiameter($value)) {
+                $normalizedDiameter = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
+                $ids[] = $this->firstOrCreateAttributeValue('diameter', $normalizedDiameter)->id;
+                continue;
+            }
+
             if ($this->looksLikePetzlLength($value)) {
-                $ids[] = $this->firstOrCreateAttributeValue('length', $value)->id;
+                $normalizedLength = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
+                $ids[] = $this->firstOrCreateAttributeValue('length', $normalizedLength)->id;
+                continue;
+            }
+
+            if ($this->looksLikePetzlWeight($value)) {
+                $normalizedWeight = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
+                $ids[] = $this->firstOrCreateAttributeValue('weight', $normalizedWeight)->id;
                 continue;
             }
 
@@ -1211,8 +1224,6 @@ class GenericCsvProductImporter implements CsvImporterContract
                 'product_name' => $row['Product name'] ?? null,
                 'value' => $value,
             ]);
-
-            // Unklare Petzl-Specifications bewusst nicht als Farbe speichern.
         }
 
         return array_values(array_unique($ids));
@@ -1224,6 +1235,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Erkennt u. a.:
      * - S, M, L, XL, XXL
      * - numerische Größen (0, 1, 2, ...)
+     * - kombinierte Größen wie S/M oder M/L
      *
      * @param string $value
      * @return bool
@@ -1241,6 +1253,10 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         if (preg_match('/^\d+$/', $value)) {
+            return true;
+        }
+
+        if (preg_match('/^(XXS|XS|S|M|L|XL|XXL)(\/(XXS|XS|S|M|L|XL|XXL))+$/i', $value)) {
             return true;
         }
 
@@ -1266,6 +1282,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             'SCREW-LOCK',
             'TRIACT-LOCK',
             'TWIST-LOCK',
+            'PIN-LOCK',
             'SL',
             'BL',
             'TL',
@@ -1312,6 +1329,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             'dark grey',
             'light gray',
             'light grey',
+            'camo',
         ];
 
         foreach ($colorWords as $word) {
@@ -1348,6 +1366,8 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - 30,5 m
      * - 60 cm
      * - 120cm
+     * - 30-200 cm
+     * - 10 to 13 m
      *
      * @param string $value
      * @return bool
@@ -1360,7 +1380,8 @@ class GenericCsvProductImporter implements CsvImporterContract
             return false;
         }
 
-        return preg_match('/^\d+(?:[.,]\d+)?\s*(m|cm)$/iu', $value) === 1;
+        return preg_match('/^\d+(?:[.,]\d+)?\s*(m|cm)$/iu', $value) === 1
+            || preg_match('/^\d+(?:[.,]\d+)?(?:\s*-\s*|\s+to\s+)\d+(?:[.,]\d+)?\s*(m|cm)$/iu', $value) === 1;
     }
 
     /**
@@ -1371,6 +1392,15 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - Extended
      * - Absorbent
      * - Without Connector
+     * - Right
+     * - Left-foot
+     * - Right-handed
+     * - No accessory
+     * - With accessories
+     * - Automatic
+     * - Sold individually
+     * - Sold in a pack of 10
+     * - for VERTEX helmet
      *
      * @param string $value
      * @return bool
@@ -1388,6 +1418,18 @@ class GenericCsvProductImporter implements CsvImporterContract
             'extended',
             'absorbent',
             'without connector',
+            'right',
+            'left',
+            'left-foot',
+            'right-foot',
+            'left-handed',
+            'right-handed',
+            'no accessory',
+            'with accessories',
+            'automatic',
+            'sold individually',
+            'sold in a pack of 10',
+            'for vertex helmet',
         ], true);
     }
 
@@ -1411,6 +1453,48 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         return preg_match('/^\d+(?:[.,]\d+)?\s*liters$/iu', $value) === 1;
+    }
+
+    /**
+     * Erkennt typische Petzl-Durchmesserangaben.
+     *
+     * Beispiele:
+     * - 12 mm
+     * - 10,5 mm
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlDiameter(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[.,]\d+)?\s*mm$/iu', $value) === 1;
+    }
+
+    /**
+     * Erkennt typische Petzl-Gewichtsangaben.
+     *
+     * Beispiele:
+     * - 350 g
+     * - 1,2 kg
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlWeight(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[.,]\d+)?\s*(g|kg)$/iu', $value) === 1;
     }
 
     /**
@@ -1496,6 +1580,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             'diameter' => 'Durchmesser',
             'length' => 'Länge',
             'volume' => 'Volumen',
+            'weight' => 'Gewicht',
             default => $attributeDisplayName,
         };
     }
