@@ -76,12 +76,39 @@ class CategoryResource extends Resource
                     ->schema([
                         Repeater::make('rules')
                             ->relationship()
-                            ->dehydrateStateUsing(function ($state) {
-                                return collect($state)
-                                    ->filter(fn($item) => filled(trim($item['keyword'] ?? '')))
-                                    ->values()
-                                    ->all();
+
+                            ->mutateRelationshipDataBeforeCreateUsing(function (array $data): ?array {
+                                $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
+                                $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+
+                                if ($keyword === '') {
+                                    return null;
+                                }
+
+                                return [
+                                    ...$data,
+                                    'keyword' => $keyword,
+                                ];
                             })
+                            ->mutateRelationshipDataBeforeSaveUsing(function (array $data): ?array {
+                                $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
+                                $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+
+                                if ($keyword === '') {
+                                    return null;
+                                }
+
+                                return [
+                                    ...$data,
+                                    'keyword' => $keyword,
+                                ];
+                            })
+                            // ->dehydrateStateUsing(function ($state) {
+                            //     return collect($state)
+                            //         ->filter(fn($item) => filled(trim($item['keyword'] ?? '')))
+                            //         ->values()
+                            //         ->all();
+                            // })
                             ->label('Regeln')
                             ->schema([
                                 Grid::make(12)->schema([
@@ -95,32 +122,6 @@ class CategoryResource extends Resource
                                             $value = preg_replace('/\s+/', ' ', $value) ?? $value;
 
                                             return $value;
-                                        })
-                                        ->mutateRelationshipDataBeforeCreateUsing(function (array $data): ?array {
-                                            $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
-                                            $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
-
-                                            if ($keyword === '') {
-                                                return null;
-                                            }
-
-                                            return [
-                                                ...$data,
-                                                'keyword' => $keyword,
-                                            ];
-                                        })
-                                        ->mutateRelationshipDataBeforeSaveUsing(function (array $data): ?array {
-                                            $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
-                                            $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
-
-                                            if ($keyword === '') {
-                                                return null;
-                                            }
-
-                                            return [
-                                                ...$data,
-                                                'keyword' => $keyword,
-                                            ];
                                         })
                                         ->columnSpanFull(),
                                 ]),
