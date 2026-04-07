@@ -72,7 +72,7 @@ class CategoryResource extends Resource
                     ->collapsible(),
 
                 FormSection::make('Automatisierungsregeln')
-                    ->description('Suchbegriffe für die automatische Kategorisierung')
+                    ->description('Keywords für die automatische Kategorisierung. Die Reihenfolge bestimmt die Abarbeitung.')
                     ->schema([
                         Repeater::make('rules')
                             ->relationship()
@@ -110,7 +110,7 @@ class CategoryResource extends Resource
                                         ->label('Keyword')
                                         // ->required()
                                         ->maxLength(255)
-                                        ->placeholder('z. B. karabiner')
+                                        ->placeholder('z. B. karabiner, helm oder gurt')
                                         ->dehydrateStateUsing(function (?string $state): string {
                                             $value = mb_strtolower(trim((string) $state), 'UTF-8');
                                             $value = preg_replace('/\s+/', ' ', $value) ?? $value;
@@ -129,7 +129,7 @@ class CategoryResource extends Resource
                             ->itemLabel(function (array $state): ?string {
                                 $keyword = trim((string) ($state['keyword'] ?? ''));
 
-                                return $keyword !== '' ? $keyword : 'Neue Regel';
+                                return $keyword !== '' ? $keyword : 'Neues Keyword';
                             }),
                     ])
                     ->collapsible(),

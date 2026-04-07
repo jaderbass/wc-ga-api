@@ -42,7 +42,7 @@ class EditCategory extends EditRecord
                 ->icon('heroicon-o-arrow-path')
                 ->color('gray')
                 ->requiresConfirmation()
-                ->modalHeading('Produkte neu zuordnen')
+                ->modalHeading('Kategorien neu zuordnen')
                 ->modalDescription('Alle Produkte werden anhand der aktuellen Kategorie-Regeln neu synchronisiert. Manuell gesetzte Kategorien bleiben erhalten.')
                 ->action(function (): void {
                     $run = \App\Models\CategoryResyncRun::create([
@@ -58,12 +58,6 @@ class EditCategory extends EditRecord
                         chunkSize: 200,
                         runId: $run->id,
                     )->onQueue('imports');
-
-                    // \Filament\Notifications\Notification::make()
-                    //     ->title('Neuzuordnung gestartet')
-                    //     ->body('Die Produkte werden im Hintergrund anhand der aktuellen Kategorie-Regeln neu zugeordnet.')
-                    //     ->success()
-                    //     ->send();
                 }),
         ];
 
