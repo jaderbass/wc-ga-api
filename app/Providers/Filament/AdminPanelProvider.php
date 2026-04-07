@@ -112,10 +112,8 @@ class AdminPanelProvider extends PanelProvider
                 return '<link rel="stylesheet" href="' . $href . '">';
             });
 
-            Filament::registerRenderHook('panels::topbar.end', function (): HtmlString {
-                return new HtmlString(
-                    \Livewire\Livewire::mount(CategoryResyncStatusWidget::class)->html()
-                );
+            Filament::registerRenderHook('panels::topbar.end', function (): string {
+                return view('filament.components.category-resync-status')->render();
             });
         });
     }
