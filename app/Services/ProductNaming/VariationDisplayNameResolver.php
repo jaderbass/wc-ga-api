@@ -4,6 +4,7 @@ namespace App\Services\ProductNaming;
 
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Support\ProductNameNormalizer;
 
 /**
  * Resolves display names for product variations (child products).
@@ -172,7 +173,7 @@ final class VariationDisplayNameResolver
                     (string) ($attributeValue->attribute?->name ?? '')
                 );
 
-                $value = trim((string) ($attributeValue->value ?? ''));
+                $value = $this->normalizeNamingValue($attributeValue->value);
 
                 if ($type === null || $value === '') {
                     continue;
@@ -191,7 +192,7 @@ final class VariationDisplayNameResolver
 
         foreach ($json as $rawKey => $rawValue) {
             $type = $this->normalizeVariableAttributeType((string) $rawKey);
-            $value = trim((string) $rawValue);
+            $value = $this->normalizeNamingValue($rawValue);
 
             if ($type === null || $value === '') {
                 continue;
@@ -251,5 +252,18 @@ final class VariationDisplayNameResolver
         }
 
         return null;
+    }
+
+    /**
+     * Normalisiert einen Attributwert für das Naming.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeNamingValue(mixed $value): string
+    {
+        return ProductNameNormalizer::normalizeAttributeValue(
+            is_scalar($value) ? (string) $value : null
+        );
     }
 }
