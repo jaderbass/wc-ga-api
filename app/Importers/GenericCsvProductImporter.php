@@ -1184,6 +1184,11 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
+            if ($this->looksLikePetzlLength($value)) {
+                $ids[] = $this->firstOrCreateAttributeValue('length', $value)->id;
+                continue;
+            }
+
             if ($this->looksLikePetzlColor($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
                 continue;
@@ -1305,6 +1310,28 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
+     * Erkennt typische Petzl-Längenangaben.
+     *
+     * Beispiele:
+     * - 10 m
+     * - 20m
+     * - 30,5 m
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlLength(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[.,]\d+)?\s*m$/iu', $value) === 1;
+    }
+
+    /**
      * Zerlegt eine Petzl-Seil-Spezifikation in Typ und Durchmesser.
      *
      * Beispiele:
@@ -1385,6 +1412,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             'closure' => 'Verschluss',
             'type' => 'Typ',
             'diameter' => 'Durchmesser',
+            'length' => 'Länge',
             default => $attributeDisplayName,
         };
     }
@@ -1541,7 +1569,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $updater->update($product);
     }
 
-        /**
+    /**
      * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
      * bereits berechneten und gespeicherten Produktnamen.
      *
