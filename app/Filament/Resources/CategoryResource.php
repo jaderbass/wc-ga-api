@@ -4,7 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
-use App\Models\CategoryResyncRun;
+use App\Services\Categories\CategoryRuleKeywordNormalizer;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\Grid;
@@ -78,8 +78,7 @@ class CategoryResource extends Resource
                             ->relationship()
                             ->orderColumn('sort_order')
                             ->mutateRelationshipDataBeforeCreateUsing(function (array $data): ?array {
-                                $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
-                                $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+                                $keyword = CategoryRuleKeywordNormalizer::normalize($data['keyword'] ?? null);
 
                                 if ($keyword === '') {
                                     return null;
@@ -91,8 +90,7 @@ class CategoryResource extends Resource
                                 ];
                             })
                             ->mutateRelationshipDataBeforeSaveUsing(function (array $data): ?array {
-                                $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
-                                $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+                                $keyword = CategoryRuleKeywordNormalizer::normalize($data['keyword'] ?? null);
 
                                 if ($keyword === '') {
                                     return null;

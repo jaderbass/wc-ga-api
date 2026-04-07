@@ -3,11 +3,9 @@
 namespace App\Filament\Resources\CategoryResource\Pages;
 
 use App\Filament\Resources\CategoryResource;
-use App\Jobs\ResyncProductCategoriesJob;
+use App\Services\Categories\CategoryRuleKeywordNormalizer;
 use App\Models\Category;
-use App\Models\CategoryResyncRun;
 use Filament\Actions;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 
 /**
@@ -38,7 +36,7 @@ class EditCategory extends EditRecord
     {
         $actions = [
             Actions\Action::make('resyncCategories')
-                ->label('Produkte neu zuordnen')
+                ->label('Kategorien neu zuordnen')
                 ->icon('heroicon-o-arrow-path')
                 ->color('gray')
                 ->requiresConfirmation()
@@ -124,8 +122,7 @@ class EditCategory extends EditRecord
         $result = [];
 
         foreach ($rules as $rule) {
-            $keyword = mb_strtolower(trim((string) ($rule['keyword'] ?? '')), 'UTF-8');
-            $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+            $keyword = CategoryRuleKeywordNormalizer::normalize($rule['keyword'] ?? null);
 
             if ($keyword === '' || isset($seen[$keyword])) {
                 continue;
@@ -168,5 +165,15 @@ class EditCategory extends EditRecord
                 ])
                 ->toArray(),
         ]);
+    }
+
+    /**
+     * Liefert einen kurzen Beschreibungstext unter der Seitenüberschrift.
+     *
+     * @return string|null
+     */
+    public function getSubheading(): ?string
+    {
+        return 'Ein Produkt wird dieser Kategorie automatisch zugeordnet, sobald eines der unten definierten Keywords im Produktnamen gefunden wird.';
     }
 }
