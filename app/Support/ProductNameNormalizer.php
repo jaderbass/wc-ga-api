@@ -112,4 +112,61 @@ final class ProductNameNormalizer
 
         return is_array($values) ? $values : [];
     }
+
+    /**
+     * Normalisiert einen Attributwert für die Ausgabe im Produktnamen.
+     *
+     * Regeln:
+     * - trimmt führende und nachfolgende Leerzeichen
+     * - reduziert Mehrfach-Leerzeichen auf ein Leerzeichen
+     * - wandelt vollständig großgeschriebene Werte in Title Case um
+     * - berücksichtigt Bindestriche und Leerzeichen als Trenner
+     *
+     * Beispiele:
+     * - BALL-LOCK   -> Ball-Lock
+     * - SCREW LOCK  -> Screw Lock
+     * - GRAY        -> Gray
+     * - 11mm        -> 11mm
+     * - 60 m        -> 60 m
+     *
+     * @param string|null $value
+     * @return string
+     */
+    public static function normalizeAttributeValue(?string $value): string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+
+        // Nur bei komplett großgeschriebenen Werten umformen.
+        // Gemischte oder bereits sauber formatierte Werte bleiben unverändert.
+        if ($value !== mb_strtoupper($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $parts = preg_split('/([-\s]+)/u', $value, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+        if (! is_array($parts)) {
+            return $value;
+        }
+
+        $result = '';
+
+        foreach ($parts as $part) {
+            if ($part === '' || preg_match('/^[-\s]+$/u', $part)) {
+                $result .= $part;
+                continue;
+            }
+
+            $part = mb_strtolower($part, 'UTF-8');
+            $result .= mb_strtoupper(mb_substr($part, 0, 1, 'UTF-8'), 'UTF-8')
+                . mb_substr($part, 1, null, 'UTF-8');
+        }
+
+        return $result;
+    }
 }
