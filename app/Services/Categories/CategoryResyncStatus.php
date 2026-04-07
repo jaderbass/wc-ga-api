@@ -60,7 +60,7 @@ class CategoryResyncStatus
 
         return match ($run->status) {
             'queued', 'running' => true,
-            'finished' => static::isRecentlyFinished($run, 30),
+            'finished' => static::isRecentlyFinished($run, 5),
             'failed' => true,
             default => false,
         };
