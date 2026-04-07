@@ -1155,6 +1155,20 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         foreach ($specValues as $value) {
+            $rope = $this->parsePetzlRopeSpec($value);
+
+            if (!empty($rope)) {
+                if (!empty($rope['type'])) {
+                    $ids[] = $this->firstOrCreateAttributeValue('type', $rope['type'])->id;
+                }
+
+                if (!empty($rope['diameter'])) {
+                    $ids[] = $this->firstOrCreateAttributeValue('diameter', $rope['diameter'])->id;
+                }
+
+                continue;
+            }
+
             if ($this->looksLikePetzlSize($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('size', $value)->id;
                 continue;
@@ -1286,6 +1300,38 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
+     * Zerlegt eine Petzl-Seil-Spezifikation in Typ und Durchmesser.
+     *
+     * Beispiele:
+     * - "AXIS 11 mm" → ["type" => "AXIS", "diameter" => "11 mm"]
+     * - "PARALLEL 10.5 mm" → ["type" => "PARALLEL", "diameter" => "10.5 mm"]
+     *
+     * @param string $value
+     * @return array{type?: string, diameter?: string}
+     */
+    protected function parsePetzlRopeSpec(string $value): array
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return [];
+        }
+
+        // Match: TEXT + Zahl + mm
+        if (preg_match('/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*mm$/i', $value, $matches)) {
+            $type = trim($matches[1]);
+            $diameter = str_replace(',', '.', $matches[2]) . ' mm';
+
+            return [
+                'type' => $type,
+                'diameter' => $diameter,
+            ];
+        }
+
+        return [];
+    }
+
+    /**
      * Erstellt (oder findet) ein Attribut und dessen Wert.
      *
      * Kapselt die Standardlogik für:
@@ -1332,6 +1378,8 @@ class GenericCsvProductImporter implements CsvImporterContract
             'size' => 'Größe',
             'color' => 'Farbe',
             'closure' => 'Verschluss',
+            'type' => 'Typ',
+            'diameter' => 'Durchmesser',
             default => $attributeDisplayName,
         };
     }
