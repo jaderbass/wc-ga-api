@@ -119,6 +119,7 @@ final class ProductNameNormalizer
      * Regeln:
      * - trimmt führende und nachfolgende Leerzeichen
      * - reduziert Mehrfach-Leerzeichen auf ein Leerzeichen
+     * - normalisiert Maßangaben wie 11mm -> 11 mm
      * - wandelt vollständig großgeschriebene Werte in Title Case um
      * - berücksichtigt Bindestriche und Leerzeichen als Trenner
      *
@@ -126,7 +127,7 @@ final class ProductNameNormalizer
      * - BALL-LOCK   -> Ball-Lock
      * - SCREW LOCK  -> Screw Lock
      * - GRAY        -> Gray
-     * - 11mm        -> 11mm
+     * - 11mm        -> 11 mm
      * - 60 m        -> 60 m
      *
      * @param string|null $value
@@ -140,7 +141,8 @@ final class ProductNameNormalizer
             return '';
         }
 
-        $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+        $value = self::normalizeDimensionSeparators($value);
 
         // Nur bei komplett großgeschriebenen Werten umformen.
         // Gemischte oder bereits sauber formatierte Werte bleiben unverändert.
