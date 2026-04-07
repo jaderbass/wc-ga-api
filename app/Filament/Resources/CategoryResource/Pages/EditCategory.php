@@ -143,4 +143,19 @@ class EditCategory extends EditRecord
 
         return $result;
     }
+
+    protected function afterSave(): void
+    {
+        $this->form->fill([
+            ...$this->record->attributesToArray(),
+            'rules' => $this->record->rules()
+                ->orderBy('sort_order')
+                ->get()
+                ->map(fn($rule) => [
+                    'id' => $rule->id,
+                    'keyword' => $rule->keyword,
+                ])
+                ->toArray(),
+        ]);
+    }
 }
