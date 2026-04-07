@@ -273,8 +273,7 @@ return [
   // Mapping für die Attribute der Varianten (z.B. Farbe, Größe).
   // Daraus werden die Attribute und Attributwerte erstellt.
   'variation' => [
-    // Petzl packt die Farbe in "Specifications", z.B. "black/yellow", "Black/Yellow", "Black"
-    'color' => 'Specifications',
+    
     // Größe ist meist eine Petzl-typische Size-Angabe ("0", "1", "2", S, M, L ...)
     'size'  => 'Size',
   ],
