@@ -93,9 +93,8 @@ class CategoryResyncStatus
     {
         if ($run->total > 0) {
             return sprintf(
-                'Neuzuordnung läuft (%d / %d)',
-                $run->processed,
-                $run->total
+                'Neuzuordnung läuft · %d %',
+                $run->processed
             );
         }
 
