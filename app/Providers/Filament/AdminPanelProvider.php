@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Livewire\CategoryResyncStatusWidget;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -17,6 +18,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Vite; // <— wichtig
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
     /**
  * Registriert und konfiguriert das Filament-Admin-Panel.
@@ -105,16 +107,15 @@ class AdminPanelProvider extends PanelProvider
     {
         Filament::serving(function () {
             Filament::registerRenderHook('panels::head.end', function (): string {
-                // Liefert die zur Laufzeit gebaute/versionsgehashte CSS-URL aus dem Vite-Manifest.
                 $href = Vite::asset('resources/css/filament/admin-overrides.css');
 
-                // <link>-Tag zurückgeben; Filament rendert es in den Panel-Head.
                 return '<link rel="stylesheet" href="' . $href . '">';
             });
 
-            // ✅ NEU: Globaler Resync-Status
-            Filament::registerRenderHook('panels::topbar.end', function (): string {
-                return view('filament.components.category-resync-status')->render();
+            Filament::registerRenderHook('panels::topbar.end', function (): HtmlString {
+                return new HtmlString(
+                    \Livewire\Livewire::mount(CategoryResyncStatusWidget::class)->html()
+                );
             });
         });
     }
