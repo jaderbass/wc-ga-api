@@ -111,6 +111,11 @@ class AdminPanelProvider extends PanelProvider
                 // <link>-Tag zurückgeben; Filament rendert es in den Panel-Head.
                 return '<link rel="stylesheet" href="' . $href . '">';
             });
+
+            // ✅ NEU: Globaler Resync-Status
+            Filament::registerRenderHook('panels::topbar.end', function (): string {
+                return view('filament.components.category-resync-status')->render();
+            });
         });
     }
 }
