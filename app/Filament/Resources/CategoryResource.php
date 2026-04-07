@@ -76,6 +76,12 @@ class CategoryResource extends Resource
                     ->schema([
                         Repeater::make('rules')
                             ->relationship()
+                            ->dehydrateStateUsing(function ($state) {
+                                return collect($state)
+                                    ->filter(fn($item) => filled(trim($item['keyword'] ?? '')))
+                                    ->values()
+                                    ->all();
+                            })
                             ->label('Regeln')
                             ->schema([
                                 Grid::make(12)->schema([
@@ -90,21 +96,37 @@ class CategoryResource extends Resource
 
                                             return $value;
                                         })
-                                        // ->rule(function () {
-                                        //     return function (string $attribute, $value, \Closure $fail): void {
-                                        //         $normalized = mb_strtolower(trim((string) $value), 'UTF-8');
-                                        //         $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+                                        ->mutateRelationshipDataBeforeCreateUsing(function (array $data): ?array {
+                                            $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
+                                            $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
 
-                                        //         if ($normalized === '') {
-                                        //             $fail('Das Keyword darf nicht leer sein.');
-                                        //         }
-                                        //     };
-                                        // })
+                                            if ($keyword === '') {
+                                                return null;
+                                            }
+
+                                            return [
+                                                ...$data,
+                                                'keyword' => $keyword,
+                                            ];
+                                        })
+                                        ->mutateRelationshipDataBeforeSaveUsing(function (array $data): ?array {
+                                            $keyword = mb_strtolower(trim((string) ($data['keyword'] ?? '')), 'UTF-8');
+                                            $keyword = preg_replace('/\s+/', ' ', $keyword) ?? $keyword;
+
+                                            if ($keyword === '') {
+                                                return null;
+                                            }
+
+                                            return [
+                                                ...$data,
+                                                'keyword' => $keyword,
+                                            ];
+                                        })
                                         ->columnSpanFull(),
                                 ]),
                             ])
                             ->defaultItems(0)
-                            ->addActionLabel('Regel hinzufügen')
+                            ->addActionLabel('Keyword hinzufügen')
                             ->reorderable()
                             ->reorderableWithButtons()
                             ->collapsible()
@@ -193,6 +215,4 @@ class CategoryResource extends Resource
             'edit' => Pages\EditCategory::route('/{record}/edit'),
         ];
     }
-
-    
 }
