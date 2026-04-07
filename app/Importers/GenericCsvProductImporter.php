@@ -1189,6 +1189,18 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
+            if ($this->looksLikePetzlType($value)) {
+                $normalizedType = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
+                $ids[] = $this->firstOrCreateAttributeValue('type', $normalizedType)->id;
+                continue;
+            }
+
+            if ($this->looksLikePetzlVolume($value)) {
+                $normalizedVolume = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
+                $ids[] = $this->firstOrCreateAttributeValue('volume', $normalizedVolume)->id;
+                continue;
+            }
+
             if ($this->looksLikePetzlColor($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
                 continue;
@@ -1352,6 +1364,56 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
+     * Erkennt allgemeine Petzl-Typ-/Ausprägungsangaben.
+     *
+     * Beispiele:
+     * - Standard
+     * - Extended
+     * - Absorbent
+     * - Without Connector
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlType(string $value): bool
+    {
+        $value = trim(mb_strtolower($value));
+
+        if ($value === '') {
+            return false;
+        }
+
+        return in_array($value, [
+            'standard',
+            'extended',
+            'absorbent',
+            'without connector',
+        ], true);
+    }
+
+    /**
+     * Erkennt typische Petzl-Volumenangaben.
+     *
+     * Beispiele:
+     * - 15 liters
+     * - 30 liters
+     * - 65 liters
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlVolume(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[.,]\d+)?\s*liters$/iu', $value) === 1;
+    }
+
+    /**
      * Zerlegt eine Petzl-Seil-Spezifikation in Typ und Durchmesser.
      *
      * Beispiele:
@@ -1433,6 +1495,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             'type' => 'Typ',
             'diameter' => 'Durchmesser',
             'length' => 'Länge',
+            'volume' => 'Volumen',
             default => $attributeDisplayName,
         };
     }
