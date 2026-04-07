@@ -75,11 +75,11 @@ class ResyncProductCategoriesJob implements ShouldQueue
                         $syncService->sync($product);
                         $processed++;
 
-                        if ($run && $processed % 25 === 0) {
-                            $run->update([
-                                'processed' => $processed,
-                            ]);
-                        }
+                    if ($run) {
+                        $run->update([
+                            'processed' => $processed,
+                        ]);
+                    }
                     }
                 });
 

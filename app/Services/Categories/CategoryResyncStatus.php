@@ -60,8 +60,8 @@ class CategoryResyncStatus
         return match ($run->status) {
             'queued' => 'Neuzuordnung eingeplant',
             'running' => static::runningText($run),
-            // 'finished' => 'Neuzuordnung abgeschlossen',
-            // 'failed' => 'Neuzuordnung fehlgeschlagen',
+            'finished' => 'Neuzuordnung abgeschlossen',
+            'failed' => 'Neuzuordnung fehlgeschlagen',
             default => null,
         };
     }
