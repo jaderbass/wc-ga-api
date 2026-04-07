@@ -59,11 +59,11 @@ class EditCategory extends EditRecord
                         runId: $run->id,
                     )->onQueue('imports');
 
-                    \Filament\Notifications\Notification::make()
-                        ->title('Neuzuordnung gestartet')
-                        ->body('Die Produkte werden im Hintergrund anhand der aktuellen Kategorie-Regeln neu zugeordnet.')
-                        ->success()
-                        ->send();
+                    // \Filament\Notifications\Notification::make()
+                    //     ->title('Neuzuordnung gestartet')
+                    //     ->body('Die Produkte werden im Hintergrund anhand der aktuellen Kategorie-Regeln neu zugeordnet.')
+                    //     ->success()
+                    //     ->send();
                 }),
         ];
 
