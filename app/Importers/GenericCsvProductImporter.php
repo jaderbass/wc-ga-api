@@ -1121,13 +1121,12 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
-     * Ermittelt Attributwerte (z. B. size, color) für eine Petzl-Variante
+     * Ermittelt Attributwerte (z. B. size, color, closure) für eine Petzl-Variante
      * aus den Specifications-Spalten.
      *
-     * Hintergrund:
-     * - Petzl nutzt zusammengeführte Excel-Spalten
-     * - daraus entstehen "Specifications" und "Specifications_2"
-     * - die Werte können je nach Produkt links oder rechts stehen
+     * Es werden nur Werte übernommen, die per Heuristik sicher erkannt wurden.
+     * Nicht eindeutig zuordenbare Specifications werden bewusst ignoriert, damit
+     * sie nicht fälschlich als Farbe gespeichert werden.
      *
      * @param array<string, mixed> $row
      * @return array<int, int> Liste von ProductAttributeValue IDs
@@ -1143,7 +1142,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $specValues = [];
         foreach ($specCandidates as $value) {
-            if (!is_string($value)) {
+            if (! is_string($value)) {
                 continue;
             }
 
@@ -1166,7 +1165,12 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
-            $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
+            if ($this->looksLikePetzlColor($value)) {
+                $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
+                continue;
+            }
+
+            // Unklare Petzl-Specifications bewusst nicht als Farbe speichern.
         }
 
         return array_values(array_unique($ids));
@@ -1224,6 +1228,61 @@ class GenericCsvProductImporter implements CsvImporterContract
             'BL',
             'TL',
         ], true);
+    }
+
+    /**
+     * Erkennt typische Petzl-Farbangaben.
+     *
+     * @param string $value
+     * @return bool
+     */
+    protected function looksLikePetzlColor(string $value): bool
+    {
+        $value = trim(mb_strtolower($value));
+
+        if ($value === '') {
+            return false;
+        }
+
+        return in_array($value, [
+            'gray',
+            'grey',
+            'black',
+            'white',
+            'yellow',
+            'blue',
+            'red',
+            'orange',
+            'green',
+            'violet',
+            'purple',
+            'pink',
+            'brown',
+            'tan',
+            'beige',
+            'gold',
+            'silver',
+            'turquoise',
+            'clear',
+            'transparent',
+            'assorted',
+        ], true);
+    }
+
+    protected function looksLikePetzlRopeSpec(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        // enthält Zahl + mm → sehr wahrscheinlich Seil / Größe
+        if (preg_match('/\d+(?:[.,]\d+)?\s*mm/i', $value)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -1429,20 +1488,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $updater->update($product);
     }
 
-    /**
-     * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
-     * bereits berechneten und gespeicherten Produktnamen.
-     *
-     * Die Ableitung erfolgt über den BaugruppeResolver und wird nur durchgeführt,
-     * wenn noch kein gültiger Wert gesetzt ist. So bleiben manuelle Änderungen erhalten.
-     *
-     * Voraussetzung:
-     * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
-     *
-     * @param \App\Models\Product $product
-     * @return void
-     */
-    /**
+        /**
      * Ermittelt und persistiert die assembly group eines Produkts basierend auf dem
      * bereits berechneten und gespeicherten Produktnamen.
      *
