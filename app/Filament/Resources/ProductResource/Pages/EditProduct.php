@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProductResource\Pages;
 
 use App\Filament\Resources\ProductResource;
+use App\Filament\Resources\ProductResource\RelationManagers\ProductVariantRelationManager;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 
@@ -31,6 +32,8 @@ class EditProduct extends EditRecord
 
                     $this->record = $record->fresh();
                     $this->fillForm();
+
+                    $this->dispatch('refresh-product-variations');
 
                     \Filament\Notifications\Notification::make()
                         ->title('Produktname aktualisiert')

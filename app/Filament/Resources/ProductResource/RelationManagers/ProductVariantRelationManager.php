@@ -17,6 +17,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Livewire\Attributes\On;
 
 class ProductVariantRelationManager extends RelationManager
 {
@@ -188,5 +189,22 @@ class ProductVariantRelationManager extends RelationManager
         });
 
         return array_slice($attributes, 0, 5);
+    }
+
+    /**
+     * Aktualisiert die Varianten-Tabelle nach einer Neugenerierung des Produktnamens.
+     *
+     * Der Variantenname wird in der Tabelle dynamisch über den
+     * VariationDisplayNameResolver berechnet. Nach einer Action auf der
+     * Edit-Seite muss der Relation Manager daher neu gerendert werden,
+     * damit die aktualisierten Attributwerte sofort sichtbar sind.
+     *
+     * @return void
+     */
+    #[On('refresh-product-variations')]
+    public function refreshProductVariations(): void
+    {
+        // Leerer Listener genügt hier, damit Livewire den Component-Render
+        // erneut durchläuft und die Tabellen-States neu berechnet.
     }
 }
