@@ -96,7 +96,11 @@ class EditCategory extends EditRecord
     }
 
     /**
-     * Normalisiert und dedupliziert die Regeln vor dem Speichern.
+     * Bereinigt die Formulardaten vor dem Speichern.
+     *
+     * - entfernt leere Regeln
+     * - normalisiert Keywords
+     * - dedupliziert Einträge
      *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
@@ -144,8 +148,21 @@ class EditCategory extends EditRecord
         return $result;
     }
 
+    /**
+     * Lädt das Formular nach dem Speichern erneut aus der Datenbank.
+     *
+     * Hintergrund:
+     * Der Repeater-State im Browser kann nach dem Speichern noch veraltete
+     * oder inzwischen bereinigte Einträge enthalten. Durch das erneute
+     * Befüllen des Formulars wird exakt der tatsächlich gespeicherte
+     * Datenbestand angezeigt.
+     *
+     * @return void
+     */
     protected function afterSave(): void
     {
+        $this->record->refresh();
+
         $this->form->fill([
             ...$this->record->attributesToArray(),
             'rules' => $this->record->rules()
