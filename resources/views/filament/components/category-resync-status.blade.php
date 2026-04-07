@@ -1,1 +1,1 @@
-<livewire:category-resync-status-widget />
+@livewire('category-resync-status-widget')
