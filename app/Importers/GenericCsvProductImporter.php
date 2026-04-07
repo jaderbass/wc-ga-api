@@ -1094,8 +1094,13 @@ class GenericCsvProductImporter implements CsvImporterContract
                 $attributeValueIds[] = $attributeValue->id;
             }
 
-            if (! empty($attributeValueIds)) {
+            // Bei Petzl immer hart synchronisieren (alte falsche Werte entfernen)
+            if ($this->isPetzlVariationRow($row)) {
                 $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
+            } else {
+                if (!empty($attributeValueIds)) {
+                    $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
+                }
             }
         }
     }
