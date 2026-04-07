@@ -1194,6 +1194,12 @@ class GenericCsvProductImporter implements CsvImporterContract
                 continue;
             }
 
+            \Illuminate\Support\Facades\Log::warning('Unrecognized Petzl specification', [
+                'reference' => $row['Reference'] ?? null,
+                'product_name' => $row['Product name'] ?? null,
+                'value' => $value,
+            ]);
+
             // Unklare Petzl-Specifications bewusst nicht als Farbe speichern.
         }
 
@@ -1257,6 +1263,10 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Erkennt typische Petzl-Farbangaben.
      *
+     * Unterstützt auch kombinierte Farben wie:
+     * - Gray/Yellow
+     * - Black, Yellow
+     *
      * @param string $value
      * @return bool
      */
@@ -1268,7 +1278,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             return false;
         }
 
-        return in_array($value, [
+        $colorWords = [
             'gray',
             'grey',
             'black',
@@ -1282,15 +1292,23 @@ class GenericCsvProductImporter implements CsvImporterContract
             'purple',
             'pink',
             'brown',
-            'tan',
             'beige',
             'gold',
             'silver',
             'turquoise',
-            'clear',
-            'transparent',
-            'assorted',
-        ], true);
+            'dark gray',
+            'dark grey',
+            'light gray',
+            'light grey',
+        ];
+
+        foreach ($colorWords as $word) {
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function looksLikePetzlRopeSpec(string $value): bool
@@ -1316,6 +1334,8 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - 10 m
      * - 20m
      * - 30,5 m
+     * - 60 cm
+     * - 120cm
      *
      * @param string $value
      * @return bool
@@ -1328,7 +1348,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             return false;
         }
 
-        return preg_match('/^\d+(?:[.,]\d+)?\s*m$/iu', $value) === 1;
+        return preg_match('/^\d+(?:[.,]\d+)?\s*(m|cm)$/iu', $value) === 1;
     }
 
     /**
