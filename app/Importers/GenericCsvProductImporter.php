@@ -1387,21 +1387,6 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Erkennt allgemeine Petzl-Typ-/Ausprägungsangaben.
      *
-     * Beispiele:
-     * - Standard
-     * - Extended
-     * - Absorbent
-     * - Without Connector
-     * - Right
-     * - Left-foot
-     * - Right-handed
-     * - No accessory
-     * - With accessories
-     * - Automatic
-     * - Sold individually
-     * - Sold in a pack of 10
-     * - for VERTEX helmet
-     *
      * @param string $value
      * @return bool
      */
@@ -1430,6 +1415,16 @@ class GenericCsvProductImporter implements CsvImporterContract
             'sold individually',
             'sold in a pack of 10',
             'for vertex helmet',
+            'for alveo helmet',
+            'mgo - bm\'d',
+            '150 flex',
+            'mgo',
+            'mgo open 110',
+            'without locking system',
+            'non-locking',
+            'with girth hitch for connection to the hook anchor hook',
+            'with quick link for connection to a standard anchor hook',
+            'with hook anchor hook',
         ], true);
     }
 
