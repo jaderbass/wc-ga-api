@@ -3,6 +3,7 @@
 namespace App\Services\ProductNaming;
 
 use App\Models\Product;
+use App\Support\ProductNameNormalizer;
 
 /**
  * Extracts customer-relevant product properties (Eigenschaften)
@@ -122,7 +123,7 @@ final class ProductPropertyExtractor
             // 1) Pivot-based attribute values
             foreach ($variation->attributeValues as $attrValue) {
                 $attrName = trim((string) ($attrValue->attribute?->name ?? ''));
-                $value = trim((string) ($attrValue->value ?? ''));
+                $value = $this->normalizeNamingValue($attrValue->value);
 
                 if ($attrName === '' || $value === '') {
                     continue;
@@ -146,7 +147,7 @@ final class ProductPropertyExtractor
 
             foreach ($json as $key => $rawValue) {
                 $attrName = trim((string) $key);
-                $value = trim((string) $rawValue);
+                $value = $this->normalizeNamingValue($rawValue);
 
                 if ($attrName === '' || $value === '') {
                     continue;
@@ -194,7 +195,7 @@ final class ProductPropertyExtractor
                     continue;
                 }
 
-                $normalized = trim((string) $value->value);
+                $normalized = $this->normalizeNamingValue($value->value);
                 if ($normalized === '') {
                     continue;
                 }
@@ -224,7 +225,7 @@ final class ProductPropertyExtractor
                     continue;
                 }
 
-                $val = is_string($v) ? trim($v) : (is_numeric($v) ? (string) $v : null);
+                $val = $this->normalizeNamingValue($v);
                 if ($val === null || $val === '') {
                     continue;
                 }
@@ -404,5 +405,18 @@ final class ProductPropertyExtractor
         }
 
         return null;
+    }
+
+    /**
+     * Normalisiert einen Attributwert für das Product Naming.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    private function normalizeNamingValue(mixed $value): string
+    {
+        return ProductNameNormalizer::normalizeAttributeValue(
+            is_scalar($value) ? (string) $value : null
+        );
     }
 }
