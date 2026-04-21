@@ -298,35 +298,20 @@ Verarbeitung:
 
 ### 1) Aufräumen (vor dem UI-Import)
 
-#### 1.1 Produkte löschen (per Artisan)
+#### 1.1 Produkte löschen und Queue aufräumen (per Artisan)
 
-→ Ziel: Alle bestehenden Produkte + Variationen entfernen
+→ Ziel: Alle bestehenden Produkte + Variationen entfernen sowie alte Import-Jobs, fehlgeschlagene Jobs und Batches bereinigen
 
-```bash
-php artisan products:purge --force
-```
+`php artisan products:reset --force`
 
-→ Ziel: Alle bestehenden Produkte + Variationen eines bestimmten Herstellers entfernen (ID mit der Hersteller-ID ersetzen) z.B. für Petzl: 3
+→ Ziel: Alle bestehenden Produkte + Variationen eines bestimmten Herstellers entfernen und zusätzlich Queue/Batches/Failed Jobs bereinigen  
+(ID mit der Hersteller-ID ersetzen), z.B. für Petzl: 3
 
-```bash
-php artisan products:purge --manufacturer=<ID>
-```
+`php artisan products:reset --manufacturer=<ID> --force`
 
-#### 1.2 Queue & Batches aufräumen
+→ Optional: Zeitraum für das Aufräumen von Batches und Failed Jobs anpassen (Standard: 24 Stunden)
 
-→ Ziel: Alte Import-Jobs, fehlgeschlagene Jobs und Batches entfernen
-
-```bash
-php artisan queue:flush
-```  
-
-```bash
-php artisan queue:prune-batches --hours=24
-```  
-
-```bash
-php artisan queue:prune-failed --hours=24
-```
+`php artisan products:reset --force --hours=48`
 
 ### 2) Petzl Import über das UI starten
 
