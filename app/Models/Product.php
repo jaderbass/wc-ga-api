@@ -61,22 +61,24 @@ class Product extends Model
         'size',
         'certification',
         'author_id',
+        'manufacturer_price_cents',
     ];
 
     protected $guarded = ['id'];
 
     protected $casts = [
         'image_urls' => 'array',
-        'dimension_length_mm' => 'integer',
-        'dimension_width_mm'  => 'integer',
-        'dimension_height_mm' => 'integer',
-        'weight'              => 'integer',
-        'box_length'          => 'integer',
-        'box_width'           => 'integer',
-        'box_height'          => 'integer',
-        'assembly_group'      => 'integer',
-        'created_at'          => 'datetime',
-        'updated_at'          => 'datetime',
+        'dimension_length_mm'       => 'integer',
+        'dimension_width_mm'        => 'integer',
+        'dimension_height_mm'       => 'integer',
+        'weight'                    => 'integer',
+        'box_length'                => 'integer',
+        'box_width'                 => 'integer',
+        'box_height'                => 'integer',
+        'assembly_group'            => 'integer',
+        'manufacturer_price_cents'  => 'integer',
+        'created_at'                => 'datetime',
+        'updated_at'                => 'datetime',
     ];
 
     /**

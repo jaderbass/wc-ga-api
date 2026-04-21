@@ -12,6 +12,7 @@ class ProductVariation extends Model
     'product_id',
     'woo_variation_id',
     'sku',
+    'manufacturer_price_cents',
     'regular_price',
     'sale_price',
     'stock_quantity',
@@ -28,12 +29,13 @@ class ProductVariation extends Model
   ];
 
   protected $casts = [
-    'attributes_json' => 'array',
-    'manage_stock'    => 'bool',
-    'weight'    => 'integer',
-    'length_mm' => 'integer',
-    'width_mm'  => 'integer',
-    'height_mm' => 'integer',
+    'attributes_json'           => 'array',
+    'manage_stock'              => 'bool',
+    'weight'                    => 'integer',
+    'length_mm'                 => 'integer',
+    'width_mm'                  => 'integer',
+    'height_mm'                 => 'integer',
+    'manufacturer_price_cents'  => 'integer',
   ];
 
   // Anzeige-Name für Filament
