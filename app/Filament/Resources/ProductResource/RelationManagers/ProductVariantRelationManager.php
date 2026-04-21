@@ -63,7 +63,17 @@ class ProductVariantRelationManager extends RelationManager
                     })
                     ->wrap(),
 
+
                 ...$this->buildVariantAttributeColumns(),
+
+                Tables\Columns\TextColumn::make('manufacturer_price_cents')
+                    ->label('Herstellerpreis')
+                    ->state(fn($record) => $record->manufacturer_price_cents ?? 'TEST-NULL')
+                    ->formatStateUsing(fn($state) => filled($state) && (int) $state > 0
+                        ? number_format(((int) $state) / 100, 2, ',', '.') . ' €'
+                        : '—')
+                    ->alignEnd()
+                    ->sortable(),
             ])
             ->paginated([10, 25, 50])
             ->defaultPaginationPageOption(10)
