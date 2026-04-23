@@ -151,6 +151,7 @@ final class ProductNameNormalizer
 
         $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
         $value = self::normalizeValueWithUnits($value);
+        $value = self::normalizeUppercaseRangeCodes($value);
 
         // Nur bei komplett großgeschriebenen Werten umformen.
         // Gemischte oder bereits sauber formatierte Werte bleiben unverändert.
@@ -259,5 +260,55 @@ final class ProductNameNormalizer
         }
 
         return false;
+    }
+
+    /**
+     * Normalisiert Größen- und Bereichscodes mit Bindestrich auf Großbuchstaben.
+     *
+     * Die Methode greift nur bei kurzen, bindestrichgetrennten Segmenten, wie sie
+     * typischerweise für Größenangaben verwendet werden.
+     *
+     * Beispiele:
+     * - "S-m"   -> "S-M"
+     * - "l-xl"  -> "L-XL"
+     * - "L-Xxl" -> "L-XXL"
+     * - "xs-s"  -> "XS-S"
+     *
+     * Unverändert bleiben normale Bezeichnungen wie:
+     * - "Triact-Lock"
+     * - "night-oasis"
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function normalizeUppercaseRangeCodes(string $value): string
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return $value;
+        }
+
+        if (! preg_match('/^[A-Za-z]{1,4}(?:-[A-Za-z]{1,4})+$/u', $value)) {
+            return $value;
+        }
+
+        $segments = explode('-', $value);
+
+        foreach ($segments as $segment) {
+            $upper = mb_strtoupper($segment, 'UTF-8');
+
+            if (! in_array($upper, ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'], true)) {
+                return $value;
+            }
+        }
+
+        return implode(
+            '-',
+            array_map(
+                static fn(string $segment): string => mb_strtoupper($segment, 'UTF-8'),
+                $segments
+            )
+        );
     }
 }
