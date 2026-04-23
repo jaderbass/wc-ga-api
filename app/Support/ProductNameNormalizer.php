@@ -19,7 +19,7 @@ final class ProductNameNormalizer
         $name = preg_replace('/\s*-\s*/u', '-', $name) ?? $name;
 
         // Maßangaben normalisieren (10x120cm -> 10 x 120 cm)
-        $name = self::normalizeDimensionSeparators($name);
+        $name = self::normalizeValueWithUnits($name);
 
         // Grundformatierung
         $name = Str::of($name)
@@ -57,6 +57,48 @@ final class ProductNameNormalizer
         $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
         return trim($name);
+    }
+
+    /**
+     * Normalisiert Werte mit Einheiten und sorgt für konsistente Abstände.
+     *
+     * Regeln:
+     * - Mehrfache Leerzeichen werden zu einem einzelnen Leerzeichen reduziert
+     * - Zahlen und Einheiten werden immer durch genau ein Leerzeichen getrennt
+     *   (z. B. "10mm" → "10 mm", "8,5kN" → "8,5 kN", "20%" → "20 %")
+     * - Dimensionen wie "10x120" werden zu "10 x 120" normalisiert
+     *
+     * Unterstützt auch zusammengesetzte Einheiten wie:
+     * - m/s, kN/m, cm², m³
+     *
+     * Die Methode ist die zentrale Stelle für die Formatierung von Attributwerten
+     * und wird sowohl im Product Naming als auch bei der Attributverarbeitung verwendet.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function normalizeValueWithUnits(string $value): string
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return $value;
+        }
+
+        // Mehrfach-Leerzeichen vereinheitlichen
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        // 10x120 -> 10 x 120
+        $value = preg_replace('/(\d)\s*[xX]\s*(\d)/u', '$1 x $2', $value) ?? $value;
+
+        // 8,5mm -> 8,5 mm, 22kN -> 22 kN, 20% -> 20 %
+        $value = preg_replace(
+            '/(\d+(?:[.,]\d+)?)\s*([[:alpha:]°%][[:alpha:]0-9°%\/²³.-]*)/u',
+            '$1 $2',
+            $value
+        ) ?? $value;
+
+        return trim($value);
     }
 
     /**
@@ -142,7 +184,7 @@ final class ProductNameNormalizer
         }
 
         $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
-        $value = self::normalizeDimensionSeparators($value);
+        $value = self::normalizeValueWithUnits($value);
 
         // Nur bei komplett großgeschriebenen Werten umformen.
         // Gemischte oder bereits sauber formatierte Werte bleiben unverändert.
