@@ -291,6 +291,11 @@ Verarbeitung:
 | `php artisan categories:resync --manufacturer-id=6` | Synchronisiert nur Produkte eines bestimmten Herstellers neu. |
 | `php artisan categories:resync --manufacturer-id=6 --dry-run` | Testlauf ohne Änderungen. Zeigt nur, welche Produkte verarbeitet würden. |
 | `php artisan categories:resync --manufacturer-id=6 --queue` | Startet den Kategorien-Resync als Queue-Job. |
+| `php artisan products:normalize-unit-spacing` | Vereinheitlicht Leerzeichen zwischen Zahlen und Einheiten in gespeicherten Attributwerten (z. B. `11mm` → `11 mm`) |
+| `php artisan products:normalize-unit-spacing --dry-run` | Zeigt geplante Änderungen ohne sie zu speichern |
+| `php artisan products:find-bad-unit-spacing` | Findet Attributwerte mit fehlendem Leerzeichen zwischen Zahl und Einheit |
+| `php artisan products:find-bad-unit-spacing --unit=mm` | Filtert gezielt nach einer Einheit (z. B. `mm`, `kN`) |
+| `php artisan products:find-bad-unit-spacing --limit=200` | Begrenzt die Anzahl der ausgegebenen Treffer |
 
 ---
 
