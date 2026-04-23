@@ -102,40 +102,6 @@ final class ProductNameNormalizer
     }
 
     /**
-     * Normalisiert Maßangaben:
-     * 10x120cm → 10 x 120 cm
-     * 8,5mm → 8,5 mm
-     */
-    private static function normalizeDimensionSeparators(string $value): string
-    {
-        // 10x120 → 10 x 120
-        $value = preg_replace('/(\d)\s*[xX]\s*(\d)/u', '$1 x $2', $value) ?? $value;
-
-        // 8,5mm → 8,5 mm
-        $value = preg_replace(
-            '/(\d+(?:[.,]\d+)?)\s*(mm|cm|dm|kg|kn|m|g)\b/ui',
-            '$1 $2',
-            $value
-        ) ?? $value;
-
-        // 8,5 mmx20 m → 8,5 mm x 20 m
-        $value = preg_replace(
-            '/(\d+(?:[.,]\d+)?\s*(?:mm|cm|dm|kg|kn|m|g))\s*[xX]\s*(\d+(?:[.,]\d+)?)/ui',
-            '$1 x $2',
-            $value
-        ) ?? $value;
-
-        // 10 x 120cm → 10 x 120 cm
-        $value = preg_replace(
-            '/(\bx\b\s*\d+(?:[.,]\d+)?)\s*(mm|cm|dm|kg|kn|m|g)\b/ui',
-            '$1 $2',
-            $value
-        ) ?? $value;
-
-        return $value;
-    }
-
-    /**
      * Abkürzungen aus der Konfiguration laden.
      */
     private static function abbreviations(): array
