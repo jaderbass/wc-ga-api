@@ -177,6 +177,39 @@ final class ProductNameNormalizer
                 . mb_substr($part, 1, null, 'UTF-8');
         }
 
+        // Einheiten in kanonischer Schreibweise wiederherstellen
+        $result = self::restoreCanonicalUnitCasing($result);
+
         return $result;
+    }
+
+    /**
+     * Stellt die kanonische Schreibweise von Einheiten wieder her.
+     *
+     * Wird nach einer generischen Formatierung (z. B. Title Case) verwendet,
+     * um sicherzustellen, dass Einheiten korrekt geschrieben sind.
+     *
+     * Beispiele:
+     * - "80 Cm"  → "80 cm"
+     * - "26 Mm"  → "26 mm"
+     * - "22 Kn"  → "22 kN"
+     *
+     * Die gültigen Einheiten werden aus der Konfiguration
+     * `product_name.units` bezogen und dort zentral gepflegt.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function restoreCanonicalUnitCasing(string $value): string
+    {
+        foreach (self::units() as $unit) {
+            $value = preg_replace(
+                '/\b' . preg_quote(mb_strtolower($unit), '/') . '\b/ui',
+                $unit,
+                $value
+            ) ?? $value;
+        }
+
+        return $value;
     }
 }
