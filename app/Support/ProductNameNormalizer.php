@@ -158,6 +158,10 @@ final class ProductNameNormalizer
             return $value;
         }
 
+        if (self::looksLikeUppercaseCode($value)) {
+            return $value;
+        }
+
         $parts = preg_split('/([-\s]+)/u', $value, -1, PREG_SPLIT_DELIM_CAPTURE);
 
         if (! is_array($parts)) {
@@ -211,5 +215,49 @@ final class ProductNameNormalizer
         }
 
         return $value;
+    }
+
+    /**
+     * Prüft, ob ein vollständig großgeschriebener Wert eher ein technischer Code,
+     * Größenbereich oder eine normierte Kurzschreibweise ist und daher unverändert
+     * bleiben soll.
+     *
+     * Beispiele für Werte, die erhalten bleiben sollen:
+     * - "S-M"
+     * - "L-XL"
+     * - "XXL"
+     * - "UIAA"
+     * - "CE"
+     * - "EN 12275"
+     *
+     * Beispiele für Werte, die nicht als Code gelten:
+     * - "80 CM"
+     * - "11 MM"
+     * - "22 KN"
+     *
+     * @param string $value
+     * @return bool
+     */
+    private static function looksLikeUppercaseCode(string $value): bool
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return false;
+        }
+
+        if (preg_match('/^\p{Lu}{1,4}(?:-\p{Lu}{1,4})+$/u', $value)) {
+            return true;
+        }
+
+        if (preg_match('/^\p{Lu}{2,}$/u', $value)) {
+            return true;
+        }
+
+        if (preg_match('/^[A-Z]{2,}\s+\d+[A-Z0-9\s-]*$/u', $value)) {
+            return true;
+        }
+
+        return false;
     }
 }
