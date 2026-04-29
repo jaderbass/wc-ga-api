@@ -107,8 +107,8 @@ class ProductVariantRelationManager extends RelationManager
 
                         Forms\Components\TextInput::make('slug')
                             ->label('Slug')
-                            ->disabled()
-                            ->dehydrated(false),
+                            ->maxLength(255)
+                            ->helperText('Wird bei „Namen neu berechnen“ aus dem Variantennamen neu erzeugt.'),
 
                         Forms\Components\KeyValue::make('attributes_json')
                             ->label('JSON-Attribute')

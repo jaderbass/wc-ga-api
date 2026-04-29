@@ -26,6 +26,7 @@ class ProductVariation extends Model
     'attributes_json',
     'ean',
     'external_id',
+    'slug',
   ];
 
   protected $casts = [
