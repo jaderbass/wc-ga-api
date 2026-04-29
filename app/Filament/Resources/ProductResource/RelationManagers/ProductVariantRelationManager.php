@@ -105,6 +105,11 @@ class ProductVariantRelationManager extends RelationManager
                                     : null
                             ),
 
+                        Forms\Components\TextInput::make('slug')
+                            ->label('Slug')
+                            ->disabled()
+                            ->dehydrated(false),
+
                         Forms\Components\KeyValue::make('attributes_json')
                             ->label('JSON-Attribute')
                             ->keyLabel('Attribut')

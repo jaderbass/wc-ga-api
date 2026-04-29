@@ -47,7 +47,7 @@ class ProductVariationResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Section::make('Variantendaten')
-                    ->columns(2)
+                    ->columns(3)
                     ->schema([
                         Forms\Components\TextInput::make('sku')
                             ->label('Artikelnummer')
@@ -59,6 +59,11 @@ class ProductVariationResource extends Resource
                                 fn(ProductVariation $record): string =>
                                 app(VariationDisplayNameResolver::class)->resolve($record)
                             ),
+
+                        Forms\Components\TextInput::make('slug')
+                            ->label('Slug')
+                            ->disabled()
+                            ->dehydrated(false),
 
                         Forms\Components\TextInput::make('manufacturer_price_cents')
                             ->label('Herstellerpreis')
