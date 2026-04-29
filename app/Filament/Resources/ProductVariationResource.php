@@ -43,9 +43,22 @@ class ProductVariationResource extends Resource
 
                         Forms\Components\TextInput::make('manufacturer_price_cents')
                             ->label('Herstellerpreis')
-                            ->numeric()
-                            ->suffix('Cent')
-                            ->helperText('Interner Wert in Cent.'),
+                            ->suffix('€')
+                            ->formatStateUsing(
+                                fn($state) =>
+                                filled($state)
+                                    ? number_format(((int) $state) / 100, 2, ',', '')
+                                    : null
+                            )
+                            ->dehydrateStateUsing(
+                                fn($state) =>
+                                filled($state)
+                                    ? (int) round(
+                                        (float) str_replace(',', '.', $state) * 100
+                                    )
+                                    : null
+                            )
+                            ->numeric(),
 
                         Forms\Components\TextInput::make('ean')
                             ->label('EAN')
@@ -54,35 +67,13 @@ class ProductVariationResource extends Resource
 
                 Forms\Components\Section::make('Attribute')
                     ->schema([
-                        Forms\Components\Placeholder::make('attributes_display')
-                            ->label('Attribut-Kombination')
-                            ->content(function (ProductVariation $record): string {
-                                $record->loadMissing(['attributeValues.attribute']);
-
-                                if ($record->attributeValues->isNotEmpty()) {
-                                    return $record->attributeValues
-                                        ->map(function ($attributeValue): string {
-                                            $attributeName = $attributeValue->attribute?->name ?? 'Attribut';
-                                            $value = $attributeValue->value ?? '—';
-
-                                            return "{$attributeName}: {$value}";
-                                        })
-                                        ->implode(' | ');
-                                }
-
-                                if (is_array($record->attributes_json) && filled($record->attributes_json)) {
-                                    return collect($record->attributes_json)
-                                        ->map(function ($value, $key): string {
-                                            $label = preg_replace('/^Attribute Group:\s*/i', '', (string) $key);
-                                            $label = trim($label);
-
-                                            return "{$label}: {$value}";
-                                        })
-                                        ->implode(' | ');
-                                }
-
-                                return 'Keine Attribute hinterlegt.';
-                            }),
+                        Forms\Components\KeyValue::make('attributes_json')
+                            ->label('Attribute')
+                            ->keyLabel('Attribut')
+                            ->valueLabel('Wert')
+                            ->addActionLabel('Attribut hinzufügen')
+                            ->reorderable()
+                            ->helperText('Diese Attribute werden direkt an der Variante gespeichert.'),
                     ]),
             ]);
     }
