@@ -12,6 +12,8 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+ 
+use App\Services\ProductNaming\VariationDisplayNameResolver;
 
 class ProductVariationResource extends Resource
 {
@@ -25,7 +27,38 @@ class ProductVariationResource extends Resource
     {
         return $form
             ->schema([
-                //
+                Forms\Components\Section::make('Variantendaten')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('sku')
+                            ->label('Artikelnummer')
+                            ->maxLength(255),
+
+                        Forms\Components\Placeholder::make('resolved_variant_name')
+                            ->label('Variantenname')
+                            ->content(
+                                fn(ProductVariation $record): string =>
+                                app(VariationDisplayNameResolver::class)->resolve($record)
+                            ),
+
+                        Forms\Components\TextInput::make('manufacturer_price_cents')
+                            ->label('Herstellerpreis')
+                            ->numeric()
+                            ->suffix('Cent')
+                            ->helperText('Interner Wert in Cent.'),
+
+                        Forms\Components\TextInput::make('ean')
+                            ->label('EAN')
+                            ->maxLength(255),
+                    ]),
+
+                Forms\Components\Section::make('Attribute')
+                    ->description('Die Varianten-Attribute bearbeiten wir im nächsten Schritt sauber über Relation oder JSON.')
+                    ->schema([
+                        Forms\Components\Placeholder::make('attribute_hint')
+                            ->label('')
+                            ->content('Attribute werden aktuell noch nur angezeigt bzw. später gezielt bearbeitbar gemacht.'),
+                    ]),
             ]);
     }
 
