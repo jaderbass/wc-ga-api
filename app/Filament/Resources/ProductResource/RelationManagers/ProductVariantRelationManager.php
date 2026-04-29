@@ -14,6 +14,7 @@ namespace App\Filament\Resources\ProductResource\RelationManagers;
 use App\Models\ProductVariation;
 use App\Services\ProductNaming\VariationDisplayNameResolver;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Forms;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -76,15 +77,51 @@ class ProductVariantRelationManager extends RelationManager
                     ->sortable(),
             ])
             ->actions([
-                Tables\Actions\Action::make('editVariation')
-                    ->label('Bearbeiten')
+                Tables\Actions\EditAction::make()
+                    ->iconButton()
+                    ->tooltip('Schnell bearbeiten')
                     ->icon('heroicon-m-pencil-square')
+                    ->modalHeading('Variante schnell bearbeiten')
+                    ->modalSubmitActionLabel('Speichern')
+                    ->modalCancelActionLabel('Abbrechen')
+                    ->form([
+                        Forms\Components\TextInput::make('sku')
+                            ->label('Artikelnummer')
+                            ->maxLength(255),
+
+                        Forms\Components\TextInput::make('manufacturer_price_cents')
+                            ->label('Herstellerpreis')
+                            ->suffix('€')
+                            ->formatStateUsing(
+                                fn($state) =>
+                                filled($state)
+                                    ? number_format(((int) $state) / 100, 2, ',', '')
+                                    : null
+                            )
+                            ->dehydrateStateUsing(
+                                fn($state) =>
+                                filled($state)
+                                    ? (int) round((float) str_replace(',', '.', $state) * 100)
+                                    : null
+                            ),
+
+                        Forms\Components\KeyValue::make('attributes_json')
+                            ->label('JSON-Attribute')
+                            ->keyLabel('Attribut')
+                            ->valueLabel('Wert')
+                            ->addActionLabel('Attribut hinzufügen')
+                            ->reorderable(),
+                    ]),
+
+                Tables\Actions\Action::make('editVariation')
+                    ->iconButton()
+                    ->tooltip('Details bearbeiten')
+                    ->icon('heroicon-m-cog-6-tooth')
                     ->url(
                         fn(ProductVariation $record) =>
-                        \App\Filament\Resources\ProductVariationResource::getUrl(
-                            'edit',
-                            ['record' => $record]
-                        )
+                        \App\Filament\Resources\ProductVariationResource::getUrl('edit', [
+                            'record' => $record,
+                        ])
                     ),
             ])
             ->paginated([10, 25, 50])
