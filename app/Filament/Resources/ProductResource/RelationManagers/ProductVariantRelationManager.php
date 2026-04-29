@@ -75,6 +75,18 @@ class ProductVariantRelationManager extends RelationManager
                     ->alignEnd()
                     ->sortable(),
             ])
+            ->actions([
+                Tables\Actions\Action::make('editVariation')
+                    ->label('Bearbeiten')
+                    ->icon('heroicon-m-pencil-square')
+                    ->url(
+                        fn(ProductVariation $record) =>
+                        \App\Filament\Resources\ProductVariationResource::getUrl(
+                            'edit',
+                            ['record' => $record]
+                        )
+                    ),
+            ])
             ->paginated([10, 25, 50])
             ->defaultPaginationPageOption(10)
             ->emptyStateHeading('Keine Varianten gefunden');
