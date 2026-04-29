@@ -20,6 +20,18 @@ class EditProductVariation extends EditRecord
                 ->url(fn() => ProductResource::getUrl('edit', [
                     'record' => $this->record->product_id,
                 ])),
+
+            Actions\Action::make('refreshName')
+                ->label('Namen aktualisieren')
+                ->icon('heroicon-m-arrow-path')
+                ->action(function () {
+                    $this->dispatch('refresh-product-variations');
+
+                    \Filament\Notifications\Notification::make()
+                        ->success()
+                        ->title('Variantenname aktualisiert')
+                        ->send();
+                }),
         ];
     }
 }
