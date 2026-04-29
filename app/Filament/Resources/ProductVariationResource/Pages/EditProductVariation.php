@@ -6,6 +6,9 @@ use App\Filament\Resources\ProductVariationResource;
 use App\Filament\Resources\ProductResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
+use App\Services\ProductNaming\VariationDisplayNameResolver;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Str;
 
 /**
  * Bearbeitungsseite für Produktvarianten.
@@ -38,13 +41,19 @@ class EditProductVariation extends EditRecord
                 ->label('Namen neu berechnen')
                 ->icon('heroicon-m-arrow-path')
                 ->action(function () {
+                    $resolvedName = app(VariationDisplayNameResolver::class)->resolve($this->record);
+
+                    $this->record->forceFill([
+                        'slug' => Str::slug($resolvedName),
+                    ])->save();
+
                     $this->record->refresh();
 
-                    $this->dispatch('refresh-product-variations');
+                    $this->fillForm();
 
-                    \Filament\Notifications\Notification::make()
+                    Notification::make()
                         ->success()
-                        ->title('Variantenname neu berechnet')
+                        ->title('Variantenname und Slug neu berechnet')
                         ->send();
                 }),
         ];
