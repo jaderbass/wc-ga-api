@@ -12,7 +12,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
- 
+
 use App\Services\ProductNaming\VariationDisplayNameResolver;
 
 class ProductVariationResource extends Resource
@@ -53,11 +53,36 @@ class ProductVariationResource extends Resource
                     ]),
 
                 Forms\Components\Section::make('Attribute')
-                    ->description('Die Varianten-Attribute bearbeiten wir im nächsten Schritt sauber über Relation oder JSON.')
                     ->schema([
-                        Forms\Components\Placeholder::make('attribute_hint')
-                            ->label('')
-                            ->content('Attribute werden aktuell noch nur angezeigt bzw. später gezielt bearbeitbar gemacht.'),
+                        Forms\Components\Placeholder::make('attributes_display')
+                            ->label('Attribut-Kombination')
+                            ->content(function (ProductVariation $record): string {
+                                $record->loadMissing(['attributeValues.attribute']);
+
+                                if ($record->attributeValues->isNotEmpty()) {
+                                    return $record->attributeValues
+                                        ->map(function ($attributeValue): string {
+                                            $attributeName = $attributeValue->attribute?->name ?? 'Attribut';
+                                            $value = $attributeValue->value ?? '—';
+
+                                            return "{$attributeName}: {$value}";
+                                        })
+                                        ->implode(' | ');
+                                }
+
+                                if (is_array($record->attributes_json) && filled($record->attributes_json)) {
+                                    return collect($record->attributes_json)
+                                        ->map(function ($value, $key): string {
+                                            $label = preg_replace('/^Attribute Group:\s*/i', '', (string) $key);
+                                            $label = trim($label);
+
+                                            return "{$label}: {$value}";
+                                        })
+                                        ->implode(' | ');
+                                }
+
+                                return 'Keine Attribute hinterlegt.';
+                            }),
                     ]),
             ]);
     }
@@ -91,7 +116,7 @@ class ProductVariationResource extends Resource
     public static function getPages(): array
     {
         return [
-            // 'view' => Pages\ViewProductVariation::route('/{record}'),
+            'index' => Pages\ListProductVariations::route('/'),
             'edit' => Pages\EditProductVariation::route('/{record}/edit'),
         ];
     }
