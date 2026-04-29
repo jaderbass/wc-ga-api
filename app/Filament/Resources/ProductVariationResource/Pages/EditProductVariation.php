@@ -7,10 +7,23 @@ use App\Filament\Resources\ProductResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 
+/**
+ * Bearbeitungsseite für Produktvarianten.
+ *
+ * Die Seite wird nicht über die Hauptnavigation geöffnet, sondern aus der
+ * Varianten-Relation eines Produktes heraus. Sie stellt einen fokussierten
+ * Bearbeitungsworkflow für einzelne Varianten bereit und bietet einen
+ * Rücksprung zum zugehörigen Parent-Produkt.
+ */
 class EditProductVariation extends EditRecord
 {
     protected static string $resource = ProductVariationResource::class;
 
+    /**
+     * Definiert die Header-Aktionen der Varianten-Bearbeitungsseite.
+     *
+     * @return array<int, \Filament\Actions\Action>
+     */
     protected function getHeaderActions(): array
     {
         return [
@@ -22,16 +35,35 @@ class EditProductVariation extends EditRecord
                 ])),
 
             Actions\Action::make('refreshName')
-                ->label('Namen aktualisieren')
+                ->label('Namen neu berechnen')
                 ->icon('heroicon-m-arrow-path')
                 ->action(function () {
+                    $this->record->refresh();
+
                     $this->dispatch('refresh-product-variations');
 
                     \Filament\Notifications\Notification::make()
                         ->success()
-                        ->title('Variantenname aktualisiert')
+                        ->title('Variantenname neu berechnet')
                         ->send();
                 }),
+        ];
+    }
+
+    /**
+     * Überschreibt die Breadcrumbs, damit die technische Varianten-Indexseite
+     * nicht als anklickbarer Zwischenschritt angezeigt wird.
+     *
+     * @return array<string|int, string>
+     */
+    public function getBreadcrumbs(): array
+    {
+        return [
+            route('filament.admin.resources.products.edit', [
+                'record' => $this->record->product_id,
+            ]) => 'Produkt',
+
+            'Variante bearbeiten',
         ];
     }
 }

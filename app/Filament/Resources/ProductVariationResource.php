@@ -15,6 +15,13 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 use App\Services\ProductNaming\VariationDisplayNameResolver;
 
+/**
+ * Filament-Resource für Produktvarianten.
+ *
+ * Die Resource ist bewusst nicht in der Navigation registriert. Varianten werden
+ * aus der Produktansicht heraus bearbeitet, damit der fachliche Kontext zum
+ * Parent-Produkt erhalten bleibt.
+ */
 class ProductVariationResource extends Resource
 {
     protected static ?string $model = ProductVariation::class;
@@ -23,6 +30,18 @@ class ProductVariationResource extends Resource
 
     protected static bool $shouldRegisterNavigation = false;
 
+    protected static ?string $modelLabel = 'Variante';
+    protected static ?string $pluralModelLabel = 'Varianten';
+
+    /**
+     * Definiert das Formular zur Bearbeitung einer Produktvariante.
+     *
+     * Der automatisch berechnete Variantenname wird nur angezeigt. Bearbeitbar sind
+     * variantenspezifische Felder wie Artikelnummer, Preis und JSON-Attribute.
+     *
+     * @param \Filament\Forms\Form $form
+     * @return \Filament\Forms\Form
+     */
     public static function form(Form $form): Form
     {
         return $form
@@ -35,7 +54,7 @@ class ProductVariationResource extends Resource
                             ->maxLength(255),
 
                         Forms\Components\Placeholder::make('resolved_variant_name')
-                            ->label('Variantenname')
+                            ->label('Automatisch berechneter Variantenname')
                             ->content(
                                 fn(ProductVariation $record): string =>
                                 app(VariationDisplayNameResolver::class)->resolve($record)
@@ -78,6 +97,15 @@ class ProductVariationResource extends Resource
             ]);
     }
 
+    /**
+     * Definiert die technische Tabellenansicht der Varianten-Resource.
+     *
+     * Die Seite wird nicht aktiv im UI genutzt, muss aber für Filament-Routen
+     * vorhanden bleiben.
+     *
+     * @param \Filament\Tables\Table $table
+     * @return \Filament\Tables\Table
+     */
     public static function table(Table $table): Table
     {
         return $table
@@ -97,6 +125,11 @@ class ProductVariationResource extends Resource
             ]);
     }
 
+    /**
+     * Definiert die Beziehungen der Varianten-Resource.
+     *
+     * @return array<int, \Filament\Resources\RelationManagers\RelationManager>
+     */
     public static function getRelations(): array
     {
         return [
@@ -104,11 +137,26 @@ class ProductVariationResource extends Resource
         ];
     }
 
+    /**
+     * Definiert die verfügbaren Seiten für die Varianten-Resource.
+     *
+     * @return array<string, string>
+     */
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListProductVariations::route('/'),
             'edit' => Pages\EditProductVariation::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Gibt den deutschen Seitentitel aus.
+     *
+     * @return string
+     */
+    public function getTitle(): string
+    {
+        return 'Variante bearbeiten';
     }
 }
