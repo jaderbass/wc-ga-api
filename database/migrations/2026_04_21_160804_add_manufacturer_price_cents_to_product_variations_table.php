@@ -8,17 +8,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            $table->unsignedBigInteger('manufacturer_price_cents')
-                ->nullable()
-                ->after('sale_price_cents');
+        Schema::table('products', function (Blueprint $table): void {
+            if (! Schema::hasColumn('products', 'manufacturer_price_cents')) {
+                $table->unsignedBigInteger('manufacturer_price_cents')
+                    ->nullable()
+                    ->after('sale_price_cents');
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('product_variations', function (Blueprint $table) {
-            $table->dropColumn('manufacturer_price_cents');
+        Schema::table('products', function (Blueprint $table): void {
+            if (Schema::hasColumn('products', 'manufacturer_price_cents')) {
+                $table->dropColumn('manufacturer_price_cents');
+            }
         });
     }
 };

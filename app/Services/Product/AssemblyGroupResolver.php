@@ -2,6 +2,9 @@
 
 namespace App\Services\Product;
 
+use App\Models\AssemblyGroupRule;
+use App\Models\Product;
+
 /**
  * Resolver zur Ermittlung der Baugruppe eines Produkts anhand seines Namens.
  *
@@ -22,29 +25,25 @@ class AssemblyGroupResolver
      * @param string|null $productName
      * @return int
      */
-    public function resolve(?string $productName): int
+    public function resolve(Product $product): int
     {
-        $name = mb_strtolower(trim((string) $productName));
-
-        if ($name === '') {
-            return 1;
+        // Manuelle Zuweisung schützen
+        if ($product->assembly_group_assignment_mode === 'manual') {
+            return (int) $product->assembly_group;
         }
 
-        $rules = config('assembly_group.rules', []);
+        $rules = AssemblyGroupRule::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
 
         foreach ($rules as $rule) {
-            $needle = mb_strtolower(trim((string) ($rule['contains'] ?? '')));
-            $value = $rule['value'] ?? null;
-
-            if ($needle === '' || $value === null) {
-                continue;
-            }
-
-            if (str_contains($name, $needle)) {
-                return (int) $value;
+            if ($rule->matches($product)) {
+                return (int) $rule->assembly_group;
             }
         }
 
+        // Fallback
         return 1;
     }
 }
