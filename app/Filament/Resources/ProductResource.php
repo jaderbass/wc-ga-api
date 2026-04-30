@@ -124,7 +124,7 @@ class ProductResource extends Resource
                                             /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
                                             $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
 
-                                            $resolvedAssemblyGroup = $resolver->resolve((string) $record->product_name);
+                                            $resolvedAssemblyGroup = $resolver->resolve($record);
 
                                             $record->assembly_group = $resolvedAssemblyGroup;
                                             $record->assembly_group_source = 'auto';

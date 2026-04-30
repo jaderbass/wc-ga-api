@@ -28,7 +28,7 @@ class AssemblyGroupResolver
     public function resolve(Product $product): int
     {
         // Manuelle Zuweisung schützen
-        if ($product->assembly_group_assignment_mode === 'manual') {
+        if ($product->assembly_group_source === 'manual') {
             return (int) $product->assembly_group;
         }
 
