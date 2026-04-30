@@ -36,7 +36,8 @@ class AssemblyGroupRuleResource extends Resource
             ->schema([
                 TextInput::make('name')
                     ->label('Name')
-                    ->required(),
+                    ->required()
+                    ->default(fn($get) => 'Produktname enthält "' . $get('value') . '"'),
 
                 Select::make('field')
                     ->label('Feld')
@@ -54,7 +55,8 @@ class AssemblyGroupRuleResource extends Resource
 
                 TextInput::make('value')
                     ->label('Suchwert')
-                    ->required(),
+                    ->required()
+                    ->minLength(2),
 
                 TextInput::make('assembly_group')
                     ->label('Baugruppe')
@@ -75,37 +77,31 @@ class AssemblyGroupRuleResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->reorderable('sort_order')
+            ->defaultSort('sort_order')
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->label('Name')
-                    ->searchable(),
+                    ->label('Regel')
+                    ->searchable()
+                    ->sortable(),
 
-                Tables\Columns\TextColumn::make('field')
-                    ->label('Feld')
-                    ->formatStateUsing(fn(string $state): string => match ($state) {
-                        'product_name' => 'Produktname',
-                        default => $state,
+                Tables\Columns\TextColumn::make('condition')
+                    ->label('Bedingung')
+                    ->state(function ($record): string {
+                        return 'Produktname enthält "' . $record->value . '"';
                     }),
-
-                Tables\Columns\TextColumn::make('operator')
-                    ->label('Operator')
-                    ->formatStateUsing(fn(string $state): string => match ($state) {
-                        'contains' => 'enthält',
-                        default => $state,
-                    }),
-
-                Tables\Columns\TextColumn::make('value')
-                    ->label('Suchwert'),
 
                 Tables\Columns\TextColumn::make('assembly_group')
-                    ->label('Baugruppe'),
-
-                Tables\Columns\TextColumn::make('sort_order')
-                    ->label('Reihenfolge'),
+                    ->label('Baugruppe')
+                    ->badge(),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Aktiv')
                     ->boolean(),
+
+                Tables\Columns\TextColumn::make('sort_order')
+                    ->label('Reihenfolge')
+                    ->sortable(),
             ])
             ->filters([
                 //
