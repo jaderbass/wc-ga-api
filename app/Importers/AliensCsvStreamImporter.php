@@ -13,6 +13,7 @@ use App\Services\ProductNaming\ProductNameContext;
 use App\Services\ProductNaming\ProductPropertyExtractor;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
+use App\Support\Html\ProductDescriptionLinkCleaner;
 use App\Support\Concerns\HasImportAuthor;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -487,15 +488,15 @@ class AliensCsvStreamImporter
             $out[$dbField] = $val;
         }
 
-        // Beginn Einfügen
         if (isset($out['description'])) {
-            $out['description'] = $this->normalizeAliensHtml((string) $out['description']);
+            $out['description'] = app(ProductDescriptionLinkCleaner::class)
+                ->clean($this->normalizeAliensHtml((string) $out['description']));
         }
 
         if (isset($out['short_description'])) {
-            $out['short_description'] = $this->normalizeAliensHtml((string) $out['short_description']);
+            $out['short_description'] = app(ProductDescriptionLinkCleaner::class)
+                ->clean($this->normalizeAliensHtml((string) $out['short_description']));
         }
-        // Ende Einfügen
 
 
         // Fallback short_description
