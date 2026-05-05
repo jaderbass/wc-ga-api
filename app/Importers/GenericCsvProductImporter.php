@@ -1757,7 +1757,8 @@ class GenericCsvProductImporter implements CsvImporterContract
         /** @var \App\Services\Product\AssemblyGroupResolver $resolver */
         $resolver = app(\App\Services\Product\AssemblyGroupResolver::class);
 
-        $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+        // $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+        $resolvedAssemblyGroup = $resolver->resolve($product);
         $currentAssemblyGroup = (int) $product->assembly_group;
 
         if ($currentAssemblyGroup === $resolvedAssemblyGroup) {
