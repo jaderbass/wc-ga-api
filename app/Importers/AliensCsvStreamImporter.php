@@ -1169,7 +1169,8 @@ class AliensCsvStreamImporter
         if (($product->assembly_group_source ?? 'auto') !== 'manual') {
             $product->refresh();
 
-            $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+            // $resolvedAssemblyGroup = $resolver->resolve((string) $product->product_name);
+            $resolvedAssemblyGroup = $resolver->resolve($product);
             $currentAssemblyGroup = (int) $product->assembly_group;
 
             if ($currentAssemblyGroup !== $resolvedAssemblyGroup || ($product->assembly_group_source ?? 'auto') !== 'auto') {
