@@ -92,9 +92,15 @@ class CategoryResyncStatus
     protected static function runningText(CategoryResyncRun $run): string
     {
         if ($run->total > 0) {
+            $percent = (int) round(
+                ($run->processed / $run->total) * 100
+            );
+
             return sprintf(
-                'Neuzuordnung läuft · %d %',
-                $run->processed
+                'Neuzuordnung läuft · %d / %d',
+                $percent,
+                $run->processed,
+                $run->total
             );
         }
 
