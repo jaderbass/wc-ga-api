@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+// BEGIN Petzl translation collection
+
+use App\Services\Petzl\PetzlCsvTranslationService;
+
+// END Petzl translation collection
+
 /**
  * Class GenericCsvProductImporter
  *
@@ -159,6 +165,19 @@ class GenericCsvProductImporter implements CsvImporterContract
         ImportLog::debug('Normalized record sample', [
             'sample' => array_slice($normalized->values()->toArray(), 0, 3),
         ]);
+
+        // BEGIN Petzl translation collection
+
+        if ($mappingType === 'petzl' || $this->mappingFile === 'petzl') {
+            $translationService = app(PetzlCsvTranslationService::class);
+
+            $normalized->each(function (array $row) use ($translationService): void {
+                $translationService->rememberTerm('Category', $row['Category'] ?? null);
+                $translationService->rememberTerm('Designation', $row['Designation'] ?? null);
+            });
+        }
+
+        // END Petzl translation collection
 
         $groupBy = $this->mapping['group_by'] ?? null;
         $groupByCols = is_array($groupBy)
