@@ -988,7 +988,7 @@ HTML;
             ])
             ->defaultSort('product_name')
             ->paginated([10, 25, 50])
-            ->defaultPaginationPageOption(25)
+            ->defaultPaginationPageOption(50)
             ->filters([
                 Tables\Filters\SelectFilter::make('manufacturer_id')
                     ->label('Hersteller')
