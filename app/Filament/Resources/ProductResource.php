@@ -987,7 +987,7 @@ HTML;
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('product_name')
-            ->paginated([10, 25, 50])
+            ->paginated([10, 25, 50, 100, 250])
             ->defaultPaginationPageOption(50)
             ->filters([
                 Tables\Filters\SelectFilter::make('manufacturer_id')
