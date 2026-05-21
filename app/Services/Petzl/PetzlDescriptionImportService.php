@@ -39,4 +39,24 @@ class PetzlDescriptionImportService
 
         return $result;
     }
+
+    /**
+     * Prüft, ob für ein Produkt eine Petzl-Beschreibung automatisch importiert werden darf.
+     */
+    public function shouldImport(Product $product, bool $force = false): bool
+    {
+        if ($force) {
+            return true;
+        }
+
+        if ($product->description_source === 'manual') {
+            return false;
+        }
+
+        if (! empty($product->petzl_description_hash)) {
+            return false;
+        }
+
+        return true;
+    }
 }

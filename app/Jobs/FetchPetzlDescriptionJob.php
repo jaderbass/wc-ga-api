@@ -31,6 +31,7 @@ class FetchPetzlDescriptionJob implements ShouldQueue
     public function __construct(
         public int $productId,
         public string $url,
+        public bool $force = false,
     ) {}
 
     /**
@@ -41,9 +42,10 @@ class FetchPetzlDescriptionJob implements ShouldQueue
     ): void {
         $product = Product::findOrFail($this->productId);
 
-        $importService->importFromUrl(
-            $product,
-            $this->url
-        );
+        if (! $importService->shouldImport($product, $this->force)) {
+            return;
+        }
+
+        $importService->importFromUrl($product, $this->url);
     }
 }
