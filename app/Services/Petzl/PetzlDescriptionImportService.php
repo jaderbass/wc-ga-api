@@ -4,12 +4,25 @@ namespace App\Services\Petzl;
 
 use App\Models\Product;
 
+/**
+ * Importiert extrahierte Petzl-Beschreibungen in bestehende Produkte.
+ */
 class PetzlDescriptionImportService
 {
     public function __construct(
         protected PetzlDescriptionFetcher $fetcher,
     ) {}
 
+    /**
+     * Ruft die Beschreibung von einer Petzl-URL ab und speichert sie am Produkt.
+     *
+     * Manuell gepflegte Beschreibungen bleiben über description_source geschützt.
+     *
+     * @param Product $product Produkt, das aktualisiert werden soll.
+     * @param string $url Petzl-Produkt-URL.
+     *
+     * @return array{url: string, description_html: string, hash: string}
+     */
     public function importFromUrl(Product $product, string $url): array
     {
         $result = $this->fetcher->fetchFromUrl($url);

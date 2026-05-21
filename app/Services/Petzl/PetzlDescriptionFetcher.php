@@ -6,8 +6,20 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Symfony\Component\DomCrawler\Crawler;
 
+/**
+ * Ruft Petzl-Produktseiten ab und extrahiert die Beschreibungsinhalte.
+ */
 class PetzlDescriptionFetcher
 {
+    /**
+     * Ruft eine Petzl-Produktseite ab und gibt die bereinigte Beschreibung zurück.
+     *
+     * @param string $url Vollständige URL zur Petzl-Produktseite.
+     *
+     * @throws RuntimeException Wenn der Abruf fehlschlägt oder kein Beschreibungsblock gefunden wird.
+     *
+     * @return array{url: string, description_html: string, hash: string}
+     */
     public function fetchFromUrl(string $url): array
     {
         $response = Http::withHeaders([
@@ -36,6 +48,13 @@ class PetzlDescriptionFetcher
         ];
     }
 
+    /**
+     * Extrahiert den Beschreibungsblock aus dem Petzl-HTML.
+     *
+     * @param string $html Vollständiges HTML der Produktseite.
+     *
+     * @throws RuntimeException Wenn der Beschreibungsblock nicht gefunden wird.
+     */
     protected function extractDescriptionHtml(string $html): string
     {
         $crawler = new Crawler($html);
@@ -51,6 +70,9 @@ class PetzlDescriptionFetcher
         );
     }
 
+    /**
+     * Bereinigt Petzl-spezifisches HTML für die spätere WooCommerce-Nutzung.
+     */
     protected function cleanHtml(string $html): string
     {
         $html = str_replace('<br />-', '<br>- ', $html);
