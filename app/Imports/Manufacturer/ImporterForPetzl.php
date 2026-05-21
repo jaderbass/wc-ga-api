@@ -4,6 +4,12 @@ namespace App\Imports\Manufacturer;
 
 use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use App\Jobs\FetchPetzlDescriptionJob;
+use App\Models\Product;
+use App\Services\Petzl\PetzlDescriptionImportService;
+use App\Services\Petzl\PetzlProductUrlResolver;
+use Illuminate\Support\Collection;
 
 /**
  * Importer für Petzl-Produktdaten (CSV), unterstützt variable Produkte.
@@ -189,4 +195,73 @@ class ImporterForPetzl extends GenericCsvProductImporter
 
     return $normalizedPath;
   }
+
+    /**
+     * Stößt nach dem Produktimport den Petzl-Beschreibungsimport an.
+     *
+     * Die Beschreibung wird nur nachgeladen, wenn noch keine automatische
+     * Beschreibung vorhanden ist und keine manuelle Beschreibung geschützt wird.
+     *
+     * @param Product $product Importiertes oder aktualisiertes Produkt.
+     * @param Collection<int, array<string, mixed>> $rows CSV-Zeilen der Produktgruppe.
+     * @param array<string, mixed> $productPayload Aufbereitete Produktdaten aus dem Mapping.
+     */
+    protected function afterProductUpserted(
+        Product $product,
+        Collection $rows,
+        array $productPayload
+    ): void {
+        Log::info('Petzl afterProductUpserted called.', [
+            'product_id' => $product->id,
+            'description_source' => $product->description_source,
+            'petzl_description_hash' => $product->petzl_description_hash,
+            'product_payload_name' => $productPayload['product_name'] ?? null,
+            'row_product_name' => $rows->first()['Product name'] ?? null,
+        ]);
+
+        $importService = app(PetzlDescriptionImportService::class);
+
+        if (! $importService->shouldImport($product)) {
+            Log::info('Petzl description import skipped.', [
+                'product_id' => $product->id,
+                'reason' => 'shouldImport returned false',
+            ]);
+
+            return;
+        }
+
+        $productName = $productPayload['product_name']
+            ?? $rows->first()['Product name']
+            ?? null;
+
+        if (! $productName) {
+            Log::warning('Petzl description import skipped: missing product name.', [
+                'product_id' => $product->id,
+            ]);
+
+            return;
+        }
+
+        try {
+            $url = app(PetzlProductUrlResolver::class)
+                ->resolveByProductName((string) $productName);
+
+            FetchPetzlDescriptionJob::dispatchSync(
+                $product->id,
+                $url
+            );
+
+            Log::info('Petzl description job dispatched.', [
+                'product_id' => $product->id,
+                'product_name' => $productName,
+                'url' => $url,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Petzl description job could not be dispatched.', [
+                'product_id' => $product->id,
+                'product_name' => $productName,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
 }

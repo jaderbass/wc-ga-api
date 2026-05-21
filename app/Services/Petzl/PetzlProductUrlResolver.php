@@ -105,9 +105,20 @@ class PetzlProductUrlResolver
             ->replaceMatches('/[^A-Z0-9]+/', '-')
             ->trim('-');
 
-        $candidateUrls = [
-            "https://www.petzl.com/DE/de/Professional/Verbindungsmittel-und-Falldampfer/{$slug}",
+        $paths = [
+            'Verbindungsmittel-und-Falldampfer',
+            'Helme',
+            'Gurte',
+            'Karabiner-und-Verbindungselemente',
+            'Seile',
         ];
+
+        $candidateUrls = collect($paths)
+            ->map(
+                fn(string $path) =>
+                "https://www.petzl.com/DE/de/Professional/{$path}/{$slug}"
+            )
+            ->all();
 
         foreach ($candidateUrls as $url) {
             $response = Http::withHeaders([
@@ -117,7 +128,11 @@ class PetzlProductUrlResolver
                 ->retry(2, 1000)
                 ->get($url);
 
-            if ($response->successful()) {
+            if (
+                $response->successful()
+                && ! str_contains($response->body(), 'Page introuvable')
+                && ! str_contains($response->body(), '404')
+            ) {
                 return $url;
             }
         }
