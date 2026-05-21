@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use App\Models\Product;
 use App\Services\Petzl\PetzlDescriptionFetcher;
 use App\Services\Petzl\PetzlDescriptionImportService;
+use App\Services\Petzl\PetzlProductUrlResolver;
 use Illuminate\Support\Str;
 
 class PetzlFetchDescriptionCommand extends Command
@@ -16,9 +17,11 @@ class PetzlFetchDescriptionCommand extends Command
      * @var string
      */
     protected $signature = 'petzl:fetch-description
-        {url : Petzl product URL}
-        {--product-id= : Product ID to update}
-        {--dry-run : Only output result without storing}';
+        {url? : Petzl product URL}
+        {--reference= : Petzl reference}
+        {--product-id= : Product ID}
+        {--dry-run : Only output result without storing}
+        {--product-name= : Petzl product name}';
 
     /**
      * The console command description.
@@ -37,6 +40,18 @@ class PetzlFetchDescriptionCommand extends Command
     ): int {
         $url = (string) $this->argument('url');
         $productId = $this->option('product-id');
+
+        if (! $url && $this->option('reference')) {
+            $url = app(PetzlProductUrlResolver::class)
+                ->resolveByReference(
+                    (string) $this->option('reference')
+                );
+        }
+
+        if (! $url && $this->option('product-name')) {
+            $url = app(PetzlProductUrlResolver::class)
+                ->resolveByProductName((string) $this->option('product-name'));
+        }
 
         if ($this->option('dry-run')) {
             $result = $fetcher->fetchFromUrl($url);
