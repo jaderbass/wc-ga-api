@@ -776,6 +776,8 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         app(ProductCategorySyncService::class)->sync($product);
 
+        $this->afterProductUpserted($product, $rows, $productPayload);
+
         Log::info('Product upserted', [
             'id'              => $product->id,
             'name'            => $product->product_name,
@@ -1025,10 +1027,26 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         // 2) Variante erstellen oder aktualisieren (bestehende Logik beibehalten)
-        $variation = ProductVariation::updateOrCreate(
-            ['product_id' => $product->id, 'sku' => $variationSku],
-            $variationPayload
-        );
+        $variation = ProductVariation::query()
+            ->where('sku', $variationSku)
+            ->first();
+
+        if ($variation) {
+            $variation->forceFill(array_merge(
+                $variationPayload,
+                [
+                    'product_id' => $product->id,
+                ]
+            ))->save();
+        } else {
+            $variation = ProductVariation::create(array_merge(
+                $variationPayload,
+                [
+                    'product_id' => $product->id,
+                    'sku' => $variationSku,
+                ]
+            ));
+        }
 
         // Attribute zuweisen
         $this->handleVariationAttributes($variation, $row);
@@ -1792,5 +1810,23 @@ class GenericCsvProductImporter implements CsvImporterContract
         $product->assembly_group = $resolvedAssemblyGroup;
         $product->assembly_group_source = 'auto';
         $product->save();
+    }
+
+    /**
+     * Hook nach dem Anlegen oder Aktualisieren eines Produkts.
+     *
+     * Kind-Importer können diese Methode überschreiben, um herstellerspezifische
+     * Folgeprozesse auszulösen, ohne den generischen Importfluss zu verändern.
+     *
+     * @param Product $product Importiertes oder aktualisiertes Produkt.
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $rows CSV-Zeilen der Produktgruppe.
+     * @param array<string, mixed> $productPayload Aufbereitete Produktdaten aus dem Mapping.
+     */
+    protected function afterProductUpserted(
+        Product $product,
+        \Illuminate\Support\Collection $rows,
+        array $productPayload
+    ): void {
+        //
     }
 }
