@@ -24,6 +24,11 @@ class PetzlDescriptionFetcher
 
         $html = $response->body();
 
+        file_put_contents(
+            storage_path('app/petzl-debug-full.html'),
+            $html
+        );
+
         return [
             'url' => $url,
             'description_html' => $this->extractDescriptionHtml($html),
@@ -35,22 +40,23 @@ class PetzlDescriptionFetcher
     {
         $crawler = new Crawler($html);
 
-        $selectors = [
-            '[data-testid="product-description"]',
-            '.product-description',
-            '.product__description',
-            '.description',
-            'main',
-        ];
+        $nodes = $crawler->filter('#descriptif');
 
-        foreach ($selectors as $selector) {
-            $nodes = $crawler->filter($selector);
-
-            if ($nodes->count() > 0) {
-                return trim($nodes->first()->html());
-            }
+        if ($nodes->count() === 0) {
+            throw new RuntimeException('Petzl description block "#descriptif" not found.');
         }
 
-        throw new RuntimeException('No matching Petzl description container found.');
+        return $this->cleanHtml(
+            trim($nodes->first()->html())
+        );
+    }
+
+    protected function cleanHtml(string $html): string
+    {
+        $html = str_replace('<br />-', '<br>- ', $html);
+        $html = preg_replace('/\sclass="[^"]*"/', '', $html);
+        $html = preg_replace('/\s+/', ' ', $html);
+
+        return trim($html);
     }
 }
