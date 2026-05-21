@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use App\Models\Product;
 use App\Services\Petzl\PetzlDescriptionFetcher;
+use App\Services\Petzl\PetzlDescriptionImportService;
 use Illuminate\Support\Str;
 
 class PetzlFetchDescriptionCommand extends Command
@@ -29,24 +31,24 @@ class PetzlFetchDescriptionCommand extends Command
      * Execute the console command.
      */
 
-    public function handle(PetzlDescriptionFetcher $fetcher): int
-    {
+    public function handle(
+        PetzlDescriptionFetcher $fetcher,
+        PetzlDescriptionImportService $importService,
+    ): int {
         $url = (string) $this->argument('url');
+        $productId = $this->option('product-id');
 
-        $result = $fetcher->fetchFromUrl($url);
+        if ($this->option('dry-run')) {
+            $result = $fetcher->fetchFromUrl($url);
+        } else {
+            if (! $productId) {
+                $this->error('Option --product-id is required unless --dry-run is used.');
 
-        if (! $this->option('dry-run') && $this->option('product-id')) {
-            $product = \App\Models\Product::findOrFail($this->option('product-id'));
+                return self::FAILURE;
+            }
 
-            $product->forceFill([
-                'petzl_description_html' => $result['description_html'],
-                'petzl_description_source_url' => $result['url'],
-                'petzl_description_fetched_at' => now(),
-                'petzl_description_hash' => $result['hash'],
-                'description_source' => $product->description_source === 'manual'
-                    ? 'manual'
-                    : 'auto',
-            ])->save();
+            $product = Product::findOrFail((int) $productId);
+            $result = $importService->importFromUrl($product, $url);
 
             $this->info('Product updated: ' . $product->id);
         }
@@ -60,10 +62,7 @@ class PetzlFetchDescriptionCommand extends Command
         $this->info('Hash: ' . $result['hash']);
         $this->line('');
         $this->line('===== HTML =====');
-        $this->line(Str::limit(
-            strip_tags($result['description_html']),
-            1000
-        ));
+        $this->line(Str::limit(strip_tags($result['description_html']), 1000));
 
         return self::SUCCESS;
     }
