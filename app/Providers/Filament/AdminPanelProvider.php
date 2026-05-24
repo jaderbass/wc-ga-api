@@ -76,7 +76,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            ->favicon(asset('images/geoalpin-shop-favicon.svg'))
+            ->favicon(asset('favicon.svg'))
             // ->brandLogo(asset('images/geoalpin-shop-favicon.svg'))
             ->brandLogo(fn () => view('components.filament-brand-logo'))
             ->brandLogoHeight('2rem')
