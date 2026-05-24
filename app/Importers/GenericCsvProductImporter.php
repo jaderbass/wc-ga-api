@@ -729,7 +729,13 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $query = \App\Models\Product::query();
 
-        if ($productLookupBy === 'sku') {
+        $productNumber = trim((string) ($writablePayload['product_number'] ?? ''));
+
+        if ($productNumber !== '') {
+            $query
+                ->where('manufacturer_id', $this->manufacturerId)
+                ->where('product_number', $productNumber);
+        } elseif ($productLookupBy === 'sku') {
             // Für Aliens: Parent-SKU = Prefix + Produkt-ID
             $productIdSpec = $this->mapping['group_by'] ?? null;
             $productIdCol  = is_array($productIdSpec) ? ($productIdSpec[0] ?? null) : $productIdSpec;
@@ -741,10 +747,8 @@ class GenericCsvProductImporter implements CsvImporterContract
 
             if ($prefixedSku) {
                 $query->where('sku', $prefixedSku);
-                // stellen wir sicher, dass SKU im Payload gesetzt ist
                 $writablePayload['sku'] = $prefixedSku;
             } else {
-                // Fallback auf slug
                 $query->where('slug', $slug);
             }
         } else {
