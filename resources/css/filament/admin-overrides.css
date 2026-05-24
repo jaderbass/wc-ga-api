@@ -101,3 +101,44 @@ html.dark .fi-dropdown .fi-dropdown-item[aria-current="true"] {
   color: #f9fafb !important;
   /* gray-50 */
 }
+
+/* Petzl-Beschreibungen in Produktansicht */
+.fi-form .petzl-description-html h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 1.5rem 0 1rem;
+}
+
+.fi-form .petzl-description-html h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.75rem;
+}
+
+.fi-form .petzl-description-html ul {
+    list-style: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.fi-form .petzl-description-html li {
+    margin-bottom: 0.4rem;
+}
+
+.fi-form .petzl-description-html table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.fi-form .petzl-description-html th,
+.fi-form .petzl-description-html td {
+    border: 1px solid rgb(209 213 219);
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.fi-form .petzl-description-html th {
+    font-weight: 700;
+    background-color: rgb(249 250 251);
+}

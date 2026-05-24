@@ -25,6 +25,8 @@ use App\Services\ProductNaming\ProductNameContext;
 use App\Support\TextNormalizer;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Group;
@@ -462,11 +464,11 @@ HTML;
                                             fn($record) =>
                                             new HtmlString(
                                                 '<h3 class="text-base font-semibold mt-4 mb-2">Beschreibung</h3>'
-                                                    . (
-                                                        $record?->petzl_description_html
+                                                    . '<div class="petzl-description-html">'
+                                                    . ($record?->petzl_description_html
                                                         ?: $record?->description
-                                                        ?: '<div class="text-gray-500">—</div>'
-                                                    )
+                                                        ?: '<div class="text-gray-500">—</div>')
+                                                    . '</div>'
                                             )
                                         )
                                         ->columnSpanFull(),
@@ -479,14 +481,24 @@ HTML;
                                             }
 
                                             $sourceUrl = e($record->petzl_description_source_url);
+
                                             $fetchedAt = $record->petzl_description_fetched_at
-                                                ? \Illuminate\Support\Carbon::parse($record->petzl_description_fetched_at)->format('d.m.Y H:i')
+                                                ? \Illuminate\Support\Carbon::parse(
+                                                    $record->petzl_description_fetched_at
+                                                )->format('d.m.Y H:i')
                                                 : 'unbekannt';
+
+                                            $descriptionSource = match ($record->description_source) {
+                                                'auto' => 'Automatisch',
+                                                'manual' => 'Manuell',
+                                                default => 'Unbekannt',
+                                            };
 
                                             return new HtmlString(
                                                 '<div class="mt-3 text-xs text-gray-500">'
                                                     . 'Quelle: <a href="' . $sourceUrl . '" target="_blank" class="underline">Petzl.com</a>'
                                                     . ' · abgerufen am ' . e($fetchedAt)
+                                                    . ' · Typ: ' . e($descriptionSource)
                                                     . '</div>'
                                             );
                                         })
@@ -1081,14 +1093,20 @@ HTML;
                             ->searchable()         // Typeahead-Suche aktivieren
                             ->preload()            // Optionen vorladen (besseres UX im Modal)
                             ->reactive()
-                            ->afterStateUpdated(function ($state, callable $set) {
-                                // Automatisch den Import-Typ setzen
-                                $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
+                            ->afterStateUpdated(function (?int $state, Set $set): void {
+                                $importType = \App\Models\Manufacturer::query()
+                                    ->whereKey($state)
+                                    ->value('import_type') ?? 'csv';
+
                                 $set('sourceType', $importType);
                             })
                             ->required(),
                         Hidden::make('sourceType')
-                            ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
+                            ->default(function (Get $get): string {
+                                return \App\Models\Manufacturer::query()
+                                    ->whereKey($get('manufacturer_id'))
+                                    ->value('import_type') ?? 'csv';
+                            }),
                         // Info-Box bei API-Import
                         Placeholder::make('api_info')
                             ->label('')
