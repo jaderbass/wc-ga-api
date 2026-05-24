@@ -462,9 +462,34 @@ HTML;
                                             fn($record) =>
                                             new HtmlString(
                                                 '<h3 class="text-base font-semibold mt-4 mb-2">Beschreibung</h3>'
-                                                    . ($record?->description ?: '<div class="text-gray-500">—</div>')
+                                                    . (
+                                                        $record?->petzl_description_html
+                                                        ?: $record?->description
+                                                        ?: '<div class="text-gray-500">—</div>'
+                                                    )
                                             )
                                         )
+                                        ->columnSpanFull(),
+
+                                    Placeholder::make('petzl_description_meta')
+                                        ->label('')
+                                        ->content(function ($record) {
+                                            if (! $record?->petzl_description_html) {
+                                                return new HtmlString('');
+                                            }
+
+                                            $sourceUrl = e($record->petzl_description_source_url);
+                                            $fetchedAt = $record->petzl_description_fetched_at
+                                                ? \Illuminate\Support\Carbon::parse($record->petzl_description_fetched_at)->format('d.m.Y H:i')
+                                                : 'unbekannt';
+
+                                            return new HtmlString(
+                                                '<div class="mt-3 text-xs text-gray-500">'
+                                                    . 'Quelle: <a href="' . $sourceUrl . '" target="_blank" class="underline">Petzl.com</a>'
+                                                    . ' · abgerufen am ' . e($fetchedAt)
+                                                    . '</div>'
+                                            );
+                                        })
                                         ->columnSpanFull(),
                                 ])
                                 ->columnSpanFull(),
