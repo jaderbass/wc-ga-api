@@ -3,6 +3,7 @@
 namespace App\Services\Petzl;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\DomCrawler\Crawler;
 
@@ -103,7 +104,8 @@ class PetzlProductUrlResolver
         $slug = str($productName)
             ->upper()
             ->replaceMatches('/[^A-Z0-9]+/', '-')
-            ->trim('-');
+            ->trim('-')
+            ->toString();
 
         $paths = [
             'Verbindungsmittel-und-Falldampfer',
@@ -111,14 +113,35 @@ class PetzlProductUrlResolver
             'Gurte',
             'Karabiner-und-Verbindungselemente',
             'Seile',
+            'Seilklemmen',
+            'Seilklemmen-fuer-den-Aufstieg-am-Seil',
+            'Abseilgeraete',
+            'Rollen',
+            'Anschlageinrichtungen',
+            'Zubehoer',
         ];
 
+        $slugCandidates = $this->buildSlugCandidates($slug);
+
+        Log::info('Petzl slug candidates.', [
+            'slug' => $slug,
+            'slug_candidates' => $slugCandidates->all(),
+        ]);
+
         $candidateUrls = collect($paths)
-            ->map(
-                fn(string $path) =>
-                "https://www.petzl.com/DE/de/Professional/{$path}/{$slug}"
+            ->flatMap(
+                fn(string $path) => $slugCandidates->map(
+                    fn(string $slugCandidate) =>
+                    "https://www.petzl.com/DE/de/Professional/{$path}/{$slugCandidate}"
+                )
             )
             ->all();
+
+        Log::info('Petzl resolver candidate URLs.', [
+            'product_name' => $productName,
+            'slug' => $slug,
+            'candidate_urls' => $candidateUrls,
+        ]);
 
         foreach ($candidateUrls as $url) {
             $response = Http::withHeaders([
@@ -132,13 +155,60 @@ class PetzlProductUrlResolver
                 $response->successful()
                 && ! str_contains($response->body(), 'Page introuvable')
                 && ! str_contains($response->body(), '404')
+                && str_contains($response->body(), 'id="descriptif"')
             ) {
+                Log::info('Checking Petzl URL.', [
+                    'url' => $url,
+                ]);
                 return $url;
             }
         }
 
+        Log::warning('Petzl URL resolver failed.', [
+            'product_name' => $productName,
+            'slug' => $slug,
+            'candidate_urls' => $candidateUrls,
+        ]);
+
         throw new RuntimeException(
             "No Petzl product URL found for product name {$productName}."
         );
+    }
+
+    /**
+     * Erstellt mögliche Petzl-URL-Slugs aus einem Produktnamen-Slug.
+     *
+     * Einige Petzl-Zubehörartikel besitzen keine eigene Detailseite, sondern
+     * verweisen sinnvoll auf die Seite des Hauptprodukts.
+     *
+     * @param string $slug Normalisierter Produktnamen-Slug.
+     *
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    protected function buildSlugCandidates(string $slug): \Illuminate\Support\Collection
+    {
+        $candidates = [
+            $slug,
+
+            // PANTIN® CLICK Webbing Strap → PANTIN-CLICK
+            str_replace('-CLICK-WEBBING-STRAP', '-CLICK', $slug),
+
+            // PANTIN® CLICK → PANTIN
+            str_replace('-CLICK', '', $slug),
+
+            // Zubehörtexte entfernen
+            str_replace('-WEBBING-STRAP', '', $slug),
+            str_replace('CATCH-FOR-', '', $slug),
+        ];
+
+        if (str_contains($slug, 'PANTIN')) {
+            $candidates[] = 'PANTIN';
+            $candidates[] = 'PANTIN-CLICK';
+        }
+
+        return collect($candidates)
+            ->filter()
+            ->unique()
+            ->values();
     }
 }
