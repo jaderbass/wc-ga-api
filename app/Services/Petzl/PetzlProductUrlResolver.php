@@ -109,15 +109,21 @@ class PetzlProductUrlResolver
 
         $paths = [
             'Verbindungsmittel-und-Falldampfer',
-            'Helme',
-            'Gurte',
-            'Karabiner-und-Verbindungselemente',
-            'Seile',
             'Seilklemmen',
             'Seilklemmen-fuer-den-Aufstieg-am-Seil',
+            'Helme',
+            'Gurte',
+            'Auffang--und-Haltegurte',
+            'Gurte-zum-Arbeiten-am-Seil',
+            'Karabiner-und-Verbindungselemente',
+            'Seile',
             'Abseilgeraete',
             'Rollen',
             'Anschlageinrichtungen',
+            'Rettung',
+            'Transporttaschen',
+            'Stirnlampen',
+            'Zubehoer-fuer-Stirnlampen',
             'Zubehoer',
         ];
 
@@ -128,11 +134,18 @@ class PetzlProductUrlResolver
             'slug_candidates' => $slugCandidates->all(),
         ]);
 
-        $candidateUrls = collect($paths)
+        $markets = [
+            'Professional',
+            'Sport',
+        ];
+
+        $candidateUrls = collect($markets)
             ->flatMap(
-                fn(string $path) => $slugCandidates->map(
-                    fn(string $slugCandidate) =>
-                    "https://www.petzl.com/DE/de/Professional/{$path}/{$slugCandidate}"
+                fn(string $market) => collect($paths)->flatMap(
+                    fn(string $path) => $slugCandidates->map(
+                        fn(string $slugCandidate) =>
+                        "https://www.petzl.com/DE/de/{$market}/{$path}/{$slugCandidate}"
+                    )
                 )
             )
             ->all();
@@ -190,20 +203,73 @@ class PetzlProductUrlResolver
         $candidates = [
             $slug,
 
-            // PANTIN® CLICK Webbing Strap → PANTIN-CLICK
             str_replace('-CLICK-WEBBING-STRAP', '-CLICK', $slug),
-
-            // PANTIN® CLICK → PANTIN
-            str_replace('-CLICK', '', $slug),
-
-            // Zubehörtexte entfernen
             str_replace('-WEBBING-STRAP', '', $slug),
+            str_replace('-CLICK', '', $slug),
             str_replace('CATCH-FOR-', '', $slug),
+
+            str_replace('-EUROPEAN-VERSION', '', $slug),
+            str_replace('-INTERNATIONAL-VERSION', '', $slug),
+            str_replace('-BEFORE-2019', '', $slug),
+            str_replace('-BEFORE-2020', '', $slug),
+
+            str_replace('SEAT-FOR-', '', $slug),
+            str_replace('-HARNESSES', '', $slug),
+            str_replace('-HARNESS', '', $slug),
+
+            str_replace('SHOULDER-STRAPS-FOR-', '', $slug),
+            str_replace('ATTACHMENT-BRIDGE-FOR-', '', $slug),
+            str_replace('FOOT-LOOP-FOR-', '', $slug),
+            str_replace('ELASTIC-BAND-FOR-', '', $slug),
+
+            str_replace('-EUROPEAN-VERSION', '-EUROPÄISCHE-AUSFÜHRUNG', $slug),
+            str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
         ];
 
         if (str_contains($slug, 'PANTIN')) {
             $candidates[] = 'PANTIN';
             $candidates[] = 'PANTIN-CLICK';
+        }
+
+        if (str_contains($slug, 'KNEE-ASCENT')) {
+            $candidates[] = 'KNEE-ASCENT-KIT';
+            $candidates[] = 'KNEE-ASCENT';
+        }
+
+        if (str_contains($slug, 'VERTEX')) {
+            $candidates[] = 'VERTEX';
+            $candidates[] = 'VERTEX-VENT';
+        }
+
+        if (str_contains($slug, 'STRATO')) {
+            $candidates[] = 'STRATO';
+            $candidates[] = 'STRATO-VENT';
+        }
+
+        if (str_contains($slug, 'SEQUOIA')) {
+            $candidates[] = 'SEQUOIA';
+            $candidates[] = 'SEQUOIA-SRT';
+        }
+
+        if (str_contains($slug, 'AVAO')) {
+            $candidates[] = 'AVAO';
+            $candidates[] = 'AVAO-FAST';
+        }
+
+        if (str_contains($slug, 'VOLT')) {
+            $candidates[] = 'VOLT';
+            $candidates[] = 'VOLT-WIND';
+            $candidates[] = 'VOLT-LIGHT';
+        }
+
+        if (str_contains($slug, 'NEWTON')) {
+            $candidates[] = 'NEWTON';
+            $candidates[] = 'NEWTON-FAST';
+            $candidates[] = 'NEWTON-EASYFIT';
+        }
+
+        if (str_contains($slug, 'ASTRO')) {
+            $candidates[] = 'ASTRO';
         }
 
         return collect($candidates)

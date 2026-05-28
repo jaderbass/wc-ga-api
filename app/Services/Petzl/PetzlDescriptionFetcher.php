@@ -62,6 +62,10 @@ class PetzlDescriptionFetcher
         $nodes = $crawler->filter('#descriptif');
 
         if ($nodes->count() === 0) {
+            file_put_contents(
+                storage_path('app/petzl-debug.html'),
+                $html
+            );
             throw new RuntimeException('Petzl description block "#descriptif" not found.');
         }
 
