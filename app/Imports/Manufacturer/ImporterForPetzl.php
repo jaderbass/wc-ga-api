@@ -4,11 +4,9 @@ namespace App\Imports\Manufacturer;
 
 use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use App\Jobs\FetchPetzlDescriptionJob;
 use App\Models\Product;
 use App\Services\Petzl\PetzlDescriptionImportService;
-use App\Services\Petzl\PetzlProductUrlResolver;
+use App\Jobs\SyncPetzlDescriptionJob;
 use Illuminate\Support\Collection;
 
 /**
@@ -211,22 +209,9 @@ class ImporterForPetzl extends GenericCsvProductImporter
         Collection $rows,
         array $productPayload
     ): void {
-        Log::info('Petzl afterProductUpserted called.', [
-            'product_id' => $product->id,
-            'description_source' => $product->description_source,
-            'petzl_description_hash' => $product->petzl_description_hash,
-            'product_payload_name' => $productPayload['product_name'] ?? null,
-            'row_product_name' => $rows->first()['Product name'] ?? null,
-        ]);
-
         $importService = app(PetzlDescriptionImportService::class);
 
         if (! $importService->shouldImport($product)) {
-            Log::info('Petzl description import skipped.', [
-                'product_id' => $product->id,
-                'reason' => 'shouldImport returned false',
-            ]);
-
             return;
         }
 
@@ -235,33 +220,21 @@ class ImporterForPetzl extends GenericCsvProductImporter
             ?? null;
 
         if (! $productName) {
-            Log::warning('Petzl description import skipped: missing product name.', [
+            Log::warning('Petzl description sync skipped: missing product name.', [
                 'product_id' => $product->id,
             ]);
 
             return;
         }
 
-        try {
-            $url = app(PetzlProductUrlResolver::class)
-                ->resolveByProductName((string) $productName);
+        SyncPetzlDescriptionJob::dispatch(
+            productId: $product->id,
+            productName: (string) $productName,
+        )->onQueue('imports');
 
-            FetchPetzlDescriptionJob::dispatchSync(
-                $product->id,
-                $url
-            );
-
-            Log::info('Petzl description job dispatched.', [
-                'product_id' => $product->id,
-                'product_name' => $productName,
-                'url' => $url,
-            ]);
-        } catch (\Throwable $exception) {
-            Log::warning('Petzl description job could not be dispatched.', [
-                'product_id' => $product->id,
-                'product_name' => $productName,
-                'message' => $exception->getMessage(),
-            ]);
-        }
+        Log::info('Petzl description sync job dispatched.', [
+            'product_id' => $product->id,
+            'product_name' => $productName,
+        ]);
     }
 }
