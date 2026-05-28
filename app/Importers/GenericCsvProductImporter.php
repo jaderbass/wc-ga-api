@@ -268,12 +268,17 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $this->importProductGroup($groupKey, $rows);
                 });
             } catch (\Throwable $e) {
+                Log::info('Importing group', [
+                    'groupKey' => $groupKey,
+                    'rows' => $rows->count(),
+                ]);
                 Log::error('Import group failed', [
                     'groupKey'  => $groupKey,
                     'rows'      => $rows->count(),
                     'exception' => $e->getMessage(),
                     'file'      => $e->getFile(),
                     'line'      => $e->getLine(),
+                    'first_row' => $rows->first(),
                 ]);
             }
         }
@@ -1163,6 +1168,8 @@ class GenericCsvProductImporter implements CsvImporterContract
             && (
                 array_key_exists('Specifications', $row)
                 || array_key_exists('Specifications_2', $row)
+                || array_key_exists('Specifications 1', $row)
+                || array_key_exists('Specifications 2', $row)
             );
     }
 
@@ -1184,6 +1191,8 @@ class GenericCsvProductImporter implements CsvImporterContract
         $specCandidates = [
             $row['Specifications'] ?? null,
             $row['Specifications_2'] ?? null,
+            $row['Specifications 1'] ?? null,
+            $row['Specifications 2'] ?? null,
         ];
 
         $specValues = [];
