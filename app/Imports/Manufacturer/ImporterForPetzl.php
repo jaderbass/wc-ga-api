@@ -5,6 +5,7 @@ namespace App\Imports\Manufacturer;
 use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
 use App\Models\Product;
+use App\Models\PetzlCategoryMapping;
 use App\Services\Petzl\PetzlDescriptionImportService;
 use App\Jobs\SyncPetzlDescriptionJob;
 use Illuminate\Support\Collection;
@@ -209,6 +210,10 @@ class ImporterForPetzl extends GenericCsvProductImporter
         Collection $rows,
         array $productPayload
     ): void {
+        $rows->each(function (array $row): void {
+            $this->ensureCategoryMapping($row);
+        });
+
         $importService = app(PetzlDescriptionImportService::class);
 
         if (! $importService->shouldImport($product)) {
@@ -236,5 +241,35 @@ class ImporterForPetzl extends GenericCsvProductImporter
             'product_id' => $product->id,
             'product_name' => $productName,
         ]);
+    }
+
+    /**
+     * Stellt sicher, dass die Petzl-Kategorie/Subkategorie aus der CSV
+     * als Mapping-Datensatz vorhanden ist.
+     *
+     * Fehlende Übersetzungen werden bewusst leer gelassen und später
+     * über Filament gepflegt.
+     *
+     * @param array<string, mixed> $row CSV-Zeile aus dem Petzl-Import.
+     */
+    protected function ensureCategoryMapping(array $row): ?PetzlCategoryMapping
+    {
+        $category = trim((string) ($row['Category'] ?? ''));
+        $subcategory = trim((string) ($row['Subcategory'] ?? ''));
+
+        if ($category === '') {
+            return null;
+        }
+
+        return PetzlCategoryMapping::firstOrCreate(
+            [
+                'source_category' => $category,
+                'source_subcategory' => $subcategory !== '' ? $subcategory : null,
+            ],
+            [
+                'is_reviewed' => false,
+                'is_active' => true,
+            ],
+        );
     }
 }
