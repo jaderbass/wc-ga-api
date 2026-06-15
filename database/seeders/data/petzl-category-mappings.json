@@ -1,0 +1,822 @@
+[
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Anchor slings and straps",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Anchor straps for tree care",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Quick adjustment anchor",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Rigging equipment",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Rock and concrete anchors",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Anchors",
+        "source_subcategory": "Temporary horizontal lifeline",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Anschlageinrichtungen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Connector positioning accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "High strength carabiners",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Lanyard end connectors",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Light carabiners",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Semi-permanent connectors",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Special lightweight carabiners",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Connectors",
+        "source_subcategory": "Ultra-light carabiners",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Descenders",
+        "source_subcategory": "Descenders for technical rescue",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Abseilgeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Descenders",
+        "source_subcategory": "Individual evacuation system",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Abseilgeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Descenders",
+        "source_subcategory": "Mechanical Prusik for tree care",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Abseilgeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Descenders",
+        "source_subcategory": "Self-braking descenders",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Abseilgeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Descenders",
+        "source_subcategory": "Standard descenders",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Abseilgeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Fall arrest and work positioning harness",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Fall arrest harnesses",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Harness accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Harnesses for fall arrest, work positioning and suspension",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Litter and evacuation triangles",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Rescue harnesses",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Rope access harnesses",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Harnesses",
+        "source_subcategory": "Tree care harnesses",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Gurte",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Headlamps",
+        "source_subcategory": "Compact, durable Headlamps",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Stirnlampen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "HEADLAMPS",
+        "source_subcategory": "Headlamp accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Stirnlampen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Headlamps",
+        "source_subcategory": "Intelligent powerful Headlamps",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Stirnlampen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "HEADLAMPS",
+        "source_subcategory": "Ultra-compact and versatile headlamps",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Stirnlampen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Helmets",
+        "source_subcategory": "Comfortable helmets",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Helme",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Helmets",
+        "source_subcategory": "Hats and balaclava",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Helme",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Helmets",
+        "source_subcategory": "Helmet accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Helme",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Helmets",
+        "source_subcategory": "Lightweight helmets",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Helme",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Helmets",
+        "source_subcategory": "Protective eye shields",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Helme",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Kits",
+        "source_subcategory": "Fall arrest and work positioning kit",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Kits",
+        "source_subcategory": "Mobile fall arrester kits",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Kits",
+        "source_subcategory": "Rescue kit",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Kits",
+        "source_subcategory": "Temporary horizontal lifelines and fall arrest kits",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Lanyards and energy absorbers",
+        "source_subcategory": "Fall arrest lanyards",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Verbindungsmittel-und-Falldampfer",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Lanyards and energy absorbers",
+        "source_subcategory": "Helivac lanyards",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Verbindungsmittel-und-Falldampfer",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Lanyards and energy absorbers",
+        "source_subcategory": "Rope access lanyards",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Verbindungsmittel-und-Falldampfer",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Lanyards and energy absorbers",
+        "source_subcategory": "Tree care lanyards",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Verbindungsmittel-und-Falldampfer",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Lanyards and energy absorbers",
+        "source_subcategory": "Work positioning lanyards",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Verbindungsmittel-und-Falldampfer",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Mobile fall arresters",
+        "source_subcategory": "Absorbers for mobile fall arresters",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Mobile fall arresters",
+        "source_subcategory": "Mobile fall arresters",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Mobile fall arresters",
+        "source_subcategory": "Ropes for mobile fall arresters",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Durable packs",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Technical Packs",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Transport bags",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Tree care accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Packs and accessories",
+        "source_subcategory": "Upright packs",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Transporttaschen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Haul system",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "High-efficiency pulleys",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "High-efficiency pulleys with swivel",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Progress capture pulleys",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Prusik pulleys",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Pulley-carabiners",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Single pulleys",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Pulleys",
+        "source_subcategory": "Transport pulleys",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Rollen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Rope clamps",
+        "source_subcategory": "Cam-loaded rope clamps",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seilklemmen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Rope clamps",
+        "source_subcategory": "Emergency rope clamp",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seilklemmen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Rope clamps",
+        "source_subcategory": "Rope clamps for progression",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seilklemmen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Rope clamps",
+        "source_subcategory": "Versatile rope clamp",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seilklemmen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Accessory cords",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Dynamic rope",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Low stretch kernmantel ropes",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Rope accessories",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Rope protectors",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Ropes",
+        "source_subcategory": "Technical cord",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Seile",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Absorbers for mobile fall arresters spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Anchors spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Descenders spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Harnesses spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Helmets spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Kit spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Lanyards spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Packs and accessories spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Rope clamps spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts",
+        "source_subcategory": "Rope protectors spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": null,
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    },
+    {
+        "source_category": "Spare parts Lighting",
+        "source_subcategory": "Headlamps spare parts",
+        "translated_category": null,
+        "translated_subcategory": null,
+        "petzl_path": "Ersatzteile-fuer-Stirnlampen",
+        "is_reviewed": false,
+        "is_active": true,
+        "notes": null
+    }
+]
