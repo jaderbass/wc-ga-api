@@ -2,6 +2,7 @@
 
 namespace App\Services\Petzl;
 
+use App\Models\PetzlCategoryMapping;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -99,33 +100,18 @@ class PetzlProductUrlResolver
      *
      * @return string Vollständige URL zur Petzl-Produktseite.
      */
-    public function resolveByProductName(string $productName): string
-    {
+    public function resolveByProductName(
+        string $productName,
+        ?string $sourceCategory = null,
+        ?string $sourceSubcategory = null
+    ): string {
         $slug = str($productName)
             ->upper()
             ->replaceMatches('/[^A-Z0-9]+/', '-')
             ->trim('-')
             ->toString();
 
-        $paths = [
-            'Verbindungsmittel-und-Falldampfer',
-            'Seilklemmen',
-            'Seilklemmen-fuer-den-Aufstieg-am-Seil',
-            'Helme',
-            'Gurte',
-            'Auffang--und-Haltegurte',
-            'Gurte-zum-Arbeiten-am-Seil',
-            'Karabiner-und-Verbindungselemente',
-            'Seile',
-            'Abseilgeraete',
-            'Rollen',
-            'Anschlageinrichtungen',
-            'Rettung',
-            'Transporttaschen',
-            'Stirnlampen',
-            'Zubehoer-fuer-Stirnlampen',
-            'Zubehoer',
-        ];
+        $paths = $this->resolvePaths($sourceCategory, $sourceSubcategory);
 
         $slugCandidates = $this->buildSlugCandidates($slug);
 
@@ -186,6 +172,59 @@ class PetzlProductUrlResolver
         throw new RuntimeException(
             "No Petzl product URL found for product name {$productName}."
         );
+    }
+
+    /**
+     * Ermittelt mögliche Petzl-Pfade aus dem Kategorie-Mapping.
+     *
+     * Falls kein gepflegter Mapping-Pfad vorhanden ist, werden die bisherigen
+     * statischen Fallback-Pfade verwendet.
+     *
+     * @return array<int, string>
+     */
+    protected function resolvePaths(
+        ?string $sourceCategory,
+        ?string $sourceSubcategory
+    ): array {
+        $mappingPath = null;
+
+        if ($sourceCategory !== null && trim($sourceCategory) !== '') {
+            $mappingPath = PetzlCategoryMapping::query()
+                ->where('source_category', trim($sourceCategory))
+                ->where('source_subcategory', $sourceSubcategory !== null && trim($sourceSubcategory) !== ''
+                    ? trim($sourceSubcategory)
+                    : null)
+                ->value('petzl_path');
+        }
+
+        $fallbackPaths = [
+            'Verbindungsmittel-und-Falldampfer',
+            'Seilklemmen',
+            'Seilklemmen-fuer-den-Aufstieg-am-Seil',
+            'Helme',
+            'Gurte',
+            'Auffang--und-Haltegurte',
+            'Gurte-zum-Arbeiten-am-Seil',
+            'Karabiner-und-Verbindungselemente',
+            'Seile',
+            'Abseilgeraete',
+            'Rollen',
+            'Anschlageinrichtungen',
+            'Rettung',
+            'Transporttaschen',
+            'Stirnlampen',
+            'Zubehoer-fuer-Stirnlampen',
+            'Zubehoer',
+        ];
+
+        return collect([
+            $mappingPath,
+            ...$fallbackPaths,
+        ])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
