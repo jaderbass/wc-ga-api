@@ -177,8 +177,8 @@ class PetzlProductUrlResolver
     /**
      * Ermittelt mögliche Petzl-Pfade aus dem Kategorie-Mapping.
      *
-     * Falls kein gepflegter Mapping-Pfad vorhanden ist, werden die bisherigen
-     * statischen Fallback-Pfade verwendet.
+     * Wenn ein gepflegter Mapping-Pfad vorhanden ist, wird nur dieser Pfad
+     * verwendet. Die statischen Fallback-Pfade greifen nur ohne Mapping.
      *
      * @return array<int, string>
      */
@@ -186,18 +186,25 @@ class PetzlProductUrlResolver
         ?string $sourceCategory,
         ?string $sourceSubcategory
     ): array {
-        $mappingPath = null;
-
         if ($sourceCategory !== null && trim($sourceCategory) !== '') {
-            $mappingPath = PetzlCategoryMapping::query()
-                ->where('source_category', trim($sourceCategory))
-                ->where('source_subcategory', $sourceSubcategory !== null && trim($sourceSubcategory) !== ''
-                    ? trim($sourceSubcategory)
-                    : null)
+            $query = PetzlCategoryMapping::query()
+                ->where('source_category', trim($sourceCategory));
+
+            if ($sourceSubcategory !== null && trim($sourceSubcategory) !== '') {
+                $query->where('source_subcategory', trim($sourceSubcategory));
+            }
+
+            $mappingPath = $query
+                ->whereNotNull('petzl_path')
+                ->where('petzl_path', '!=', '')
                 ->value('petzl_path');
+
+            if ($mappingPath !== null) {
+                return [trim($mappingPath)];
+            }
         }
 
-        $fallbackPaths = [
+        return [
             'Verbindungsmittel-und-Falldampfer',
             'Seilklemmen',
             'Seilklemmen-fuer-den-Aufstieg-am-Seil',
@@ -216,15 +223,6 @@ class PetzlProductUrlResolver
             'Zubehoer-fuer-Stirnlampen',
             'Zubehoer',
         ];
-
-        return collect([
-            $mappingPath,
-            ...$fallbackPaths,
-        ])
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
     }
 
     /**
