@@ -232,9 +232,14 @@ class ImporterForPetzl extends GenericCsvProductImporter
             return;
         }
 
+        $firstRow = $rows->first() ?? [];
+
         SyncPetzlDescriptionJob::dispatch(
             productId: $product->id,
             productName: (string) $productName,
+            force: false,
+            sourceCategory: (string) ($firstRow['Category'] ?? ''),
+            sourceSubcategory: (string) ($firstRow['Subcategory'] ?? ''),
         )->onQueue('imports');
 
         Log::info('Petzl description sync job dispatched.', [

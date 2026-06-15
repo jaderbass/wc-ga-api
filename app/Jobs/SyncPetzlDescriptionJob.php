@@ -21,6 +21,8 @@ class SyncPetzlDescriptionJob implements ShouldQueue
         public int $productId,
         public string $productName,
         public bool $force = false,
+        public ?string $sourceCategory = null,
+        public ?string $sourceSubcategory = null,
     ) {}
 
     public function handle(
@@ -40,7 +42,11 @@ class SyncPetzlDescriptionJob implements ShouldQueue
         }
 
         try {
-            $url = $resolver->resolveByProductName($this->productName);
+            $url = $resolver->resolveByProductName(
+                $this->productName,
+                $this->sourceCategory,
+                $this->sourceSubcategory,
+            );
 
             $importService->importFromUrl($product, $url);
         } catch (\Throwable $exception) {
