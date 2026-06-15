@@ -234,6 +234,13 @@ class ImporterForPetzl extends GenericCsvProductImporter
 
         $firstRow = $rows->first() ?? [];
 
+        Log::info('Dispatching Petzl description job with category mapping.', [
+            'product_id' => $product->id,
+            'product_name' => $productName,
+            'category' => $firstRow['Category'] ?? null,
+            'subcategory' => $firstRow['Subcategory'] ?? null,
+        ]);
+
         SyncPetzlDescriptionJob::dispatch(
             productId: $product->id,
             productName: (string) $productName,
