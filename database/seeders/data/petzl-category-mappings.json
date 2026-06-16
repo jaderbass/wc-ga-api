@@ -64,7 +64,7 @@
         "source_subcategory": "Connector positioning accessories",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -74,7 +74,7 @@
         "source_subcategory": "High strength carabiners",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -84,7 +84,7 @@
         "source_subcategory": "Lanyard end connectors",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -94,7 +94,7 @@
         "source_subcategory": "Light carabiners",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -104,7 +104,7 @@
         "source_subcategory": "Semi-permanent connectors",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -114,7 +114,7 @@
         "source_subcategory": "Special lightweight carabiners",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -124,7 +124,7 @@
         "source_subcategory": "Ultra-light carabiners",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Karabiner-und-Verbindungselemente",
+        "petzl_path": "Verbindungselemente",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -534,7 +534,7 @@
         "source_subcategory": "Haul system",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -544,7 +544,7 @@
         "source_subcategory": "High-efficiency pulleys",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -554,7 +554,7 @@
         "source_subcategory": "High-efficiency pulleys with swivel",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -564,7 +564,7 @@
         "source_subcategory": "Progress capture pulleys",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -574,7 +574,7 @@
         "source_subcategory": "Prusik pulleys",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -584,7 +584,7 @@
         "source_subcategory": "Pulley-carabiners",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -594,7 +594,7 @@
         "source_subcategory": "Single pulleys",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -604,7 +604,7 @@
         "source_subcategory": "Transport pulleys",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Rollen",
+        "petzl_path": "Seilrollen",
         "is_reviewed": false,
         "is_active": true,
         "notes": null

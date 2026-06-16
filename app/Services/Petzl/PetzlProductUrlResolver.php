@@ -263,6 +263,31 @@ class PetzlProductUrlResolver
             str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
         ];
 
+        if (str_contains($slug, 'AM-D')) {
+            $candidates[] = 'AMD';
+            $candidates[] = 'Am-D';
+        }
+
+        if (str_contains($slug, 'BM-D')) {
+            $candidates[] = 'BMD';
+            $candidates[] = 'Bm-D';
+        }
+
+        if (str_starts_with($slug, 'I-D')) {
+            $candidates[] = str_replace('I-D', 'ID', $slug);
+            $candidates[] = str_replace('I-D', 'I-D', $slug);
+        }
+
+        if ($slug === 'JAG-TRAXION') {
+            $candidates[] = 'JAG-TRAXION';
+            $candidates[] = 'JAG';
+        }
+
+        if ($slug === 'JAG-SYSTEM') {
+            $candidates[] = 'JAG-SYSTEM';
+            $candidates[] = 'JAG';
+        }
+
         if (str_contains($slug, 'PANTIN')) {
             $candidates[] = 'PANTIN';
             $candidates[] = 'PANTIN-CLICK';
