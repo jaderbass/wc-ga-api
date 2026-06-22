@@ -154,7 +154,6 @@ class PetzlProductUrlResolver
                 $response->successful()
                 && ! str_contains($response->body(), 'Page introuvable')
                 && ! str_contains($response->body(), '404')
-                && str_contains($response->body(), 'id="descriptif"')
             ) {
                 Log::info('Checking Petzl URL.', [
                     'url' => $url,
