@@ -302,6 +302,14 @@ class PetzlProductUrlResolver
             $candidates[] = 'VERTEX-VENT';
         }
 
+        if (str_contains($slug, 'ASAP-LOCK')) {
+            $candidates[] = 'ASAP-LOCK';
+        }
+
+        if (str_contains($slug, 'ASAP')) {
+            $candidates[] = 'ASAP';
+        }
+
         if (str_contains($slug, 'STRATO')) {
             $candidates[] = 'STRATO';
             $candidates[] = 'STRATO-VENT';
