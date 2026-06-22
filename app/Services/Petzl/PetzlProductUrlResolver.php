@@ -341,6 +341,10 @@ class PetzlProductUrlResolver
             $candidates[] = 'ASTRO';
         }
 
+        if (str_contains($slug, 'AXIS-11-MM')) {
+            $candidates[] = 'AXIS-11-MM';
+        }
+
         return collect($candidates)
             ->filter()
             ->unique()
