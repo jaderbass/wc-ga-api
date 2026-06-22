@@ -134,7 +134,7 @@
         "source_subcategory": "Descenders for technical rescue",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Abseilgeraete",
+        "petzl_path": "Abseilgerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -144,7 +144,7 @@
         "source_subcategory": "Individual evacuation system",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Abseilgeraete",
+        "petzl_path": "Abseilgerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -154,7 +154,7 @@
         "source_subcategory": "Mechanical Prusik for tree care",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Abseilgeraete",
+        "petzl_path": "Abseilgerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -164,7 +164,7 @@
         "source_subcategory": "Self-braking descenders",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Abseilgeraete",
+        "petzl_path": "Abseilgerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -174,7 +174,7 @@
         "source_subcategory": "Standard descenders",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Abseilgeraete",
+        "petzl_path": "Abseilgerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -260,7 +260,7 @@
         "notes": null
     },
     {
-        "source_category": "Headlamps",
+        "source_category": "HEADLAMPS",
         "source_subcategory": "Compact, durable Headlamps",
         "translated_category": null,
         "translated_subcategory": null,
@@ -270,7 +270,7 @@
         "notes": null
     },
     {
-        "source_category": "Headlamps",
+        "source_category": "HEADLAMPS",
         "source_subcategory": "Headlamp accessories",
         "translated_category": null,
         "translated_subcategory": null,
@@ -280,7 +280,7 @@
         "notes": null
     },
     {
-        "source_category": "Headlamps",
+        "source_category": "HEADLAMPS",
         "source_subcategory": "Intelligent powerful Headlamps",
         "translated_category": null,
         "translated_subcategory": null,
@@ -290,7 +290,7 @@
         "notes": null
     },
     {
-        "source_category": "Headlamps",
+        "source_category": "HEADLAMPS",
         "source_subcategory": "Ultra-compact and versatile headlamps",
         "translated_category": null,
         "translated_subcategory": null,
@@ -444,7 +444,7 @@
         "source_subcategory": "Absorbers for mobile fall arresters",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "petzl_path": "Mitlaufende-Auffanggerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -454,7 +454,7 @@
         "source_subcategory": "Mobile fall arresters",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "petzl_path": "Mitlaufende-Auffanggerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
@@ -464,7 +464,7 @@
         "source_subcategory": "Ropes for mobile fall arresters",
         "translated_category": null,
         "translated_subcategory": null,
-        "petzl_path": "Mitlaufende-Auffanggeraete",
+        "petzl_path": "Mitlaufende-Auffanggerate",
         "is_reviewed": false,
         "is_active": true,
         "notes": null
