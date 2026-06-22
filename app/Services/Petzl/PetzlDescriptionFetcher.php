@@ -59,18 +59,31 @@ class PetzlDescriptionFetcher
     {
         $crawler = new Crawler($html);
 
-        $nodes = $crawler->filter('#descriptif');
+        $selectors = [
+            '#descriptif',
+            '#description',
+            '[id*="descript"]',
+            '[class*="description"]',
+            '[class*="product-description"]',
+        ];
 
-        if ($nodes->count() === 0) {
-            file_put_contents(
-                storage_path('app/petzl-debug.html'),
-                $html
-            );
-            throw new RuntimeException('Petzl description block "#descriptif" not found.');
+        foreach ($selectors as $selector) {
+            $nodes = $crawler->filter($selector);
+
+            if ($nodes->count() > 0) {
+                return $this->cleanHtml(
+                    trim($nodes->first()->html())
+                );
+            }
         }
 
-        return $this->cleanHtml(
-            trim($nodes->first()->html())
+        file_put_contents(
+            storage_path('app/petzl-debug.html'),
+            $html
+        );
+
+        throw new RuntimeException(
+            'Petzl description block not found. Tried selectors: ' . implode(', ', $selectors)
         );
     }
 
