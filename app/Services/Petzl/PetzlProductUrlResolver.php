@@ -150,14 +150,18 @@ class PetzlProductUrlResolver
                 ->retry(2, 1000)
                 ->get($url);
 
+            $responseBody = $response->body();
+
             if (
                 $response->successful()
-                && ! str_contains($response->body(), 'Page introuvable')
-                && ! str_contains($response->body(), '404')
+                && ! str_contains($responseBody, 'Page introuvable')
+                && ! str_contains($responseBody, 'jsonPageStructure')
+                && str_contains($responseBody, 'id="descriptif"')
             ) {
                 Log::info('Checking Petzl URL.', [
                     'url' => $url,
                 ]);
+
                 return $url;
             }
         }
@@ -262,44 +266,13 @@ class PetzlProductUrlResolver
             str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
         ];
 
+        if (str_contains($slug, 'AIRLINE')) {
+            $candidates[] = 'AIRLINE';
+        }
+
         if (str_contains($slug, 'AM-D')) {
             $candidates[] = 'AMD';
             $candidates[] = 'Am-D';
-        }
-
-        if (str_contains($slug, 'BM-D')) {
-            $candidates[] = 'BMD';
-            $candidates[] = 'Bm-D';
-        }
-
-        if (str_starts_with($slug, 'I-D')) {
-            $candidates[] = str_replace('I-D', 'ID', $slug);
-            $candidates[] = str_replace('I-D', 'I-D', $slug);
-        }
-
-        if ($slug === 'JAG-TRAXION') {
-            $candidates[] = 'JAG-TRAXION';
-            $candidates[] = 'JAG';
-        }
-
-        if ($slug === 'JAG-SYSTEM') {
-            $candidates[] = 'JAG-SYSTEM';
-            $candidates[] = 'JAG';
-        }
-
-        if (str_contains($slug, 'PANTIN')) {
-            $candidates[] = 'PANTIN';
-            $candidates[] = 'PANTIN-CLICK';
-        }
-
-        if (str_contains($slug, 'KNEE-ASCENT')) {
-            $candidates[] = 'KNEE-ASCENT-KIT';
-            $candidates[] = 'KNEE-ASCENT';
-        }
-
-        if (str_contains($slug, 'VERTEX')) {
-            $candidates[] = 'VERTEX';
-            $candidates[] = 'VERTEX-VENT';
         }
 
         if (str_contains($slug, 'ASAP-LOCK')) {
@@ -310,14 +283,8 @@ class PetzlProductUrlResolver
             $candidates[] = 'ASAP';
         }
 
-        if (str_contains($slug, 'STRATO')) {
-            $candidates[] = 'STRATO';
-            $candidates[] = 'STRATO-VENT';
-        }
-
-        if (str_contains($slug, 'SEQUOIA')) {
-            $candidates[] = 'SEQUOIA';
-            $candidates[] = 'SEQUOIA-SRT';
+        if (str_contains($slug, 'ASTRO')) {
+            $candidates[] = 'ASTRO';
         }
 
         if (str_contains($slug, 'AVAO')) {
@@ -325,10 +292,36 @@ class PetzlProductUrlResolver
             $candidates[] = 'AVAO-FAST';
         }
 
-        if (str_contains($slug, 'VOLT')) {
-            $candidates[] = 'VOLT';
-            $candidates[] = 'VOLT-WIND';
-            $candidates[] = 'VOLT-LIGHT';
+        if (str_contains($slug, 'AXIS-11-MM')) {
+            $candidates[] = 'AXIS-11-MM';
+        }
+
+        if (str_contains($slug, 'BM-D')) {
+            $candidates[] = 'BMD';
+            $candidates[] = 'Bm-D';
+        }
+
+        if (str_contains($slug, 'GRILLON')) {
+            $candidates[] = 'GRILLON';
+        }
+
+        if (str_starts_with($slug, 'I-D')) {
+            $candidates[] = str_replace('I-D', 'ID', $slug);
+        }
+
+        if ($slug === 'JAG-SYSTEM') {
+            $candidates[] = 'JAG-SYSTEM';
+            $candidates[] = 'JAG';
+        }
+
+        if ($slug === 'JAG-TRAXION') {
+            $candidates[] = 'JAG-TRAXION';
+            $candidates[] = 'JAG';
+        }
+
+        if (str_contains($slug, 'KNEE-ASCENT')) {
+            $candidates[] = 'KNEE-ASCENT-KIT';
+            $candidates[] = 'KNEE-ASCENT';
         }
 
         if (str_contains($slug, 'NEWTON')) {
@@ -337,12 +330,30 @@ class PetzlProductUrlResolver
             $candidates[] = 'NEWTON-EASYFIT';
         }
 
-        if (str_contains($slug, 'ASTRO')) {
-            $candidates[] = 'ASTRO';
+        if (str_contains($slug, 'PANTIN')) {
+            $candidates[] = 'PANTIN';
+            $candidates[] = 'PANTIN-CLICK';
         }
 
-        if (str_contains($slug, 'AXIS-11-MM')) {
-            $candidates[] = 'AXIS-11-MM';
+        if (str_contains($slug, 'SEQUOIA')) {
+            $candidates[] = 'SEQUOIA';
+            $candidates[] = 'SEQUOIA-SRT';
+        }
+
+        if (str_contains($slug, 'STRATO')) {
+            $candidates[] = 'STRATO';
+            $candidates[] = 'STRATO-VENT';
+        }
+
+        if (str_contains($slug, 'VERTEX')) {
+            $candidates[] = 'VERTEX';
+            $candidates[] = 'VERTEX-VENT';
+        }
+
+        if (str_contains($slug, 'VOLT')) {
+            $candidates[] = 'VOLT';
+            $candidates[] = 'VOLT-WIND';
+            $candidates[] = 'VOLT-LIGHT';
         }
 
         return collect($candidates)
