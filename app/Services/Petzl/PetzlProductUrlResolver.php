@@ -231,49 +231,96 @@ class PetzlProductUrlResolver
     }
 
     /**
-     * Normalisiert einen Petzl-Produktnamen vor der Slug-Erzeugung.
+     * Normalisiert Petzl-Produktnamen für die Slug-Erzeugung.
      *
-     * Entfernt generische Namensbestandteile, die nicht Bestandteil
-     * der eigentlichen Produktseite sind (z. B. "for ...",
-     * "Progression Lanyard" oder "Work Seat").
+     * Entfernt generische Zubehör-, Ersatzteil- und Versionszusätze, damit
+     * Produktvarianten möglichst auf die zugehörige Petzl-Produktfamilie
+     * zurückgeführt werden können.
      *
      * @param string $name Der originale Produktname.
      *
      * @return string Der bereinigte Produktname.
      */
-    protected function normalizeProductName(string $name): string
+    private function normalizeProductName(string $productName): string
     {
-        $name = trim($name);
+        $name = $productName;
 
-        $patterns = [
-            '/\s+for\s+.+$/i',
-            '/\s+progression\s+lanyard$/i',
-            '/\s+positioning\s+lanyard$/i',
-            '/\s+lifeline$/i',
-            '/\s+Work Seat$/i',
-            '/\s+Protective Sheath$/i',
-        ];
+        /*
+        |--------------------------------------------------------------------------
+        | Versions- und EOL-Zusätze
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/\s+before\s+\d{4}$/i', '', $name);
 
-        $name = preg_replace($patterns, '', $name);
+        /*
+        |--------------------------------------------------------------------------
+        | Generische Zubehör-/Ersatzteil-Zusätze
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/\s+(Pouch|Headband|Rope|Sleeve|Stays)$/i', '', $name);
+        $name = preg_replace('/\s+(Work Seat|Charging Base|Mounting Plate|Extension Cord)$/i', '', $name);
+        $name = preg_replace('/\s+(Cover Kit|Locking Accessory)$/i', '', $name);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Prefixe für Ersatzteile
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/^(Spare|Replacement)\s+/i', '', $name);
+        $name = preg_replace('/^(Elastic Band|Foot Loop|Strap|Bag|Covering|Screw|Screws|Bars|Pin Screw)\s+for\s+/i', '', $name);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Nachgestellte Zielprodukt-Zusätze
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/\s+for\s+.+$/i', '', $name);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Produktnummern innerhalb des Namens entfernen, z. B. "ABSORBICA® L010 Pouch"
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/\s+[A-Z]\d{3,}[A-Z0-9]*\s+/i', ' ', $name);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Generische Zubehör-Endungen entfernen
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/\s+(Pouch|Headband|Sleeve|Stays|Rope)$/i', '', $name);
+        $name = preg_replace('/\s+(Charging Base|Mounting Plate|Extension Cord|Work Seat)$/i', '', $name);
 
         return trim($name);
     }
 
     /**
-     * Erstellt mögliche Petzl-URL-Slugs aus einem Produktnamen-Slug.
+     * Erzeugt mögliche Slug-Kandidaten für die Petzl-Produktseite.
      *
-     * Einige Petzl-Zubehörartikel besitzen keine eigene Detailseite, sondern
-     * verweisen sinnvoll auf die Seite des Hauptprodukts.
+     * Die Reihenfolge ist bewusst gewählt:
+     * - Zunächst allgemeine Slug-Transformationen.
+     * - Danach Sprachvarianten.
+     * - Anschließend bekannte Produktfamilien.
+     * - Zum Schluss spezielle deutsche Petzl-Marketing-Slugs.
      *
-     * @param string $slug Normalisierter Produktnamen-Slug.
-     *
-     * @return \Illuminate\Support\Collection<int, string>
+     * @param string $slug Ausgangs-Slug des Produkts.
+     * @return \Illuminate\Support\Collection<int, string> Liste eindeutiger Slug-Kandidaten.
      */
     protected function buildSlugCandidates(string $slug): \Illuminate\Support\Collection
     {
         $candidates = [
+            /*
+            |--------------------------------------------------------------------------
+            | Original slug
+            |--------------------------------------------------------------------------
+            */
             $slug,
 
+            /*
+            |--------------------------------------------------------------------------
+            | Generic slug transformations
+            |--------------------------------------------------------------------------
+            */
             str_replace('-CLICK-WEBBING-STRAP', '-CLICK', $slug),
             str_replace('-WEBBING-STRAP', '', $slug),
             str_replace('-CLICK', '', $slug),
@@ -293,10 +340,20 @@ class PetzlProductUrlResolver
             str_replace('FOOT-LOOP-FOR-', '', $slug),
             str_replace('ELASTIC-BAND-FOR-', '', $slug),
 
+            /*
+            |--------------------------------------------------------------------------
+            | Language variants
+            |--------------------------------------------------------------------------
+            */
             str_replace('-EUROPEAN-VERSION', '-EUROPÄISCHE-AUSFÜHRUNG', $slug),
             str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
         ];
 
+        /*
+        |--------------------------------------------------------------------------
+        | Product family aliases
+        |--------------------------------------------------------------------------
+        */
         if (str_contains($slug, 'AIRLINE')) {
             $candidates[] = 'AIRLINE';
         }
@@ -304,6 +361,10 @@ class PetzlProductUrlResolver
         if (str_contains($slug, 'AM-D')) {
             $candidates[] = 'AMD';
             $candidates[] = 'Am-D';
+        }
+
+        if (str_contains($slug, 'ARIA')) {
+            $candidates[] = 'ARIA';
         }
 
         if (str_contains($slug, 'ASAP-LOCK')) {
@@ -332,6 +393,10 @@ class PetzlProductUrlResolver
             $candidates[] = 'Bm-D';
         }
 
+        if (str_contains($slug, 'EJECT')) {
+            $candidates[] = 'EJECT';
+        }
+
         if (str_contains($slug, 'GRILLON')) {
             $candidates[] = 'GRILLON';
         }
@@ -355,6 +420,14 @@ class PetzlProductUrlResolver
             $candidates[] = 'KNEE-ASCENT';
         }
 
+        if (str_contains($slug, 'NAJA')) {
+            $candidates[] = 'NAJA';
+        }
+
+        if (str_contains($slug, 'NEST')) {
+            $candidates[] = 'NEST';
+        }
+
         if (str_contains($slug, 'NEWTON')) {
             $candidates[] = 'NEWTON';
             $candidates[] = 'NEWTON-FAST';
@@ -364,6 +437,11 @@ class PetzlProductUrlResolver
         if (str_contains($slug, 'PANTIN')) {
             $candidates[] = 'PANTIN';
             $candidates[] = 'PANTIN-CLICK';
+        }
+
+        if (str_contains($slug, 'PIXA')) {
+            $candidates[] = 'PIXA';
+            $candidates[] = 'PIXA-3R';
         }
 
         if (str_contains($slug, 'SEQUOIA')) {
@@ -385,6 +463,20 @@ class PetzlProductUrlResolver
             $candidates[] = 'VOLT';
             $candidates[] = 'VOLT-WIND';
             $candidates[] = 'VOLT-LIGHT';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | German Petzl marketing slugs
+        |--------------------------------------------------------------------------
+        */
+        if (str_contains($slug, 'PROGRESS-ADJUST-I')) {
+            $candidates[] = 'PROGRESS-ADJUST-I-Verbindungsmittel-zur-Fortbewegung';
+            $candidates[] = 'PROGRESS-ADJUST-I-Verbindungsmittel-zur-Positionierung';
+        }
+
+        if (str_contains($slug, 'TOOLINK')) {
+            $candidates[] = 'TOOLINK-S-und-TOOLTAPE';
         }
 
         return collect($candidates)
