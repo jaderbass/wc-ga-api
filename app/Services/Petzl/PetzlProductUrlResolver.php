@@ -105,7 +105,9 @@ class PetzlProductUrlResolver
         ?string $sourceCategory = null,
         ?string $sourceSubcategory = null
     ): string {
-        $slug = str($productName)
+        $normalizedProductName = $this->normalizeProductName($productName);
+
+        $slug = str($normalizedProductName)
             ->upper()
             ->replaceMatches('/[^A-Z0-9]+/', '-')
             ->trim('-')
@@ -226,6 +228,35 @@ class PetzlProductUrlResolver
             'Zubehoer-fuer-Stirnlampen',
             'Zubehoer',
         ];
+    }
+
+    /**
+     * Normalisiert einen Petzl-Produktnamen vor der Slug-Erzeugung.
+     *
+     * Entfernt generische Namensbestandteile, die nicht Bestandteil
+     * der eigentlichen Produktseite sind (z. B. "for ...",
+     * "Progression Lanyard" oder "Work Seat").
+     *
+     * @param string $name Der originale Produktname.
+     *
+     * @return string Der bereinigte Produktname.
+     */
+    protected function normalizeProductName(string $name): string
+    {
+        $name = trim($name);
+
+        $patterns = [
+            '/\s+for\s+.+$/i',
+            '/\s+progression\s+lanyard$/i',
+            '/\s+positioning\s+lanyard$/i',
+            '/\s+lifeline$/i',
+            '/\s+Work Seat$/i',
+            '/\s+Protective Sheath$/i',
+        ];
+
+        $name = preg_replace($patterns, '', $name);
+
+        return trim($name);
     }
 
     /**
