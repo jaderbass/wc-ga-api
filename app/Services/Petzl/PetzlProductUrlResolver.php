@@ -227,6 +227,7 @@ class PetzlProductUrlResolver
             'Stirnlampen',
             'Zubehoer-fuer-Stirnlampen',
             'Zubehoer',
+            'Ersatzteile-fur-Beleuchtung',
         ];
     }
 
@@ -271,6 +272,25 @@ class PetzlProductUrlResolver
 
         /*
         |--------------------------------------------------------------------------
+        | Zielprodukt aus Zubehörbezeichnungen extrahieren
+        |--------------------------------------------------------------------------
+        |
+        | Beispiele:
+        | - Bag for NEST litter                → NEST litter
+        | - Covering for PODIUM Work Seat      → PODIUM Work Seat
+        | - Strap for EJECT                    → EJECT
+        | - Pouch for ASAP'SORBER              → ASAP'SORBER
+        | - Kit for FAST TL Buckle Cover 28 mm → FAST TL Buckle Cover 28 mm
+        |
+        */
+        $name = preg_replace(
+            '/^(?:Bag|Bars?|Charging Cable|Covering|Elastic(?: Band)?|Foot Loop|Headband|Kit|Pin Screw|Pouch|Retrieval Ball|Screws?|Straps?)\s+for\s+/i',
+            '',
+            $name,
+        );
+
+        /*
+        |--------------------------------------------------------------------------
         | Nachgestellte Zielprodukt-Zusätze
         |--------------------------------------------------------------------------
         */
@@ -281,7 +301,8 @@ class PetzlProductUrlResolver
         | Produktnummern innerhalb des Namens entfernen, z. B. "ABSORBICA® L010 Pouch"
         |--------------------------------------------------------------------------
         */
-        $name = preg_replace('/\s+[A-Z]\d{3,}[A-Z0-9]*\s+/i', ' ', $name);
+        $name = preg_replace('/\b[A-Z]\d{3,}[A-Z0-9]*\b/i', '', $name);
+        $name = preg_replace('/\s+/', ' ', $name);
 
         /*
         |--------------------------------------------------------------------------
@@ -290,6 +311,13 @@ class PetzlProductUrlResolver
         */
         $name = preg_replace('/\s+(Pouch|Headband|Sleeve|Stays|Rope)$/i', '', $name);
         $name = preg_replace('/\s+(Charging Base|Mounting Plate|Extension Cord|Work Seat)$/i', '', $name);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Vorangestellte Stirnband-Bezeichnungen entfernen
+        |--------------------------------------------------------------------------
+        */
+        $name = preg_replace('/^(?:Spare\s+)?Headband\s+/i', '', $name);
 
         return trim($name);
     }
@@ -308,6 +336,8 @@ class PetzlProductUrlResolver
      */
     protected function buildSlugCandidates(string $slug): \Illuminate\Support\Collection
     {
+        $slugUpper = strtoupper($slug);
+
         $candidates = [
             /*
             |--------------------------------------------------------------------------
@@ -347,6 +377,7 @@ class PetzlProductUrlResolver
             */
             str_replace('-EUROPEAN-VERSION', '-EUROPÄISCHE-AUSFÜHRUNG', $slug),
             str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
+            str_replace('-CHARGER', '-Ladegerät', $slug),
         ];
 
         /*
@@ -354,54 +385,62 @@ class PetzlProductUrlResolver
         | Product family aliases
         |--------------------------------------------------------------------------
         */
-        if (str_contains($slug, 'AIRLINE')) {
+        if (str_contains($slugUpper, 'AIRLINE')) {
             $candidates[] = 'AIRLINE';
         }
 
-        if (str_contains($slug, 'AM-D')) {
+        if (str_contains($slugUpper, 'AM-D')) {
             $candidates[] = 'AMD';
             $candidates[] = 'Am-D';
         }
 
-        if (str_contains($slug, 'ARIA')) {
+        if (str_contains($slugUpper, 'ARIA')) {
             $candidates[] = 'ARIA';
         }
 
-        if (str_contains($slug, 'ASAP-LOCK')) {
-            $candidates[] = 'ASAP-LOCK';
+        if (str_contains($slugUpper, 'ASAPSORBER')) {
+            $candidates[] = 'ASAP-SORBER';
         }
 
-        if (str_contains($slug, 'ASAP')) {
+        if (str_contains($slugUpper, 'ASAP')) {
             $candidates[] = 'ASAP';
         }
 
-        if (str_contains($slug, 'ASTRO')) {
+        if (str_contains($slugUpper, 'ASAP-LOCK')) {
+            $candidates[] = 'ASAP-LOCK';
+        }
+
+        if (str_contains($slugUpper, 'ASTRO')) {
             $candidates[] = 'ASTRO';
         }
 
-        if (str_contains($slug, 'AVAO')) {
+        if (str_contains($slugUpper, 'AVAO')) {
             $candidates[] = 'AVAO';
             $candidates[] = 'AVAO-FAST';
         }
 
-        if (str_contains($slug, 'AXIS-11-MM')) {
+        if (str_contains($slugUpper, 'AXIS-11-MM')) {
             $candidates[] = 'AXIS-11-MM';
         }
 
-        if (str_contains($slug, 'BM-D')) {
+        if (str_contains($slugUpper, 'BM-D')) {
             $candidates[] = 'BMD';
             $candidates[] = 'Bm-D';
         }
 
-        if (str_contains($slug, 'EJECT')) {
+        if (str_contains($slugUpper, 'DUO')) {
+            $candidates[] = 'DUO';
+        }
+
+        if (str_contains($slugUpper, 'EJECT')) {
             $candidates[] = 'EJECT';
         }
 
-        if (str_contains($slug, 'GRILLON')) {
+        if (str_contains($slugUpper, 'GRILLON')) {
             $candidates[] = 'GRILLON';
         }
 
-        if (str_starts_with($slug, 'I-D')) {
+        if (str_starts_with($slugUpper, 'I-D')) {
             $candidates[] = str_replace('I-D', 'ID', $slug);
         }
 
@@ -415,54 +454,68 @@ class PetzlProductUrlResolver
             $candidates[] = 'JAG';
         }
 
-        if (str_contains($slug, 'KNEE-ASCENT')) {
+        if (str_contains($slugUpper, 'KNEE-ASCENT')) {
             $candidates[] = 'KNEE-ASCENT-KIT';
             $candidates[] = 'KNEE-ASCENT';
+            $candidates[] = 'Set-KNEE-ASCENT';
         }
 
-        if (str_contains($slug, 'NAJA')) {
+        if (str_contains($slugUpper, 'LITEPOD')) {
+            $candidates[] = 'LITEPOD';
+        }
+
+        if (str_contains($slugUpper, 'NAJA')) {
             $candidates[] = 'NAJA';
         }
 
-        if (str_contains($slug, 'NEST')) {
+        if (str_contains($slugUpper, 'NEST')) {
             $candidates[] = 'NEST';
         }
 
-        if (str_contains($slug, 'NEWTON')) {
+        if (str_contains($slugUpper, 'NEWTON')) {
             $candidates[] = 'NEWTON';
             $candidates[] = 'NEWTON-FAST';
             $candidates[] = 'NEWTON-EASYFIT';
         }
 
-        if (str_contains($slug, 'PANTIN')) {
+        if (str_contains($slugUpper, 'PANTIN')) {
             $candidates[] = 'PANTIN';
             $candidates[] = 'PANTIN-CLICK';
         }
 
-        if (str_contains($slug, 'PIXA')) {
+        if (str_contains($slugUpper, 'PIXA')) {
             $candidates[] = 'PIXA';
             $candidates[] = 'PIXA-3R';
         }
 
-        if (str_contains($slug, 'SEQUOIA')) {
+        if (str_contains($slugUpper, 'PODIUM')) {
+            $candidates[] = 'PODIUM';
+        }
+
+        if (str_contains($slugUpper, 'SEQUOIA')) {
             $candidates[] = 'SEQUOIA';
             $candidates[] = 'SEQUOIA-SRT';
         }
 
-        if (str_contains($slug, 'STRATO')) {
+        if (str_contains($slugUpper, 'STRATO')) {
             $candidates[] = 'STRATO';
             $candidates[] = 'STRATO-VENT';
         }
 
-        if (str_contains($slug, 'VERTEX')) {
+        if (str_contains($slugUpper, 'VERTEX')) {
             $candidates[] = 'VERTEX';
             $candidates[] = 'VERTEX-VENT';
         }
 
-        if (str_contains($slug, 'VOLT')) {
+        if (str_contains($slugUpper, 'VOLT')) {
             $candidates[] = 'VOLT';
             $candidates[] = 'VOLT-WIND';
             $candidates[] = 'VOLT-LIGHT';
+        }
+
+        if (str_ends_with($slugUpper, '-CHARGER')) {
+            $productSlug = preg_replace('/-charger$/i', '', $slug);
+            $candidates[] = 'Ladegerät-für-' . strtoupper($productSlug);
         }
 
         /*
@@ -470,12 +523,12 @@ class PetzlProductUrlResolver
         | German Petzl marketing slugs
         |--------------------------------------------------------------------------
         */
-        if (str_contains($slug, 'PROGRESS-ADJUST-I')) {
+        if (str_contains($slugUpper, 'PROGRESS-ADJUST-I')) {
             $candidates[] = 'PROGRESS-ADJUST-I-Verbindungsmittel-zur-Fortbewegung';
             $candidates[] = 'PROGRESS-ADJUST-I-Verbindungsmittel-zur-Positionierung';
         }
 
-        if (str_contains($slug, 'TOOLINK')) {
+        if (str_contains($slugUpper, 'TOOLINK')) {
             $candidates[] = 'TOOLINK-S-und-TOOLTAPE';
         }
 
