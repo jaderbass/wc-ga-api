@@ -105,6 +105,13 @@ class PetzlProductUrlResolver
         ?string $sourceCategory = null,
         ?string $sourceSubcategory = null
     ): string {
+
+        $originalSlug = str($productName)
+            ->upper()
+            ->replaceMatches('/[^A-Z0-9ÄÖÜ]+/u', '-')
+            ->trim('-')
+            ->toString();
+
         $normalizedProductName = $this->normalizeProductName($productName);
 
         $slug = str($normalizedProductName)
@@ -115,10 +122,11 @@ class PetzlProductUrlResolver
 
         $paths = $this->resolvePaths($sourceCategory, $sourceSubcategory);
 
-        $slugCandidates = $this->buildSlugCandidates($slug);
+        $slugCandidates = $this->buildSlugCandidates($slug, $originalSlug);
 
         Log::info('Petzl slug candidates.', [
             'slug' => $slug,
+            'original_slug' => $originalSlug,
             'slug_candidates' => $slugCandidates->all(),
         ]);
 
@@ -127,16 +135,19 @@ class PetzlProductUrlResolver
             'Sport',
         ];
 
-        $candidateUrls = collect($markets)
-            ->flatMap(
-                fn(string $market) => collect($paths)->flatMap(
-                    fn(string $path) => $slugCandidates->map(
-                        fn(string $slugCandidate) =>
+        $candidateUrls = collect();
+
+        foreach ($markets as $market) {
+            foreach ($paths as $path) {
+                foreach ($slugCandidates as $slugCandidate) {
+                    $candidateUrls->push(
                         "https://www.petzl.com/DE/de/{$market}/{$path}/{$slugCandidate}"
-                    )
-                )
-            )
-            ->all();
+                    );
+                }
+            }
+        }
+
+        $candidateUrls = $candidateUrls->all();
 
         Log::info('Petzl resolver candidate URLs.', [
             'product_name' => $productName,
@@ -144,13 +155,26 @@ class PetzlProductUrlResolver
             'candidate_urls' => $candidateUrls,
         ]);
 
+        Log::debug('Petzl resolver stats.', [
+            'product' => $productName,
+            'candidate_count' => count($candidateUrls),
+        ]);
+
         foreach ($candidateUrls as $url) {
+            $start = microtime(true);
+
             $response = Http::withHeaders([
                 'User-Agent' => 'GeoAlpin Product Importer',
             ])
                 ->timeout(20)
                 ->retry(2, 1000)
                 ->get($url);
+
+            Log::debug('Petzl request finished.', [
+                'url' => $url,
+                'status' => $response->status(),
+                'time' => round(microtime(true) - $start, 3),
+            ]);
 
             $responseBody = $response->body();
 
@@ -210,6 +234,8 @@ class PetzlProductUrlResolver
         }
 
         return [
+            'Ersatzteile',
+            'Abseilgerate',
             'Verbindungsmittel-und-Falldampfer',
             'Seilklemmen',
             'Seilklemmen-fuer-den-Aufstieg-am-Seil',
@@ -334,8 +360,10 @@ class PetzlProductUrlResolver
      * @param string $slug Ausgangs-Slug des Produkts.
      * @return \Illuminate\Support\Collection<int, string> Liste eindeutiger Slug-Kandidaten.
      */
-    protected function buildSlugCandidates(string $slug): \Illuminate\Support\Collection
-    {
+    protected function buildSlugCandidates(
+        string $slug,
+        ?string $originalSlug = null
+    ): \Illuminate\Support\Collection {
         $slugUpper = strtoupper($slug);
 
         $candidates = [
@@ -379,6 +407,196 @@ class PetzlProductUrlResolver
             str_replace('-INTERNATIONAL-VERSION', '-INTERNATIONALE-AUSFÜHRUNG', $slug),
             str_replace('-CHARGER', '-Ladegerät', $slug),
         ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | German accessory slugs
+        |--------------------------------------------------------------------------
+        |
+        | Einige Petzl-Ersatzteile verwenden auf der deutschen Website eine
+        | übersetzte Zubehörbezeichnung vor dem Namen des Zielprodukts.
+        |
+        | Beispiele:
+        | - DUO Headband       → Kopfband-DUO
+        | - DUO Mounting Plate → Trägerplatte-DUO
+        |
+        */
+        if ($originalSlug !== null) {
+            if (str_ends_with($originalSlug, '-HEADBAND')) {
+                $productSlug = preg_replace('/-HEADBAND$/', '', $originalSlug);
+
+                $candidates[] = 'Kopfband-' . $productSlug;
+            }
+
+            if (str_ends_with($originalSlug, '-MOUNTING-PLATE')) {
+                $productSlug = preg_replace(
+                    '/-MOUNTING-PLATE$/',
+                    '',
+                    $originalSlug
+                );
+
+                $candidates[] = 'Trägerplatte-' . $productSlug;
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Generische deutsche Zubehör-Slugs
+        |--------------------------------------------------------------------------
+        */
+        if ($originalSlug !== null) {
+            /*
+             * Headband ARIA → Kopfband-für-ARIA / Kopfband-ARIA
+             */
+            if (str_starts_with($originalSlug, 'HEADBAND-')) {
+                $productSlug = preg_replace('/^HEADBAND-/', '', $originalSlug);
+
+                $candidates[] = 'Kopfband-für-' . $productSlug;
+                $candidates[] = 'Kopfband-' . $productSlug;
+            }
+
+            /*
+             * SWIFT RL Rechargeable Battery → Akku-SWIFT-RL
+             */
+            if (str_ends_with($originalSlug, '-RECHARGEABLE-BATTERY')) {
+                $productSlug = preg_replace(
+                    '/-RECHARGEABLE-BATTERY$/',
+                    '',
+                    $originalSlug
+                );
+
+                $candidates[] = 'Akku-' . $productSlug;
+            }
+
+            /*
+             * PIXA 3R Charging Base → Ladestation-PIXA-3R
+             */
+            if (str_ends_with($originalSlug, '-CHARGING-BASE')) {
+                $productSlug = preg_replace(
+                    '/-CHARGING-BASE$/',
+                    '',
+                    $originalSlug
+                );
+
+                $candidates[] = 'Ladestation-' . $productSlug;
+            }
+
+            /*
+             * R1 Extension Cord → Verlängerungskabel-R1
+             */
+            if (str_ends_with($originalSlug, '-EXTENSION-CORD')) {
+                $productSlug = preg_replace(
+                    '/-EXTENSION-CORD$/',
+                    '',
+                    $originalSlug
+                );
+
+                $candidates[] = 'Verlängerungskabel-' . $productSlug;
+            }
+
+            /*
+             * Charging Cable for CORE PRO → Ladekabel-für-CORE-PRO
+             */
+            if (str_starts_with($originalSlug, 'CHARGING-CABLE-FOR-')) {
+                $productSlug = preg_replace(
+                    '/^CHARGING-CABLE-FOR-/',
+                    '',
+                    $originalSlug
+                );
+
+                $candidates[] = 'Ladekabel-für-' . $productSlug;
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Bekannte Petzl-Slug-Aliase
+        |--------------------------------------------------------------------------
+        |
+        | Diese Bezeichnungen lassen sich nicht sinnvoll aus dem englischen Namen
+        | ableiten oder verwenden redaktionelle Petzl-Sonderbezeichnungen.
+        |
+        */
+        $knownSlugAliases = [
+            'ABSORBENT-FOAM-BEFORE-2019' =>
+            'Saugfähige-Schaumstoffpolster-vor-2019',
+
+            'AUXILIARY-CLOSED-BRAKE-FOR-I-D' =>
+            'Zusätzliches-geschlossenes-Bremselement-für-I-D',
+
+            'AUXILIARY-OPEN-BRAKE-FOR-I-D' =>
+            'Zusätzliches-offenes-Bremselement-für-I-D',
+
+            'BARS-FOR-FAST-45-MM-BUCKLES' =>
+            'Stege-für-Schnallen-FAST-45-mm',
+
+            'CHICANE-FRICTION-PINS' =>
+            'Reibungselemente-CHICANE',
+
+            'DOUBLEBACK-PLUS-LOCKING-ACCESSORY' =>
+            'Zubehör-Verriegelung-DOUBLEBACK-PLUS',
+
+            'E-LITE' =>
+            'ePLUSLITE',
+
+            'ELASTIC-KEEPERS-45-MM' =>
+            'Elastische-Riemenhalter-45-mm',
+
+            'FAST-BUCKLE-45-MM-COVER-KIT' =>
+            'Set-Abdeckungen-für-Schnalle-FAST-45-mm',
+
+            'FAST-BUCKLE-COVER-KIT-28-MM' =>
+            'Set-Abdeckungen-für-Schnalle-FAST-28-mm',
+
+            'FIRSTAID-POUCH-FOR-FIRST-AID-KIT' =>
+            'FIRSTAID-Erste-Hilfe-Tasche',
+
+            'HI-VIZ-VEST-FOR-NEWTON-HARNESSES' =>
+            'HI-VIZ-Weste-für-NEWTON-Gurte',
+
+            'KIT-FOR-FAST-TL-BUCKLE-COVER-28-MM' =>
+            'Kit-Abdeckungen-für-Schnalle-FAST-TL-28-mm',
+
+            'KIT-FOR-FAST-TL-BUCKLE-COVER-45-MM' =>
+            'Set-Abdeckungen-für-Schnalle-FAST-TL-45-mm',
+
+            'LARGE-D-SHAPED-GAP-FOR-ASTRO' =>
+            'Großer-D-Ring-PCO-ASTRO',
+
+            'LEG-LOOP-PADDING-FOR-NEWTON-HARNESS' =>
+            'Beinschlaufenpolster-für-NEWTON-Gurte',
+
+            'PIN-SCREW-FOR-ASTRO-GAP' =>
+            'Schraube-Mittelstift-PCO-ASTRO',
+
+            'PLASTIC-KEEPERS-45-MM' =>
+            'Kunststoff-Riemenhalter-45-mm',
+
+            'REFLECTIVE-STICKERS-BEFORE-2019' =>
+            'Reflektierende-Aufkleber-vor-2019',
+
+            'REPAIR-KIT-FOR-REPAIRABLE-RIG' =>
+            'Reparaturset-RIG-reparierbare-Version',
+
+            'SCREW-FOR-I-D-AND-MICROGRAB' =>
+            'Schrauben-I-D-und-MICROGRAB',
+
+            'SCREWS-FOR-FAST-45-MM-BUCKLE' =>
+            'Schrauben-für-Schnalle-FAST-45-mm',
+
+            'SWIFT-RL-RECHARGEABLE-BATTERY' =>
+            'Akku-SWIFT-RL',
+
+            'VOLT-WORK-SEAT' =>
+            'Sitzbrett-für-VOLT-internationale-Ausführung',
+        ];
+
+        if (
+            $originalSlug !== null
+            && isset($knownSlugAliases[$originalSlug])
+        ) {
+            $candidates[] = $knownSlugAliases[$originalSlug];
+        }
 
         /*
         |--------------------------------------------------------------------------
