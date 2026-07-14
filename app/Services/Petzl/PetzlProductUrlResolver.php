@@ -236,9 +236,14 @@ class PetzlProductUrlResolver
         return [
             'Ersatzteile',
             'Abseilgerate',
+            'Stirnlampen',
+            'Ersatzteile-fur-Beleuchtung',
+            'Anschlageinrichtungen',
+            'Karabiner-und-expressets',
             'Verbindungsmittel-und-Falldampfer',
             'Seilklemmen',
             'Seilklemmen-fuer-den-Aufstieg-am-Seil',
+            'Kits',
             'Helme',
             'Gurte',
             'Auffang--und-Haltegurte',
@@ -247,13 +252,10 @@ class PetzlProductUrlResolver
             'Seile',
             'Abseilgeraete',
             'Rollen',
-            'Anschlageinrichtungen',
             'Rettung',
             'Transporttaschen',
-            'Stirnlampen',
             'Zubehoer-fuer-Stirnlampen',
             'Zubehoer',
-            'Ersatzteile-fur-Beleuchtung',
         ];
     }
 
@@ -264,7 +266,7 @@ class PetzlProductUrlResolver
      * Produktvarianten möglichst auf die zugehörige Petzl-Produktfamilie
      * zurückgeführt werden können.
      *
-     * @param string $name Der originale Produktname.
+     * @param string $productName Der originale Produktname.
      *
      * @return string Der bereinigte Produktname.
      */
@@ -521,6 +523,15 @@ class PetzlProductUrlResolver
             'ABSORBENT-FOAM-BEFORE-2019' =>
             'Saugfähige-Schaumstoffpolster-vor-2019',
 
+            'ABSORBICA-Y-FALL-ARREST-KIT' =>
+            'ABSORBICA-Y-FALL-ARREST-KIT',
+
+            'ASAP-SORBER-AXESS-POUCH' =>
+            'Schutzhülle-ASAP-SORBER-AXESS',
+
+            'ASAP-SORBER-L071-POUCH' =>
+            'Schutzhülle-ASAP-SORBER-20-40',
+
             'AUXILIARY-CLOSED-BRAKE-FOR-I-D' =>
             'Zusätzliches-geschlossenes-Bremselement-für-I-D',
 
@@ -530,17 +541,32 @@ class PetzlProductUrlResolver
             'BARS-FOR-FAST-45-MM-BUCKLES' =>
             'Stege-für-Schnallen-FAST-45-mm',
 
+            'BOLT-STEEL' =>
+            'COEUR-BOLT-STEEL',
+
+            'BOLT-STAINLESS' =>
+            'COEUR-BOLT-STAINLESS',
+
             'CHICANE-FRICTION-PINS' =>
             'Reibungselemente-CHICANE',
 
             'DOUBLEBACK-PLUS-LOCKING-ACCESSORY' =>
             'Zubehör-Verriegelung-DOUBLEBACK-PLUS',
 
+            'DUFFEL-SHOULDER-STRAPS' =>
+            'Schulterträger-DUFFEL',
+
             'E-LITE' =>
             'ePLUSLITE',
 
             'ELASTIC-KEEPERS-45-MM' =>
             'Elastische-Riemenhalter-45-mm',
+
+            'EXO-AP-HOOK-ROPE' =>
+            'Seil-EXO-AP-HOOK',
+
+            'FALL-ARREST-AND-WORK-POSITIONING-KIT' =>
+            'FALL-ARREST-AND-WORK-POSITIONING-KIT',
 
             'FAST-BUCKLE-45-MM-COVER-KIT' =>
             'Set-Abdeckungen-für-Schnalle-FAST-45-mm',
@@ -554,11 +580,23 @@ class PetzlProductUrlResolver
             'HI-VIZ-VEST-FOR-NEWTON-HARNESSES' =>
             'HI-VIZ-Weste-für-NEWTON-Gurte',
 
+            'IDENTIFICATION-LABELS-FOR-PETZL-ROPES' =>
+            'Kennzeichnungshülsen-für-Petzl-Seile',
+
+            'JAG-SYSTEM-SLEEVE' =>
+            'Hülle-JAG-SYSTEM',
+
+            'JAG-RESCUE-KIT' =>
+            'JAG-RESCUE-KIT',
+
             'KIT-FOR-FAST-TL-BUCKLE-COVER-28-MM' =>
             'Kit-Abdeckungen-für-Schnalle-FAST-TL-28-mm',
 
             'KIT-FOR-FAST-TL-BUCKLE-COVER-45-MM' =>
             'Set-Abdeckungen-für-Schnalle-FAST-TL-45-mm',
+
+            'LANYARD-CONNECTOR-PARKING' =>
+            'Verstausystem-für-das-Verbindungselement-des-Verbindungsmittels',
 
             'LARGE-D-SHAPED-GAP-FOR-ASTRO' =>
             'Großer-D-Ring-PCO-ASTRO',
@@ -566,11 +604,29 @@ class PetzlProductUrlResolver
             'LEG-LOOP-PADDING-FOR-NEWTON-HARNESS' =>
             'Beinschlaufenpolster-für-NEWTON-Gurte',
 
+            'LEZARD-ADJUSTABLE-LANYARD' =>
+            'Einstellbares-Verbindungsmittel-LEZARD',
+
+            'MICROFLIP-REINFORCED-ROPE' =>
+            'Stahlseil-MICROFLIP',
+
             'PIN-SCREW-FOR-ASTRO-GAP' =>
             'Schraube-Mittelstift-PCO-ASTRO',
 
             'PLASTIC-KEEPERS-45-MM' =>
             'Kunststoff-Riemenhalter-45-mm',
+
+            'POUCH-FOR-ASAP-SORBER' =>
+            'Schutzhülle-ASAP-SORBER-20-40',
+
+            'QUICK-CHARGER' =>
+            'Schnellladegerät',
+
+            'QUICK-CHARGER-UK' =>
+            'Schnellladegerät',
+
+            'RECHARGEABLE-BATTERY-FOR-PIXA-3R' =>
+            'Akku-für-PIXA-3R',
 
             'REFLECTIVE-STICKERS-BEFORE-2019' =>
             'Reflektierende-Aufkleber-vor-2019',
@@ -578,11 +634,29 @@ class PetzlProductUrlResolver
             'REPAIR-KIT-FOR-REPAIRABLE-RIG' =>
             'Reparaturset-RIG-reparierbare-Version',
 
+            'ROPE-END-IDENTIFICATION-KIT' =>
+            'Set-zur-Kennzeichnung-der-Seilenden-',
+
+            'ROPE-PROTECTOR-CLIP' =>
+            'Seilschutzklemme',
+
             'SCREW-FOR-I-D-AND-MICROGRAB' =>
             'Schrauben-I-D-und-MICROGRAB',
 
             'SCREWS-FOR-FAST-45-MM-BUCKLE' =>
             'Schrauben-für-Schnalle-FAST-45-mm',
+
+            'SEWN-TERMINATION-SCREW' =>
+            'Schraube-vernähte-Endverbindung',
+
+            'SHACKLES' =>
+            'Verbindungsbügel-für-den-PODIUM-Sitz',
+
+            'SMALL-D-SHAPED-GAP-FOR-ASTRO' =>
+            'Kleiner-D-Ring-PCO-ASTRO',
+
+            'STRING-M' =>
+            'STRING-M',
 
             'SWIFT-RL-RECHARGEABLE-BATTERY' =>
             'Akku-SWIFT-RL',
