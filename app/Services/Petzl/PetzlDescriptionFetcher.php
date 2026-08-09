@@ -22,6 +22,8 @@ class PetzlDescriptionFetcher
      */
     public function fetchFromUrl(string $url): array
     {
+        $this->assertAllowedPetzlUrl($url);
+
         $response = Http::withHeaders([
             'User-Agent' => 'GeoAlpin Product Importer',
             'Accept' => 'text/html,application/xhtml+xml',
@@ -87,5 +89,27 @@ class PetzlDescriptionFetcher
         $html = preg_replace('/\s+/', ' ', $html);
 
         return trim($html);
+    }
+
+    /**
+     * Stellt sicher, dass ausschließlich HTTPS-URLs von petzl.com abgerufen werden.
+     */
+    protected function assertAllowedPetzlUrl(string $url): void
+    {
+        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+            throw new RuntimeException('Ungültige Petzl-URL.');
+        }
+
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        $isPetzlHost = $host === 'petzl.com'
+            || str_ends_with($host, '.petzl.com');
+
+        if ($scheme !== 'https' || ! $isPetzlHost) {
+            throw new RuntimeException(
+                'Es sind nur HTTPS-URLs von petzl.com zulässig.'
+            );
+        }
     }
 }
