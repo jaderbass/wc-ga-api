@@ -473,6 +473,103 @@ HTML;
                                         )
                                         ->columnSpanFull(),
 
+                                    TextInput::make('petzl_description_source_url')
+                                        ->label('Petzl-Produktseite')
+                                        ->url()
+                                        ->maxLength(2048)
+                                        ->dehydrated(false)
+                                        ->helperText('Manuelle Petzl-Produktseite. Die URL wird erst übernommen, wenn die Beschreibung erfolgreich geladen wurde.')
+                                        ->visible(fn(?Product $record): bool => $record?->manufacturer_id === 3)
+                                        ->suffixActions([
+                                            Forms\Components\Actions\Action::make('loadManualPetzlDescription')
+                                                ->label('Beschreibung laden')
+                                                ->icon('heroicon-m-arrow-down-tray')
+                                                ->tooltip('Beschreibung von dieser Petzl-Produktseite laden')
+                                                ->action(function (?Product $record, Get $get, Set $set): void {
+                                                    if (! $record) {
+                                                        return;
+                                                    }
+
+                                                    $url = trim((string) $get('petzl_description_source_url'));
+
+                                                    if ($url === '') {
+                                                        Notification::make()
+                                                            ->title('Petzl-URL fehlt')
+                                                            ->body('Bitte zuerst eine Petzl-Produktseite eintragen.')
+                                                            ->warning()
+                                                            ->send();
+
+                                                        return;
+                                                    }
+
+                                                    try {
+                                                        /** @var \App\Services\Petzl\PetzlDescriptionImportService $importService */
+                                                        $importService = app(
+                                                            \App\Services\Petzl\PetzlDescriptionImportService::class
+                                                        );
+
+                                                        $importService->importManuallyFromUrl($record, $url);
+
+                                                        $record->refresh();
+
+                                                        $set(
+                                                            'petzl_description_source_url',
+                                                            $record->petzl_description_source_url
+                                                        );
+
+                                                        Notification::make()
+                                                            ->title('Petzl-Beschreibung geladen')
+                                                            ->body('Die Produktseite wurde manuell zugeordnet.')
+                                                            ->success()
+                                                            ->send();
+                                                    } catch (\Throwable $exception) {
+                                                        Notification::make()
+                                                            ->title('Petzl-Beschreibung konnte nicht geladen werden')
+                                                            ->body($exception->getMessage())
+                                                            ->danger()
+                                                            ->send();
+                                                    }
+                                                }),
+
+                                            Forms\Components\Actions\Action::make('resetManualPetzlDescription')
+                                                ->label('Automatik')
+                                                ->icon('heroicon-m-arrow-path')
+                                                ->tooltip('Manuelle Zuordnung entfernen und Automatik wieder aktivieren')
+                                                ->visible(
+                                                    fn(?Product $record): bool =>
+                                                    $record?->description_source === 'manual'
+                                                )
+                                                ->requiresConfirmation()
+                                                ->modalHeading('Automatische Petzl-Zuordnung aktivieren?')
+                                                ->modalDescription(
+                                                    'Die manuell geladene Petzl-Beschreibung und ihre Zuordnung werden entfernt. Das Produkt kann anschließend wieder automatisch aufgelöst werden.'
+                                                )
+                                                ->action(function (?Product $record, Set $set): void {
+                                                    if (! $record) {
+                                                        return;
+                                                    }
+
+                                                    $record->forceFill([
+                                                        'petzl_description_html' => null,
+                                                        'petzl_description_source_url' => null,
+                                                        'petzl_description_fetched_at' => null,
+                                                        'petzl_description_hash' => null,
+                                                        'description_source' => 'auto',
+                                                    ])->save();
+
+                                                    $record->refresh();
+
+                                                    $set('petzl_description_source_url', null);
+
+                                                    Notification::make()
+                                                        ->title('Automatische Zuordnung aktiviert')
+                                                        ->body('Die manuelle Petzl-Zuordnung wurde entfernt.')
+                                                        ->success()
+                                                        ->send();
+                                                }),
+                                        ])
+                                        ->columnSpanFull(),
+
                                     Placeholder::make('petzl_description_meta')
                                         ->label('')
                                         ->content(function ($record) {
