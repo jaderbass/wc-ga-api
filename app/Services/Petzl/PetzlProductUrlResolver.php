@@ -604,6 +604,9 @@ class PetzlProductUrlResolver
             'LEG-LOOP-PADDING-FOR-NEWTON-HARNESS' =>
             'Beinschlaufenpolster-für-NEWTON-Gurte',
 
+            'LEST-THE-PIPE' =>
+            'Gewicht-THE-PIPE',
+
             'LEZARD-ADJUSTABLE-LANYARD' =>
             'Einstellbares-Verbindungsmittel-LEZARD',
 
