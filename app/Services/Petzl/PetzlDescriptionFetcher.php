@@ -36,11 +36,6 @@ class PetzlDescriptionFetcher
 
         $html = $response->body();
 
-        file_put_contents(
-            storage_path('app/petzl-debug-full.html'),
-            $html
-        );
-
         return [
             'url' => $url,
             'description_html' => $this->extractDescriptionHtml($html),
@@ -76,11 +71,6 @@ class PetzlDescriptionFetcher
                 );
             }
         }
-
-        file_put_contents(
-            storage_path('app/petzl-debug.html'),
-            $html
-        );
 
         throw new RuntimeException(
             'Petzl description block not found. Tried selectors: ' . implode(', ', $selectors)

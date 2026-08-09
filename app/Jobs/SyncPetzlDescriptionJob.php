@@ -42,20 +42,11 @@ class SyncPetzlDescriptionJob implements ShouldQueue
         }
 
         try {
-            if ($product->manual_url) {
-                Log::info('Using manual Petzl URL.', [
-                    'product_id' => $product->id,
-                    'url' => $product->manual_url,
-                ]);
-
-                $url = $product->manual_url;
-            } else {
-                $url = $resolver->resolveByProductName(
-                    $this->productName,
-                    $this->sourceCategory,
-                    $this->sourceSubcategory,
-                );
-            }
+            $url = $resolver->resolveByProductName(
+                $this->productName,
+                $this->sourceCategory,
+                $this->sourceSubcategory,
+            );
 
             $importService->importFromUrl($product, $url);
         } catch (\Throwable $exception) {
