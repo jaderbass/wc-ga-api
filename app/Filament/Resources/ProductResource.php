@@ -453,7 +453,11 @@ HTML;
                                             fn($record) =>
                                             new HtmlString(
                                                 '<h3 class="text-base font-semibold mb-2">Kurzbeschreibung</h3>'
-                                                    . ($record?->short_description ?: '<div class="text-gray-500">—</div>')
+                                                    . '<div class="petzl-short-description-html">'
+                                                    . ($record?->petzl_short_description_html
+                                                        ?: $record?->short_description
+                                                        ?: '<div class="text-gray-500">—</div>')
+                                                    . '</div>'
                                             )
                                         )
                                         ->columnSpanFull(),
@@ -550,6 +554,7 @@ HTML;
                                                     }
 
                                                     $record->forceFill([
+                                                        'petzl_short_description_html' => null,
                                                         'petzl_description_html' => null,
                                                         'petzl_description_source_url' => null,
                                                         'petzl_description_fetched_at' => null,
