@@ -20,19 +20,30 @@ class PetzlDescriptionImportService
      * @param Product $product Produkt, das aktualisiert werden soll.
      * @param string $url Petzl-Produkt-URL.
      *
-     * @return array{url: string, description_html: string, hash: string}
+     * @return array{
+     *      url: string,
+     *      description_html: string,
+     *      short_description_html: string|null,
+     *      hash: string
+     * }
      */
     public function importFromUrl(Product $product, string $url): array
     {
         $result = $this->fetcher->fetchFromUrl($url);
 
-        $product->forceFill([
+        $payload = [
             'petzl_description_html' => $result['description_html'],
             'petzl_description_source_url' => $result['url'],
             'petzl_description_fetched_at' => now(),
             'petzl_description_hash' => $result['hash'],
             'description_source' => 'auto',
-        ])->save();
+        ];
+
+        if (! empty($result['short_description_html'])) {
+            $payload['petzl_short_description_html'] = $result['short_description_html'];
+        }
+
+        $product->forceFill($payload)->save();
 
         return $result;
     }
@@ -44,19 +55,30 @@ class PetzlDescriptionImportService
      * @param Product $product Produkt, das aktualisiert werden soll.
      * @param string $url Manuell gepflegte Petzl-Produkt-URL.
      *
-     * @return array{url: string, description_html: string, hash: string}
+     * @return array{
+     *      url: string,
+     *      description_html: string,
+     *      short_description_html: string|null,
+     *      hash: string
+     * }
      */
     public function importManuallyFromUrl(Product $product, string $url): array
     {
         $result = $this->fetcher->fetchFromUrl($url);
 
-        $product->forceFill([
+        $payload = [
             'petzl_description_html' => $result['description_html'],
             'petzl_description_source_url' => $result['url'],
             'petzl_description_fetched_at' => now(),
             'petzl_description_hash' => $result['hash'],
             'description_source' => 'manual',
-        ])->save();
+        ];
+
+        if (! empty($result['short_description_html'])) {
+            $payload['petzl_short_description_html'] = $result['short_description_html'];
+        }
+
+        $product->forceFill($payload)->save();
 
         return $result;
     }

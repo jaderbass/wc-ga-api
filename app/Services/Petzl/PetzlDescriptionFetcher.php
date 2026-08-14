@@ -12,13 +12,18 @@ use Symfony\Component\DomCrawler\Crawler;
 class PetzlDescriptionFetcher
 {
     /**
-     * Ruft eine Petzl-Produktseite ab und gibt die bereinigte Beschreibung zurück.
+     * Ruft eine Petzl-Produktseite ab und gibt die bereinigten Beschreibungen zurück.
      *
      * @param string $url Vollständige URL zur Petzl-Produktseite.
      *
      * @throws RuntimeException Wenn der Abruf fehlschlägt oder kein Beschreibungsblock gefunden wird.
      *
-     * @return array{url: string, description_html: string, hash: string}
+     * @return array{
+     *     url: string,
+     *     description_html: string,
+     *     short_description_html: string|null,
+     *     hash: string
+     * }
      */
     public function fetchFromUrl(string $url): array
     {
@@ -41,6 +46,7 @@ class PetzlDescriptionFetcher
         return [
             'url' => $url,
             'description_html' => $this->extractDescriptionHtml($html),
+            'short_description_html' => $this->extractShortDescriptionHtml($html),
             'hash' => sha1($html),
         ];
     }
@@ -76,6 +82,50 @@ class PetzlDescriptionFetcher
 
         throw new RuntimeException(
             'Petzl description block not found. Tried selectors: ' . implode(', ', $selectors)
+        );
+    }
+
+    /**
+     * Extrahiert die Petzl-Kurzbeschreibung aus der Produktseite.
+     *
+     * Die Kurzbeschreibung besteht – sofern vorhanden – aus:
+     * - .productSubtitle
+     * - .productCaracteristiquesPosition
+     *
+     * Fehlen beide Elemente, wird null zurückgegeben.
+     */
+    protected function extractShortDescriptionHtml(string $html): ?string
+    {
+        $crawler = new Crawler($html);
+
+        $parts = [];
+
+        $subtitleNodes = $crawler->filter('.productSubtitle');
+
+        if ($subtitleNodes->count() > 0) {
+            $subtitle = trim($subtitleNodes->first()->text());
+
+            if ($subtitle !== '') {
+                $parts[] = '<p>' . e($subtitle) . '</p>';
+            }
+        }
+
+        $characteristicsNodes = $crawler->filter('.productCaracteristiquesPosition');
+
+        if ($characteristicsNodes->count() > 0) {
+            $characteristics = trim($characteristicsNodes->first()->text());
+
+            if ($characteristics !== '') {
+                $parts[] = '<p>' . e($characteristics) . '</p>';
+            }
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return $this->cleanHtml(
+            implode('', $parts)
         );
     }
 
