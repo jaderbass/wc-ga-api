@@ -51,6 +51,9 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use App\Jobs\RunPetzlDescriptionSyncJob;
+use App\Models\PetzlDescriptionSyncRun;
+use Filament\Forms\Components\Radio;
 
 /**
  * Class ProductResource
@@ -1326,6 +1329,66 @@ HTML;
                     ->successNotificationTitle('Import gestartet')
                     ->closeModalByClickingAway(false)
                     ->modalSubmitActionLabel('Import starten'),
+
+                Tables\Actions\Action::make('syncPetzlDescriptions')
+                    ->label('Petzl-Beschreibungen synchronisieren')
+                    ->icon('heroicon-o-arrow-path')
+                    ->form([
+                        Radio::make('mode')
+                            ->label('Synchronisieren')
+                            ->options([
+                                'missing' => 'Fehlende Beschreibungen',
+                                'refresh' => 'Alle automatisch verwalteten Beschreibungen',
+                            ])
+                            ->descriptions([
+                                'missing' => 'Synchronisiert nur Petzl-Produkte, für die noch keine automatische Beschreibung vorhanden ist.',
+                                'refresh' => 'Ruft alle automatisch verwalteten Petzl-Beschreibungen erneut ab. Manuell gepflegte Beschreibungen bleiben geschützt.',
+                            ])
+                            ->default('missing')
+                            ->required(),
+                    ])
+                    ->action(function (array $data, Tables\Actions\Action $action): void {
+                        $runningSync = PetzlDescriptionSyncRun::query()
+                            ->whereIn('status', ['queued', 'running'])
+                            ->exists();
+
+                        if ($runningSync) {
+                            Notification::make()
+                                ->title('Petzl-Beschreibungssync läuft bereits')
+                                ->body('Bitte warten Sie, bis der aktuelle Beschreibungssync abgeschlossen ist.')
+                                ->warning()
+                                ->send();
+
+                            $action->halt();
+
+                            return;
+                        }
+
+                        $run = PetzlDescriptionSyncRun::create([
+                            'trigger' => 'manual',
+                            'mode' => $data['mode'],
+                            'status' => 'queued',
+                            'author_id' => Auth::id(),
+                        ]);
+
+                        RunPetzlDescriptionSyncJob::dispatch(
+                            runId: $run->id,
+                        )
+                            ->onConnection(config('queue.default', 'database'))
+                            ->onQueue('imports');
+
+                        Notification::make()
+                            ->title('Petzl-Beschreibungssync gestartet')
+                            ->body(
+                                $data['mode'] === 'refresh'
+                                    ? 'Alle automatisch verwalteten Petzl-Beschreibungen werden neu synchronisiert.'
+                                    : 'Fehlende Petzl-Beschreibungen werden synchronisiert.'
+                            )
+                            ->success()
+                            ->send();
+                    })
+                    ->closeModalByClickingAway(false)
+                    ->modalSubmitActionLabel('Synchronisierung starten'),
 
             ])
             ->bulkActions([
