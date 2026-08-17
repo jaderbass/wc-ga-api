@@ -7,11 +7,12 @@ use App\Services\Petzl\PetzlDescriptionImportService;
 use App\Services\Petzl\PetzlProductUrlResolver;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Bus\Batchable;
 use Illuminate\Support\Facades\Log;
 
 class SyncPetzlDescriptionJob implements ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     public int $tries = 1;
 
@@ -55,6 +56,8 @@ class SyncPetzlDescriptionJob implements ShouldQueue
                 'product_name' => $this->productName,
                 'message' => $exception->getMessage(),
             ]);
+
+            throw $exception;
         }
     }
 }
