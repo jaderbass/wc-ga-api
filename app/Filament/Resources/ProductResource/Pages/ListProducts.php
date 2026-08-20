@@ -73,22 +73,72 @@ class ListProducts extends ListRecords
 <div id="ga-import-overlay">
   <div class="ga-import-box">
     <div class="ga-spinner"></div>
-    <strong>Import läuft…</strong><br>
-    Bitte nicht neu laden
+
+    <strong id="ga-overlay-title">Import läuft…</strong><br>
+
+    <div id="ga-overlay-status">
+      Bitte nicht neu laden
+    </div>
+
+    <div id="ga-overlay-progress" style="display: none; margin-top: 0.75rem;">
+      <div id="ga-overlay-progress-text"></div>
+      <div id="ga-overlay-result-text"></div>
+    </div>
   </div>
 </div>
 
 <script>
-    function showImportOverlay() {
+    function showImportOverlay(title = 'Import läuft…') {
         const el = document.getElementById('ga-import-overlay');
         if (!el) return;
 
-        // Dark Mode erkennen (Filament setzt meist .dark am <html>)
         if (document.documentElement.classList.contains('dark')) {
             el.classList.add('dark');
         }
 
+        const titleEl = document.getElementById('ga-overlay-title');
+        const statusEl = document.getElementById('ga-overlay-status');
+        const progressEl = document.getElementById('ga-overlay-progress');
+
+        if (titleEl) {
+            titleEl.textContent = title;
+        }
+
+        if (statusEl) {
+            statusEl.textContent = 'Bitte nicht neu laden';
+        }
+
+        if (progressEl) {
+            progressEl.style.display = 'none';
+        }
+
         el.style.display = 'flex';
+    }
+
+    function updatePetzlSyncOverlay(data) {
+        const statusEl = document.getElementById('ga-overlay-status');
+        const progressEl = document.getElementById('ga-overlay-progress');
+        const progressTextEl = document.getElementById('ga-overlay-progress-text');
+        const resultTextEl = document.getElementById('ga-overlay-result-text');
+
+        if (!progressEl || !progressTextEl || !resultTextEl) {
+            return;
+        }
+
+        progressEl.style.display = 'block';
+
+        progressTextEl.textContent =
+            `${data.completed ?? 0} von ${data.total ?? 0} verarbeitet · ${data.progress ?? 0} %`;
+
+        resultTextEl.textContent =
+            `${data.successful ?? 0} erfolgreich · ${data.failed ?? 0} fehlgeschlagen`;
+
+        if (statusEl) {
+            statusEl.textContent =
+                data.status === 'running'
+                    ? 'Synchronisierung läuft'
+                    : 'Bitte nicht neu laden';
+        }
     }
 
     function hideImportOverlay() {
@@ -115,7 +165,7 @@ class ListProducts extends ListRecords
             Livewire.on('import-run-started', (payload) => {
                 console.log('[import-ui] import-run-started', payload);
 
-                showImportOverlay();
+                showImportOverlay('Import läuft…');
 
                 const runId = payload?.runId;
                 if (!runId) return;
@@ -143,6 +193,56 @@ class ListProducts extends ListRecords
                 es.addEventListener('error', () => {
                     hideImportOverlay();
                     es.close();
+                });
+            });
+
+            Livewire.on('petzl-description-sync-started', (payload) => {
+                console.log('[petzl-sync-ui] started', payload);
+
+                showImportOverlay('Petzl-Beschreibungen werden synchronisiert…');
+
+                updatePetzlSyncOverlay({
+                    status: 'queued',
+                    total: 0,
+                    completed: 0,
+                    successful: 0,
+                    failed: 0,
+                    progress: 0,
+                });
+
+                const runId = payload?.runId;
+                if (!runId) return;
+
+                if (window.__gaPetzlSyncEventSource) {
+                    window.__gaPetzlSyncEventSource.close();
+                }
+
+                const url = `/petzl-description-sync/runs/${runId}/events`;
+                const es = new EventSource(url);
+
+                window.__gaPetzlSyncEventSource = es;
+
+                es.addEventListener('status', (ev) => {
+                    const data = JSON.parse(ev.data || '{}');
+
+                    console.log('[petzl-sync-ui] status', data);
+
+                    if (!data.status) return;
+
+                    updatePetzlSyncOverlay(data);
+
+                    if (data.status === 'done' || data.status === 'failed') {
+                        es.close();
+
+                        setTimeout(() => {
+                            hideImportOverlay();
+                            window.location.reload();
+                        }, 4000);
+                    }
+                });
+
+                es.addEventListener('error', () => {
+                    console.warn('[petzl-sync-ui] SSE connection interrupted');
                 });
             });
         }

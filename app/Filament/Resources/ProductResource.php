@@ -1347,7 +1347,11 @@ HTML;
                             ->default('missing')
                             ->required(),
                     ])
-                    ->action(function (array $data, Tables\Actions\Action $action): void {
+                    ->action(function (
+                        array $data,
+                        Tables\Actions\Action $action,
+                        \Livewire\Component $livewire
+                    ): void {
                         $runningSync = PetzlDescriptionSyncRun::query()
                             ->whereIn('status', ['queued', 'running'])
                             ->exists();
@@ -1376,6 +1380,11 @@ HTML;
                         )
                             ->onConnection(config('queue.default', 'database'))
                             ->onQueue('imports');
+
+                        $livewire->dispatch(
+                            'petzl-description-sync-started',
+                            runId: $run->id,
+                        );
 
                         Notification::make()
                             ->title('Petzl-Beschreibungssync gestartet')
