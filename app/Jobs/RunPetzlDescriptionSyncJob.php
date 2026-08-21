@@ -75,6 +75,8 @@ class RunPetzlDescriptionSyncJob implements ShouldQueue
                 'original_product_name',
                 'description_source',
                 'petzl_description_hash',
+                'petzl_source_category',
+                'petzl_source_subcategory',
             ]);
 
             $jobs = $products
@@ -87,7 +89,9 @@ class RunPetzlDescriptionSyncJob implements ShouldQueue
                     productId: $product->id,
                     productName: $product->original_product_name,
                     force: $force,
-                ))  
+                    sourceCategory: $product->petzl_source_category,
+                    sourceSubcategory: $product->petzl_source_subcategory,
+                )) 
                 ->values()
                 ->all();
 

@@ -63,6 +63,8 @@ class Product extends Model
         'author_id',
         'manufacturer_price_cents',
         'petzl_description_fetched_at',
+        'petzl_source_category',
+        'petzl_source_subcategory',
     ];
 
     protected $guarded = ['id'];

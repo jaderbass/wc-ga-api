@@ -214,15 +214,40 @@ class ImporterForPetzl extends GenericCsvProductImporter
             $this->ensureCategoryMapping($row);
         });
 
+        $firstRow = $rows->first() ?? [];
+
+        $productName = $productPayload['product_name']
+            ?? $rows->first()['Product name']
+            ?? null;
+
+        Log::info('Dispatching Petzl description job with category mapping.', [
+            'product_id' => $product->id,
+            'product_name' => $productName,
+            'category' => $firstRow['Category'] ?? null,
+            'subcategory' => $firstRow['Subcategory'] ?? null,
+        ]);
+
+        $product->update([
+            'petzl_source_category' => filled($firstRow['Category'] ?? null)
+                ? trim((string) $firstRow['Category'])
+                : null,
+
+            'petzl_source_subcategory' => filled($firstRow['Subcategory'] ?? null)
+                ? trim((string) $firstRow['Subcategory'])
+                : null,
+        ]);
+
+        Log::info('Petzl description sync job dispatched.', [
+            'product_id' => $product->id,
+            'product_name' => $productName,
+        ]);
+
         $importService = app(PetzlDescriptionImportService::class);
 
         if (! $importService->shouldImport($product)) {
             return;
         }
 
-        $productName = $productPayload['product_name']
-            ?? $rows->first()['Product name']
-            ?? null;
 
         if (! $productName) {
             Log::warning('Petzl description sync skipped: missing product name.', [
@@ -232,15 +257,6 @@ class ImporterForPetzl extends GenericCsvProductImporter
             return;
         }
 
-        $firstRow = $rows->first() ?? [];
-
-        Log::info('Dispatching Petzl description job with category mapping.', [
-            'product_id' => $product->id,
-            'product_name' => $productName,
-            'category' => $firstRow['Category'] ?? null,
-            'subcategory' => $firstRow['Subcategory'] ?? null,
-        ]);
-
         SyncPetzlDescriptionJob::dispatch(
             productId: $product->id,
             productName: (string) $productName,
@@ -249,10 +265,6 @@ class ImporterForPetzl extends GenericCsvProductImporter
             sourceSubcategory: (string) ($firstRow['Subcategory'] ?? ''),
         )->onQueue('imports');
 
-        Log::info('Petzl description sync job dispatched.', [
-            'product_id' => $product->id,
-            'product_name' => $productName,
-        ]);
     }
 
     /**
