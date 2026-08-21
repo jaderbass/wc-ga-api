@@ -166,8 +166,8 @@ class PetzlProductUrlResolver
             $response = Http::withHeaders([
                 'User-Agent' => 'GeoAlpin Product Importer',
             ])
-                ->timeout(20)
-                ->retry(2, 1000)
+                ->connectTimeout(3)
+                ->timeout(8)
                 ->get($url);
 
             Log::debug('Petzl request finished.', [
