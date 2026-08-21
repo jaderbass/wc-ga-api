@@ -35,6 +35,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Checkbox;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
@@ -1206,6 +1207,22 @@ HTML;
                                 $set('sourceType', $importType);
                             })
                             ->required(),
+                        Checkbox::make('sync_petzl_descriptions')
+                            ->label('Petzl-Beschreibungen anschließend synchronisieren')
+                            ->helperText('Startet nach dem abgeschlossenen Petzl-Import einen separaten Beschreibungssync.')
+                            ->default(true)
+                            ->visible(function (Get $get): bool {
+                                $manufacturerId = $get('manufacturer_id');
+
+                                if (! $manufacturerId) {
+                                    return false;
+                                }
+
+                                return \App\Models\Manufacturer::query()
+                                    ->whereKey($manufacturerId)
+                                    ->where('manufacturer', 'Petzl')
+                                    ->exists();
+                            }),
                         Hidden::make('sourceType')
                             ->default(function (Get $get): string {
                                 return \App\Models\Manufacturer::query()
@@ -1310,6 +1327,8 @@ HTML;
                             'status'          => 'queued',
                         ]);
 
+                        $syncPetzlDescriptions = (bool) ($data['sync_petzl_descriptions'] ?? false);
+
                         // 🔥 Job starten – sonst nichts
                         \App\Jobs\RunManufacturerImportJob::dispatch(
                             $manufacturerId,
@@ -1317,6 +1336,7 @@ HTML;
                             $payloadSource,
                             $run->author_id,
                             $run->id,
+                            $syncPetzlDescriptions,
                         )
                             ->onConnection(config('queue.default', 'database'))
                             ->onQueue('imports');
