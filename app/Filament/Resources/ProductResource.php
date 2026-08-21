@@ -1341,7 +1341,11 @@ HTML;
                             ->onConnection(config('queue.default', 'database'))
                             ->onQueue('imports');
 
-                        $livewire->dispatch('import-run-started', runId: $run->id);
+                        $livewire->dispatch(
+                            'import-run-started',
+                            runId: $run->id,
+                            waitForPetzlSync: $syncPetzlDescriptions,
+                        );
 
                         // ✅ DAS ist entscheidend
                         $action->success();
