@@ -95,15 +95,15 @@ class RunManufacturerImportJob implements ShouldQueue
               'source_type' => $this->sourceType,
           ]);
 
-          ImporterSelector::handleImport(
-              $importer,
-              $this->sourceType,
-              $this->source
-          );
-
           if (method_exists($importer, 'setAuthorId')) {
-              $importer->setAuthorId($this->authorId);
-          }
+                $importer->setAuthorId($this->authorId);
+            }
+
+            ImporterSelector::handleImport(
+                $importer,
+                $this->sourceType,
+                $this->source
+            );
 
           if ($this->runId) {
               \App\Models\ImportRun::whereKey($this->runId)->update([
