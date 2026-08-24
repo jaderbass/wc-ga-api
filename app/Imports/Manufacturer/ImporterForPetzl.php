@@ -6,8 +6,6 @@ use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
 use App\Models\Product;
 use App\Models\PetzlCategoryMapping;
-use App\Services\Petzl\PetzlDescriptionImportService;
-use App\Jobs\SyncPetzlDescriptionJob;
 use Illuminate\Support\Collection;
 
 /**
@@ -196,10 +194,12 @@ class ImporterForPetzl extends GenericCsvProductImporter
   }
 
     /**
-     * Stößt nach dem Produktimport den Petzl-Beschreibungsimport an.
+     * Verarbeitet Petzl-spezifische Daten nach dem Produkt-Upsert.
      *
-     * Die Beschreibung wird nur nachgeladen, wenn noch keine automatische
-     * Beschreibung vorhanden ist und keine manuelle Beschreibung geschützt wird.
+     * Stellt die Kategorie-Zuordnungen sicher und speichert die
+     * Petzl-Quellkategorie sowie -unterkategorie am Produkt, damit
+     * ein späterer entkoppelter Beschreibungssync die passende
+     * Produktseite gezielt auflösen kann.
      *
      * @param Product $product Importiertes oder aktualisiertes Produkt.
      * @param Collection<int, array<string, mixed>> $rows CSV-Zeilen der Produktgruppe.
@@ -220,7 +220,7 @@ class ImporterForPetzl extends GenericCsvProductImporter
             ?? $rows->first()['Product name']
             ?? null;
 
-        Log::info('Dispatching Petzl description job with category mapping.', [
+        Log::info('Storing Petzl source category mapping.', [
             'product_id' => $product->id,
             'product_name' => $productName,
             'category' => $firstRow['Category'] ?? null,
@@ -236,26 +236,6 @@ class ImporterForPetzl extends GenericCsvProductImporter
                 ? trim((string) $firstRow['Subcategory'])
                 : null,
         ]);
-
-        Log::info('Petzl description sync job dispatched.', [
-            'product_id' => $product->id,
-            'product_name' => $productName,
-        ]);
-
-        $importService = app(PetzlDescriptionImportService::class);
-
-        if (! $importService->shouldImport($product)) {
-            return;
-        }
-
-
-        if (! $productName) {
-            Log::warning('Petzl description sync skipped: missing product name.', [
-                'product_id' => $product->id,
-            ]);
-
-            return;
-        }
     }
 
     /**
