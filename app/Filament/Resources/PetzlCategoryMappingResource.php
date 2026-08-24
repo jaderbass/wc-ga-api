@@ -135,9 +135,13 @@ class PetzlCategoryMappingResource extends Resource
                 Tables\Filters\Filter::make('missing_translation')
                     ->label('Ohne Übersetzung')
                     ->query(
-                        fn($query) => $query
-                            ->whereNull('translated_category')
-                            ->orWhere('translated_category', '')
+                        fn($query) => $query->where(function ($query) {
+                            $query
+                                ->whereNull('translated_category')
+                                ->orWhere('translated_category', '')
+                                ->orWhereNull('translated_subcategory')
+                                ->orWhere('translated_subcategory', '');
+                        })
                     ),
             ])
             ->actions([
