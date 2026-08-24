@@ -46,7 +46,9 @@ use Filament\Tables\Table;
 use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Auth;
@@ -1427,6 +1429,112 @@ HTML;
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()->label('Löschen'),
+
+                    BulkAction::make('sync_petzl_descriptions')
+                        ->label('Petzl-Beschreibungen synchronisieren')
+                        ->icon('heroicon-o-arrow-path')
+                        ->form([
+                            Radio::make('mode')
+                                ->label('Synchronisieren')
+                                ->options([
+                                    'missing' => 'Nur fehlende Beschreibungen der Auswahl',
+                                    'refresh' => 'Ausgewählte automatische Beschreibungen neu laden',
+                                ])
+                                ->descriptions([
+                                    'missing' => 'Synchronisiert nur ausgewählte Petzl-Produkte, für die noch keine automatische Beschreibung vorhanden ist.',
+                                    'refresh' => 'Lädt die Beschreibungen der ausgewählten automatisch verwalteten Petzl-Produkte erneut. Manuell gepflegte Beschreibungen bleiben geschützt.',
+                                ])
+                                ->default('missing')
+                                ->required(),
+                        ])
+                        ->action(function (
+                            Collection $records,
+                            array $data,
+                            BulkAction $action,
+                            \Livewire\Component $livewire
+                        ): void {
+                            $runningSync = PetzlDescriptionSyncRun::query()
+                                ->whereIn('status', ['queued', 'running'])
+                                ->exists();
+
+                            if ($runningSync) {
+                                Notification::make()
+                                    ->title('Petzl-Beschreibungssync läuft bereits')
+                                    ->body('Bitte warten Sie, bis der aktuelle Beschreibungssync abgeschlossen ist.')
+                                    ->warning()
+                                    ->send();
+
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $petzlManufacturerId = \App\Models\Manufacturer::query()
+                                ->where('manufacturer', 'Petzl')
+                                ->value('id');
+
+                            $nonPetzlProducts = $records->filter(
+                                fn (Product $product): bool =>
+                                    $product->manufacturer_id !== $petzlManufacturerId
+                            );
+
+                            if ($nonPetzlProducts->isNotEmpty()) {
+                                Notification::make()
+                                    ->title('Auswahl enthält andere Hersteller')
+                                    ->body('Für den Petzl-Beschreibungssync dürfen ausschließlich Petzl-Produkte ausgewählt sein.')
+                                    ->warning()
+                                    ->send();
+
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $productIds = $records
+                                ->pluck('id')
+                                ->map(fn ($id) => (int) $id)
+                                ->values()
+                                ->all();
+
+                            if ($productIds === []) {
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $run = PetzlDescriptionSyncRun::create([
+                                'trigger' => 'selection',
+                                'mode' => $data['mode'],
+                                'status' => 'queued',
+                                'author_id' => Auth::id(),
+                            ]);
+
+                            RunPetzlDescriptionSyncJob::dispatch(
+                                runId: $run->id,
+                                productIds: $productIds,
+                            )
+                                ->onConnection(config('queue.default', 'database'))
+                                ->onQueue('imports');
+
+                            $livewire->dispatch(
+                                'petzl-description-sync-started',
+                                runId: $run->id,
+                            );
+
+                            Notification::make()
+                                ->title('Petzl-Beschreibungssync gestartet')
+                                ->body(
+                                    count($productIds) === 1
+                                        ? '1 ausgewähltes Produkt wird synchronisiert.'
+                                        : count($productIds) . ' ausgewählte Produkte werden synchronisiert.'
+                                )
+                                ->success()
+                                ->send();
+                        })
+                        ->closeModalByClickingAway(false)
+                        ->modalSubmitActionLabel('Synchronisierung starten')
+                        ->deselectRecordsAfterCompletion(),
+
                     SyncProductsBulkAction::make('sync_to_woo'),
                     SyncVariationsBulkAction::make('sync_variations_to_woo'),
                 ])
