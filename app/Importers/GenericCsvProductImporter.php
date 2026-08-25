@@ -235,15 +235,33 @@ class GenericCsvProductImporter implements CsvImporterContract
             return $row;
         });
 
-        $grouped = $indexed->groupBy(function (array $row) use ($groupByCols, $fallbackCols, $firstNonEmpty, $clean): string {
+        $groupByTransform = $this->mapping['group_by_transform'] ?? null;
+
+        $grouped = $indexed->groupBy(function (array $row) use (
+            $groupByCols,
+            $fallbackCols,
+            $firstNonEmpty,
+            $clean,
+            $groupByTransform
+        ): string {
+            if ($groupByTransform instanceof \Closure) {
+                $value = $groupByTransform($row);
+
+                if ($value !== null && trim((string) $value) !== '') {
+                    return $clean((string) $value);
+                }
+            }
+
             if (!empty($groupByCols)) {
                 $val = $firstNonEmpty($row, $groupByCols);
+
                 if ($val !== '') {
                     return $clean($val);
                 }
             }
 
             $val = $firstNonEmpty($row, $fallbackCols);
+
             if ($val !== '') {
                 return $clean($val);
             }
@@ -557,6 +575,19 @@ class GenericCsvProductImporter implements CsvImporterContract
         $payload = null;
         $writablePayload = null;
 
+        $variationRowFilter = $this->mapping['variation_row_filter'] ?? null;
+
+        $variationRows = $rows;
+
+        if ($variationRowFilter instanceof \Closure) {
+            $variationRows = $rows
+                ->filter(fn (array $row) => $variationRowFilter($row))
+                ->values();
+        }
+
+        $productType = $variationRows->isNotEmpty()
+            ? 'variable'
+            : 'simple';
 
         // reference kann String oder Array sein
         $referenceKey  = $this->mapping['reference'] ?? null;
@@ -672,6 +703,13 @@ class GenericCsvProductImporter implements CsvImporterContract
             $productPayload['original_product_name'] = trim((string) $groupKey);
         }
 
+        $productPayload = $this->beforeProductUpsert(
+            $groupKey,
+            $rows,
+            $productPayload,
+            $variationRows
+        );
+
         // Name/Slug/Feste Werte
         $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
         $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());
@@ -679,7 +717,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $finalProductPayload = array_merge($productPayload, [
             'product_name'    => $name,
             // Achtung: diese Keys schreiben wir nur, wenn Spalten existieren (siehe unten)
-            'product_type'    => 'variable',
+            'product_type'    => $productType,
             'manufacturer_id' => $this->manufacturerId,
             'status'          => 'draft',
         ]);
@@ -910,7 +948,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         $imported = 0;
         $loggedRefDiag = false;
 
-        foreach ($rows as $row) {
+        foreach ($variationRows as $row) {
             $ref = $this->firstNonEmptyFromRow($row, $referenceCols);
             $ref = $ref !== null ? trim((string) $ref) : '';
 
@@ -1823,6 +1861,27 @@ class GenericCsvProductImporter implements CsvImporterContract
         $product->assembly_group = $resolvedAssemblyGroup;
         $product->assembly_group_source = 'auto';
         $product->save();
+    }
+
+    /**
+     * Ermöglicht herstellerspezifische Anpassungen der Produkt-Payload
+     * unmittelbar vor dem Produkt-Upsert.
+     *
+     * Standardmäßig wird die Payload unverändert zurückgegeben.
+     *
+     * @param string $groupKey
+     * @param \Illuminate\Support\Collection<int,array<string,mixed>> $rows
+     * @param array<string,mixed> $productPayload
+     * @param \Illuminate\Support\Collection<int,array<string,mixed>> $variationRows
+     * @return array<string,mixed>
+     */
+    protected function beforeProductUpsert(
+        string $groupKey,
+        \Illuminate\Support\Collection $rows,
+        array $productPayload,
+        \Illuminate\Support\Collection $variationRows
+    ): array {
+        return $productPayload;
     }
 
     /**

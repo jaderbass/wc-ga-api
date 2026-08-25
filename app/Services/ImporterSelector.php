@@ -56,6 +56,10 @@ class ImporterSelector
         $instance = new \App\Imports\Manufacturer\ImporterForPetzl((int) $m->id);
         break;
 
+      case 'kask':
+        $instance = new \App\Imports\Manufacturer\ImporterForKask((int) $m->id);
+        break;
+
       case 'aliens':
         // Aliens gibt es doppelt:
         // - Aliens (CSV)  → GenericCsvProductImporter
