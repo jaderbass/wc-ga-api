@@ -148,3 +148,17 @@ html.dark .fi-form .petzl-description-html th {
     background-color: #374151 !important;
     color: #f9fafb !important;
 }
+
+/* Importierte Beschreibungen: alte Tabellenfarben im Dark Theme neutralisieren */
+html.dark .fi-form .petzl-description-html table tr[bgcolor="#FFFFFF"],
+html.dark .fi-form .petzl-description-html table td[bgcolor="#FFFFFF"] {
+    background-color: #18181b !important;
+    color: #f9fafb !important;
+}
+
+/* Alte graue Tabellen-Kopfzeilen */
+html.dark .fi-form .petzl-description-html table tr[bgcolor="#CCCCCC"],
+html.dark .fi-form .petzl-description-html table td[bgcolor="#CCCCCC"] {
+    background-color: #374151 !important;
+    color: #f9fafb !important;
+}
