@@ -59,7 +59,7 @@ final class RebuildProductNamesCommand extends Command
         }
 
         $total = (clone $query)->count();
-        $this->info("Rebuilding product names for {$total} products" . ($dryRun ? ' (dry-run)' : '') . '…');
+        $this->info("Rebuilding product names for {$total} products".($dryRun ? ' (dry-run)' : '').'…');
 
         $changed = 0;
         $skipped = 0;
@@ -84,17 +84,17 @@ final class RebuildProductNamesCommand extends Command
                     // Decide kind by product_type OR variations existence
                     $kind = $this->resolveKind($product);
 
-                    // Category: currently unknown in your DB -> keep empty (will be skipped by builder)
-                    $categoryName = $this->resolveCategoryName($product);
-
                     // Designation source:
                     // Prefer original_product_name, otherwise fallback to existing product_name or slug.
                     $designation = $this->resolveDesignation($product);
 
                     if ($designation === null || $designation === '') {
                         $skipped++;
+
                         continue;
                     }
+
+                    $categoryName = ProductNameContext::resolveCategoryName($designation);
 
                     $properties = $extractor->extract($product);
 
@@ -118,6 +118,7 @@ final class RebuildProductNamesCommand extends Command
 
                     if (! $shouldUpdate && ! $overwriteOriginal) {
                         $skipped++;
+
                         continue;
                     }
 
@@ -127,6 +128,7 @@ final class RebuildProductNamesCommand extends Command
                         } else {
                             $skipped++;
                         }
+
                         continue;
                     }
 
@@ -175,19 +177,6 @@ final class RebuildProductNamesCommand extends Command
     }
 
     /**
-     * Resolves category name for naming.
-     *
-     * For now category is unknown/managed in Woo/UI, so keep empty.
-     * Later you can:
-     * - read from a mirrored column
-     * - read from product_meta
-     */
-    private function resolveCategoryName(Product $product): string
-    {
-        return '';
-    }
-
-    /**
      * Resolves the designation/original product name used for naming.
      *
      * Priority:
@@ -211,7 +200,7 @@ final class RebuildProductNamesCommand extends Command
     /**
      * Resolves manufacturer name for naming with in-memory cache.
      *
-     * @param array<int, string> $cache
+     * @param  array<int, string>  $cache
      */
     private function resolveManufacturerName(int $manufacturerId, array &$cache): string
     {
