@@ -41,7 +41,7 @@ class ProductFactory extends Factory
       'original_product_name' => null,
 
       // NOT NULL
-      'stock_status' => 'instock',
+      'stock_status' => 'in_stock',
     ];
   }
 
