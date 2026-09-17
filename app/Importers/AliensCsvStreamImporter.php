@@ -82,9 +82,10 @@ class AliensCsvStreamImporter
         $csv->skipEmptyRecords();
 
         // Wir lesen Header manuell (Aliens kann Duplikate haben).
-        $rows = $csv->getRecords(); // Iterator (streamed), liefert numerische Arrays
+        $rows = $csv->getRecords();
 
         $headerRow = null;
+
         foreach ($rows as $row) {
             $headerRow = $row;
             break;
@@ -114,15 +115,14 @@ class AliensCsvStreamImporter
             'header_sample' => array_slice($headers, 0, 60),
         ]);
 
-        // Jetzt erneut Records-Iterator holen und ab Zeile 2 streamen:
+        // Records erneut holen und ab Zeile 2 streamen.
         $rows = $csv->getRecords();
 
         $rowIndex = -1;
         $importedProducts = 0;
         $importedVariations = 0;
 
-        // Cache: Produkt-ID -> Product-Model (damit wir nicht pro Zeile neu aus DB lesen)
-        // Wichtig: begrenzen, sonst wächst es ins Unendliche. Wir nutzen eine LRU-light Strategie.
+        // Cache: Produkt-ID -> Product-Model
         $productCache = [];
         $productCacheOrder = [];
         $productCacheMax = 500;
@@ -131,20 +131,19 @@ class AliensCsvStreamImporter
         $currentProduct = null;
         $lastParentAssoc = null;
         $lastParentManufacturerId = null;
+        $currentVariationRefs = [];
 
         foreach ($rows as $row) {
             $rowIndex++;
 
-            // Header-Zeile überspringen
+            // Header-Zeile überspringen.
             if ($rowIndex === 0) {
                 continue;
             }
 
             $assoc = $this->combineRow($headers, $row);
 
-            // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
             $productId = $this->cell($assoc, ['Produkt-ID']);
-
             $combinationId = $this->cell($assoc, ['Kombination-ID']);
             $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
 
@@ -152,16 +151,30 @@ class AliensCsvStreamImporter
             $featureValue = $this->cell($assoc, ['Feature Value']);
             $featurePosition = $this->cell($assoc, ['Feature Position']);
 
-            // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
+            // Neues Parent-Produkt beginnt.
             if ($productId !== null && $productId !== '') {
-                $currentProductId = (string) $productId;
+                // Vorheriges Produkt vollständig finalisieren.
+                if ($currentProduct !== null) {
+                    $this->finalizeProductNumber(
+                        $currentProduct,
+                        $currentVariationRefs
+                    );
 
-                // Wenn wir auf ein neues Produkt wechseln: vorheriges Produkt mit seinen Parent-Daten finalisieren
-                if ($currentProduct !== null && is_array($lastParentAssoc)) {
-                    $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-                    app(\App\Services\Categories\ProductCategorySyncService::class)
-                        ->sync($currentProduct);
+                    if (is_array($lastParentAssoc)) {
+                        $this->finalizeProductNaming(
+                            $currentProduct,
+                            $lastParentAssoc,
+                            $lastParentManufacturerId
+                        );
+
+                        app(\App\Services\Categories\ProductCategorySyncService::class)
+                            ->sync($currentProduct);
+                    }
                 }
+
+                // Neue Produktgruppe starten.
+                $currentVariationRefs = [];
+                $currentProductId = (string) $productId;
 
                 $currentProduct = $this->getOrUpsertProduct(
                     $assoc,
@@ -183,29 +196,37 @@ class AliensCsvStreamImporter
                     Log::info('Aliens naming probe', [
                         'productId' => $currentProductId,
                         'designation' => $designationProbe,
-                        'available_keys_sample' => array_slice(array_keys($assoc), 0, 30),
+                        'available_keys_sample' => array_slice(
+                            array_keys($assoc),
+                            0,
+                            30
+                        ),
                     ]);
                 }
 
-                // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
+                // Parent-Daten für spätere Finalisierung merken.
                 $lastParentAssoc = $assoc;
                 $lastParentManufacturerId = $currentProduct->manufacturer_id;
             }
 
-            // Ohne aktives Parent können wir nichts zuordnen
+            // Ohne aktives Parent können wir nichts zuordnen.
             if ($currentProduct === null) {
                 continue;
             }
 
-            // 2) Features immer übernehmen (Hauptzeile + Feature-only Zeilen)
+            // Features übernehmen.
             $this->upsertProductFeaturesMeta($currentProduct, $assoc);
 
-            // 2b) Bilder-URLs sammeln
+            // Bilder-URLs sammeln.
             $this->upsertProductImagesMeta($currentProduct, $assoc);
 
-            // 3) Feature-only Zeile? (nur Feature Name/Value/Position, keine Kombi-Daten) -> keine Variation
+            // Reine Feature-Zeile ohne Variantendaten.
             $isFeatureOnlyRow =
-                (($featureName ?? '') !== '' || ($featureValue ?? '') !== '' || ($featurePosition ?? '') !== '')
+                (
+                    ($featureName ?? '') !== ''
+                    || ($featureValue ?? '') !== ''
+                    || ($featurePosition ?? '') !== ''
+                )
                 && (($combinationId ?? '') === '')
                 && (($combinationRef ?? '') === '');
 
@@ -213,30 +234,57 @@ class AliensCsvStreamImporter
                 continue;
             }
 
-            // 4) Varianten-Zeile: Kombinations-Referenz (oder ID) vorhanden -> Variation upsert
-            $hasVariationIdentity = (($combinationRef ?? '') !== '' || ($combinationId ?? '') !== '');
+            // Varianten-Zeile.
+            $hasVariationIdentity =
+                (($combinationRef ?? '') !== '')
+                || (($combinationId ?? '') !== '');
 
             if ($hasVariationIdentity) {
+                if (($combinationRef ?? '') !== '') {
+                    $currentVariationRefs[] = trim((string) $combinationRef);
+                }
+
                 $combinationIdSafe = (($combinationId ?? '') !== '')
                     ? (string) $combinationId
                     : (string) $combinationRef;
 
-                $this->upsertVariation($currentProduct, $assoc, $combinationIdSafe);
+                $this->upsertVariation(
+                    $currentProduct,
+                    $assoc,
+                    $combinationIdSafe
+                );
+
                 $importedVariations++;
             }
 
-            if ($this->runId && ($importedVariations % 100 === 0)) {
+            if (
+                $this->runId
+                && $importedVariations > 0
+                && ($importedVariations % 100 === 0)
+            ) {
                 ImportRun::whereKey($this->runId)->update([
                     'processed_rows' => $importedVariations,
                 ]);
             }
         }
 
-        // Letztes Produkt am Ende ebenfalls finalisieren
-        if ($currentProduct !== null && is_array($lastParentAssoc)) {
-            $this->finalizeProductNaming($currentProduct, $lastParentAssoc, $lastParentManufacturerId);
-            app(\App\Services\Categories\ProductCategorySyncService::class)
-                ->sync($currentProduct);
+        // Letztes Produkt ebenfalls vollständig finalisieren.
+        if ($currentProduct !== null) {
+            $this->finalizeProductNumber(
+                $currentProduct,
+                $currentVariationRefs
+            );
+
+            if (is_array($lastParentAssoc)) {
+                $this->finalizeProductNaming(
+                    $currentProduct,
+                    $lastParentAssoc,
+                    $lastParentManufacturerId
+                );
+
+                app(\App\Services\Categories\ProductCategorySyncService::class)
+                    ->sync($currentProduct);
+            }
         }
 
         if ($this->runId) {
@@ -385,28 +433,45 @@ class AliensCsvStreamImporter
         $payload = $this->mapVariationPayload($row);
 
         $variationRef = $this->cell($row, ['Kombinations-Referenz']);
-        $variationRef = is_string($variationRef) ? trim($variationRef) : (is_numeric($variationRef) ? (string) $variationRef : null);
+        $variationRef = is_string($variationRef)
+            ? trim($variationRef)
+            : (is_numeric($variationRef) ? (string) $variationRef : null);
 
-        // SKU bevorzugt aus Kombinations-Referenz (z. B. 400/12-B), sonst Fallback auf ID
-        $sku = ($variationRef !== null && $variationRef !== '') ? $variationRef : $combinationId;
-        $sku = trim((string) $sku);
+        if ($variationRef === null || $variationRef === '') {
+            Log::warning('Aliens variation without combination reference skipped', [
+                'product_id' => $product->id,
+                'combination_id' => $combinationId,
+            ]);
 
-        // Base-Referenz aus Kombinations-Referenz ableiten (z. B. "400/12-B" -> "400/12")
-        $baseRef = null;
-
-        if ($variationRef !== null && $variationRef !== '') {
-            $baseRef = str_contains($variationRef, '-')
-                ? explode('-', $variationRef, 2)[0]
-                : $variationRef;
-
-            $baseRef = trim($baseRef);
+            return;
         }
 
-        // Interne, stabile Varianten-ID (global eindeutig)
+        // Technische, stabile ID der Lieferantenvariante.
         $externalId = 'ALIENS-'.trim((string) $combinationId);
 
-        // Woo-SKU: garantiert eindeutig
-        $sku = $externalId;
+        // Die Kombinations-Referenz ist grundsätzlich bereits die
+        // vollständige Artikelnummer der Variante.
+        $sku = $variationRef;
+
+        // Einige Aliens-Datensätze enthalten dieselbe Kombinations-Referenz
+        // bei verschiedenen Varianten. Da sku global UNIQUE ist, verwenden
+        // wir in diesem Sonderfall die technische external_id als Fallback.
+        $skuConflict = ProductVariation::query()
+            ->where('sku', $sku)
+            ->where('external_id', '!=', $externalId)
+            ->first();
+
+        if ($skuConflict !== null) {
+            Log::warning('Aliens duplicate combination reference – using external ID as SKU fallback', [
+                'product_id' => $product->id,
+                'combination_id' => $combinationId,
+                'combination_reference' => $variationRef,
+                'conflicting_variation_id' => $skuConflict->id,
+                'fallback_sku' => $externalId,
+            ]);
+
+            $sku = $externalId;
+        }
 
         $variation = ProductVariation::updateOrCreate(
             ['external_id' => $externalId],
@@ -420,45 +485,145 @@ class AliensCsvStreamImporter
             )
         );
 
-        // Variation erfolgreich angelegt → Parent ist variable
+        // Sobald mindestens eine Variante existiert, ist das Parent variabel.
         if ($product->product_type !== 'variable') {
-            $product->update(['product_type' => 'variable']);
+            $product->update([
+                'product_type' => 'variable',
+            ]);
         }
 
-        // Kombinations-ID als Meta (damit wir sie trotzdem haben)
+        // Lieferanten-Kombinations-ID zusätzlich als Meta behalten.
         $product->meta()->updateOrCreate(
             [
                 'scope' => 'variation',
                 'key' => 'aliens_combination_id',
-                // Optional: wenn du variation_id sauber setzen willst, holen wir erst die Variation
                 'variation_id' => null,
             ],
-            ['value' => $combinationId]
+            [
+                'value' => $combinationId,
+            ]
         );
 
-        // Optional: Kombinations-Referenz ebenfalls als Meta (falls SKU später umgestellt wird)
-        if ($variationRef !== null && $variationRef !== '') {
-            $product->meta()->updateOrCreate(
-                [
-                    'scope' => 'variation',
-                    'key' => 'aliens_combination_reference',
-                    'variation_id' => null,
-                ],
-                ['value' => $variationRef]
-            );
+        // Originale Kombinations-Referenz ebenfalls als Meta behalten.
+        $product->meta()->updateOrCreate(
+            [
+                'scope' => 'variation',
+                'key' => 'aliens_combination_reference',
+                'variation_id' => null,
+            ],
+            [
+                'value' => $variationRef,
+            ]
+        );
+    }
+
+    /**
+     * Ermittelt die Artikelnummer des Parent-Produkts aus den
+     * Kombinations-Referenzen seiner Varianten.
+     *
+     * Bei nur einer Kombinations-Referenz entspricht diese zugleich
+     * der Artikelnummer des Single-Produkts.
+     *
+     * Bei mehreren Varianten wird der längste gemeinsame Präfix
+     * als Parent-Artikelnummer verwendet.
+     */
+    protected function finalizeProductNumber(
+        Product $product,
+        array $variationRefs
+    ): void {
+        $variationRefs = array_values(
+            array_unique(
+                array_filter(
+                    array_map(
+                        static function ($ref): string {
+                            return is_string($ref)
+                                ? trim($ref)
+                                : '';
+                        },
+                        $variationRefs
+                    ),
+                    static function (string $ref): bool {
+                        return $ref !== '';
+                    }
+                )
+            )
+        );
+
+        if ($variationRefs === []) {
+            $product->forceFill([
+                'product_number' => null,
+            ])->save();
+
+            Log::warning('Aliens product without combination reference', [
+                'product_id' => $product->id,
+            ]);
+
+            return;
         }
 
-        // Base-Referenz als Meta speichern ---
-        if ($baseRef !== null && $baseRef !== '') {
-            $product->meta()->updateOrCreate(
-                [
-                    'scope' => 'variation',
-                    'key' => 'aliens_variation_base_reference',
-                    'variation_id' => null,
-                ],
-                ['value' => $baseRef]
-            );
+        if (count($variationRefs) === 1) {
+            $productNumber = $variationRefs[0];
+        } else {
+            $productNumber = $this->longestCommonPrefix($variationRefs);
+
+            // Trennzeichen am Ende gehören nicht zur Parent-Artikelnummer.
+            $productNumber = rtrim($productNumber, "-_/. \t");
+
+            if ($productNumber === 'Kombi') {
+                Log::warning('Aliens parent product number rejected as known invalid prefix', [
+                    'product_id' => $product->id,
+                    'derived_prefix' => $productNumber,
+                    'variation_references' => $variationRefs,
+                ]);
+
+                $productNumber = '';
+            }
         }
+
+        $productNumber = trim($productNumber);
+
+        $product->forceFill([
+            'product_number' => $productNumber !== ''
+                ? $productNumber
+                : null,
+        ])->save();
+
+        Log::debug('Aliens parent product number resolved', [
+            'product_id' => $product->id,
+            'product_number' => $productNumber !== ''
+                ? $productNumber
+                : null,
+            'variation_references' => $variationRefs,
+        ]);
+    }
+
+    /**
+     * Ermittelt den längsten gemeinsamen Präfix mehrerer Strings.
+     */
+    protected function longestCommonPrefix(array $values): string
+    {
+        if ($values === []) {
+            return '';
+        }
+
+        $prefix = (string) array_shift($values);
+
+        foreach ($values as $value) {
+            $value = (string) $value;
+
+            while (
+                $prefix !== ''
+                && ! str_starts_with($value, $prefix)
+            ) {
+                $prefix = substr($prefix, 0, -1);
+            }
+
+            if ($prefix === '') {
+                break;
+            }
+        }
+
+        return $prefix;
     }
 
     /**
@@ -477,30 +642,48 @@ class AliensCsvStreamImporter
         $map = $this->mapping['product'] ?? [];
 
         $out = [];
+
         foreach ($map as $dbField => $csvSpec) {
-            $val = $this->cell($row, is_array($csvSpec) ? $csvSpec : [$csvSpec]);
+            $val = $this->cell(
+                $row,
+                is_array($csvSpec) ? $csvSpec : [$csvSpec]
+            );
+
             if ($val === null || $val === '') {
                 continue;
             }
+
             $out[$dbField] = $val;
         }
 
         if (isset($out['description'])) {
             $out['description'] = app(ProductDescriptionLinkCleaner::class)
-                ->clean($this->normalizeAliensHtml((string) $out['description']));
+                ->clean(
+                    $this->normalizeAliensHtml(
+                        (string) $out['description']
+                    )
+                );
         }
 
         if (isset($out['short_description'])) {
             $out['short_description'] = app(ProductDescriptionLinkCleaner::class)
-                ->clean($this->normalizeAliensHtml((string) $out['short_description']));
+                ->clean(
+                    $this->normalizeAliensHtml(
+                        (string) $out['short_description']
+                    )
+                );
         }
 
-        // Fallback short_description
+        // Fallback für short_description.
         if (
-            (! isset($out['short_description']) || trim((string) $out['short_description']) === '')
+            (! isset($out['short_description'])
+                || trim((string) $out['short_description']) === '')
             && ! empty($out['description'])
         ) {
-            $out['short_description'] = \Illuminate\Support\Str::limit(strip_tags((string) $out['description']), 255);
+            $out['short_description'] = Str::limit(
+                strip_tags((string) $out['description']),
+                255
+            );
         }
 
         return $out;
