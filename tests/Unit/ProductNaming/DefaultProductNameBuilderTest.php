@@ -51,7 +51,7 @@ class DefaultProductNameBuilderTest extends TestCase
 
     $result = $this->builder->build($ctx);
 
-    $this->assertSame('ALIENS - Cams - Alien cam - 0.5 - 90 mm - red', $result->productName);
+    $this->assertSame('ALIENS - Cams - Alien Cam - 0.5 - 90 mm - red', $result->productName);
   }
 
   #[Test]
@@ -68,7 +68,7 @@ class DefaultProductNameBuilderTest extends TestCase
 
     $result = $this->builder->build($ctx);
 
-    $this->assertSame('ALIENS - Cams - Alien cam - 0.5', $result->productName);
+    $this->assertSame('ALIENS - Cams - Alien Cam - 0.5', $result->productName);
   }
 
   #[Test]
@@ -89,7 +89,7 @@ class DefaultProductNameBuilderTest extends TestCase
   }
 
   #[Test]
-  public function it_uppercases_only_the_first_character_of_designation(): void
+  public function it_normalizes_designation_words(): void
   {
     $ctx = new ProductNameContext(
       kind: ProductKind::Simple,
@@ -102,7 +102,7 @@ class DefaultProductNameBuilderTest extends TestCase
 
     $result = $this->builder->build($ctx);
 
-    $this->assertSame('ALIENS - Cams - ALIEN Cam X', $result->productName);
+    $this->assertSame('ALIENS - Cams - Alien Cam X', $result->productName);
   }
 
   #[Test]
@@ -122,6 +122,6 @@ class DefaultProductNameBuilderTest extends TestCase
 
     $result = $this->builder->build($ctx);
 
-    $this->assertSame('ALIENS | Alien cam', $result->productName);
+    $this->assertSame('ALIENS | Alien Cam', $result->productName);
   }
 }
