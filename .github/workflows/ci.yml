@@ -2,52 +2,118 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, feature/**, fix/**, hotfix/** ]
+    branches:
+      - main
+      - develop
+      - "feature/**"
+      - "fix/**"
+      - "hotfix/**"
+
   pull_request:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
 
 jobs:
   php-tests:
     runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_DATABASE: geoalpin_test
+          MARIADB_USER: geoalpin
+          MARIADB_PASSWORD: geoalpin
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      APP_ENV: testing
+
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: geoalpin_test
+      DB_USERNAME: geoalpin
+      DB_PASSWORD: geoalpin
+
     strategy:
       matrix:
-        php: [ '8.3' ]
+        php:
+          - "8.4"
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
           coverage: none
-          extensions: mbstring, intl, dom, curl, json, pdo_mysql, sqlite3
+          extensions: mbstring, intl, dom, curl, json, pdo_mysql
           tools: composer:v2
 
       - name: Validate composer.json
         run: composer validate --strict
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --no-progress
+        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
 
-      - name: Prepare environment (.env + sqlite)
+      - name: Prepare environment
         run: |
           cp -n .env.example .env || true
-          php -r "file_exists('database') || mkdir('database');"
-          php -r "file_exists('database/database.sqlite') || fclose(fopen('database/database.sqlite','w'));"
-          php -r "echo "DB_CONNECTION=sqlite\n" . file_get_contents('.env') ;" > .env.tmp
-          mv .env.tmp .env
           php artisan key:generate
 
-      - name: Migrate database (SQLite)
+      - name: Discover packages
+        run: php artisan package:discover
+
+      - name: Migrate database
         run: php artisan migrate --force
 
-      - name: Run tests (Pest preferred, fallback to PHPUnit)
+      - name: Run tests
         run: |
-          if [ -f vendor/bin/pest ]; then vendor/bin/pest --colors=always; 
-          elif [ -f vendor/bin/phpunit ]; then vendor/bin/phpunit --colors=always; 
-          else echo 'No test runner found'; fi
+          if [ -f vendor/bin/pest ]; then
+            vendor/bin/pest --colors=always
+          elif [ -f vendor/bin/phpunit ]; then
+            vendor/bin/phpunit --colors=always
+          else
+            echo "No test runner found"
+            exit 1
+          fi
 
-      - name: Pint code style (test mode)
+      - name: Pint code style
         run: |
-          if [ -f vendor/bin/pint ]; then vendor/bin/pint --test; else echo 'Laravel Pint not installed'; fi
+          if [ ! -f vendor/bin/pint ]; then
+            echo "Laravel Pint not installed"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '*.php')
+          else
+            BEFORE="${{ github.event.before }}"
+
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- '*.php')
+            else
+              CHANGED_FILES=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- '*.php')
+            fi
+          fi
+
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "Checking changed PHP files:"
+            echo "$CHANGED_FILES"
+            vendor/bin/pint --test $CHANGED_FILES
+          else
+            echo "No changed PHP files to check"
+          fi
