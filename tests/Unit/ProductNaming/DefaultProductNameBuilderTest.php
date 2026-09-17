@@ -85,7 +85,7 @@ class DefaultProductNameBuilderTest extends TestCase
 
     $result = $this->builder->build($ctx);
 
-    $this->assertSame('ALIENS - Alien cam - 0.5', $result->productName);
+    $this->assertSame('ALIENS - Alien Cam - 0.5', $result->productName);
   }
 
   #[Test]
