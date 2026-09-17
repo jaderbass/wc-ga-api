@@ -7,13 +7,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
-
 
 /**
  * Class Product
@@ -35,7 +34,7 @@ use Illuminate\Support\Str;
 class Product extends Model
 {
     use HasFactory;
-    
+
     protected $fillable = [
         'woo_product_id',
         'sku',
@@ -71,17 +70,17 @@ class Product extends Model
 
     protected $casts = [
         'image_urls' => 'array',
-        'dimension_length_mm'       => 'integer',
-        'dimension_width_mm'        => 'integer',
-        'dimension_height_mm'       => 'integer',
-        'weight'                    => 'integer',
-        'box_length'                => 'integer',
-        'box_width'                 => 'integer',
-        'box_height'                => 'integer',
-        'assembly_group'            => 'integer',
-        'manufacturer_price_cents'  => 'integer',
-        'created_at'                => 'datetime',
-        'updated_at'                => 'datetime',
+        'dimension_length_mm' => 'integer',
+        'dimension_width_mm' => 'integer',
+        'dimension_height_mm' => 'integer',
+        'weight' => 'integer',
+        'box_length' => 'integer',
+        'box_width' => 'integer',
+        'box_height' => 'integer',
+        'assembly_group' => 'integer',
+        'manufacturer_price_cents' => 'integer',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**
@@ -130,8 +129,6 @@ class Product extends Model
 
     /**
      * Hookt sich in creating/updating ein, um Slug zu setzen.
-     *
-     * @return void
      */
     protected static function booted(): void
     {
@@ -160,9 +157,6 @@ class Product extends Model
 
     /**
      * Erzeugt einen eindeutigen Slug aus Name/SKU; hängt bei Kollisionen -2, -3, … an.
-     *
-     * @param Product $p
-     * @return string
      */
     protected static function makeUniqueSlug(Product $p): string
     {
@@ -175,11 +169,11 @@ class Product extends Model
 
         // Kollisionen vermeiden (bei update eigenen Datensatz ausschließen)
         while (static::query()
-            ->when($p->exists, fn($q) => $q->whereKeyNot($p->getKey()))
+            ->when($p->exists, fn ($q) => $q->whereKeyNot($p->getKey()))
             ->where('slug', $slug)
             ->exists()
         ) {
-            $slug = $base . '-' . $i;
+            $slug = $base.'-'.$i;
             $i++;
         }
 
@@ -270,7 +264,7 @@ class Product extends Model
             }
 
             // pro Label nur 1 Eintrag: höherer Prio gewinnt
-            if (!isset($items[$label]) || $prio > $items[$label]['prio']) {
+            if (! isset($items[$label]) || $prio > $items[$label]['prio']) {
                 $items[$label] = [
                     'key' => $label,
                     'value' => (string) $val,
@@ -322,7 +316,7 @@ class Product extends Model
         ksort($items, SORT_NATURAL | SORT_FLAG_CASE);
 
         return array_values(array_map(
-            fn($x) => ['key' => $x['key'], 'value' => $x['value']],
+            fn ($x) => ['key' => $x['key'], 'value' => $x['value']],
             $items
         ));
     }
