@@ -142,3 +142,9 @@ html.dark .fi-dropdown .fi-dropdown-item[aria-current="true"] {
     font-weight: 700;
     background-color: rgb(249 250 251);
 }
+
+/* Petzl-Beschreibungen: Tabellen im Dark Theme */
+html.dark .fi-form .petzl-description-html th {
+    background-color: #374151 !important;
+    color: #f9fafb !important;
+}
