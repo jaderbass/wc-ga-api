@@ -18,40 +18,40 @@ use Illuminate\Support\Str;
  */
 class ProductFactory extends Factory
 {
-  protected $model = Product::class;
+    protected $model = Product::class;
 
-  public function definition(): array
-  {
-    // Prefer UUID-based slug to avoid faker unique pool exhaustion in large suites.
-    $slug = Str::slug($this->faker->words(3, true)) . '-' . Str::lower(Str::uuid()->toString());
+    public function definition(): array
+    {
+        // Prefer UUID-based slug to avoid faker unique pool exhaustion in large suites.
+        $slug = Str::slug($this->faker->words(3, true)).'-'.Str::lower(Str::uuid()->toString());
 
-    return [
-      'manufacturer_id' => 1,
+        return [
+            'manufacturer_id' => null,
 
-      // NOT NULL
-      'product_type' => 'simple',
+            // NOT NULL
+            'product_type' => 'simple',
 
-      // NOT NULL + UNIQUE
-      'slug' => $slug,
+            // NOT NULL + UNIQUE
+            'slug' => $slug,
 
-      // Nullable
-      'product_name' => null,
+            // Nullable
+            'product_name' => null,
 
-      // Column exists (nullable), safe default
-      'original_product_name' => null,
+            // Column exists (nullable), safe default
+            'original_product_name' => null,
 
-      // NOT NULL
-      'stock_status' => 'instock',
-    ];
-  }
+            // NOT NULL
+            'stock_status' => 'in_stock',
+        ];
+    }
 
-  /**
-   * Convenience state to force a product_name.
-   */
-  public function withProductName(?string $name = 'Test Product'): static
-  {
-    return $this->state(fn() => [
-      'product_name' => $name,
-    ]);
-  }
+    /**
+     * Convenience state to force a product_name.
+     */
+    public function withProductName(?string $name = 'Test Product'): static
+    {
+        return $this->state(fn () => [
+            'product_name' => $name,
+        ]);
+    }
 }
