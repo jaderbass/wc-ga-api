@@ -2,22 +2,22 @@
 
 namespace App\Importers;
 
-use App\Models\Product;
-use App\Models\ProductVariation;
-use App\Models\ProductMeta;
 use App\Models\ImportRun;
 use App\Models\Manufacturer;
+use App\Models\Product;
+use App\Models\ProductMeta;
+use App\Models\ProductVariation;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductKind;
 use App\Services\ProductNaming\ProductNameContext;
 use App\Services\ProductNaming\ProductPropertyExtractor;
+use App\Support\Concerns\HasImportAuthor;
+use App\Support\Html\ProductDescriptionLinkCleaner;
 use App\Support\ImportLog;
 use App\Support\ImportValueNormalizer;
-use App\Support\Html\ProductDescriptionLinkCleaner;
-use App\Support\Concerns\HasImportAuthor;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use League\Csv\Reader;
 
 /**
@@ -39,7 +39,9 @@ class AliensCsvStreamImporter
     use HasImportAuthor;
 
     protected array $mapping;
+
     protected ?string $runId = null;
+
     protected array $manufacturerNameCache = []; // name => id
 
     public function __construct(
@@ -58,22 +60,20 @@ class AliensCsvStreamImporter
      * sowie das Anzeigen des Fortschritts im UI via SSE.
      *
      * @param  string|null  $runId  UUID des ImportRuns oder null, wenn kein Tracking gewünscht ist.
-     * @return static
      */
     public function setRunId(?string $runId): static
     {
         $this->runId = $runId;
+
         return $this;
     }
-
 
     /**
      * Führt den CSV-Import (streamed) aus.
      *
      * Erwartet bei CSV einen absoluten Pfad.
      *
-     * @param string $filePath Absoluter Pfad zur CSV-Datei.
-     * @return void
+     * @param  string  $filePath  Absoluter Pfad zur CSV-Datei.
      */
     public function import(string $filePath): void
     {
@@ -95,14 +95,14 @@ class AliensCsvStreamImporter
         }
 
         $headers = array_map(
-            fn($h) => is_string($h) ? trim($h) : (string) $h,
+            fn ($h) => is_string($h) ? trim($h) : (string) $h,
             $headerRow
         );
 
         $headers = $this->makeUniqueHeaders($headers);
 
         ImportLog::debug('CSV Header (unique)', [
-            'count'  => count($headers),
+            'count' => count($headers),
             'sample' => array_slice($headers, 0, 10),
         ]);
 
@@ -113,7 +113,6 @@ class AliensCsvStreamImporter
             'has_Designation' => in_array('Designation', $headers, true),
             'header_sample' => array_slice($headers, 0, 60),
         ]);
-
 
         // Jetzt erneut Records-Iterator holen und ab Zeile 2 streamen:
         $rows = $csv->getRecords();
@@ -146,11 +145,11 @@ class AliensCsvStreamImporter
             // Parent-Kontext + Feature-only + Varianten-Zeilen korrekt
             $productId = $this->cell($assoc, ['Produkt-ID']);
 
-            $combinationId  = $this->cell($assoc, ['Kombination-ID']);
+            $combinationId = $this->cell($assoc, ['Kombination-ID']);
             $combinationRef = $this->cell($assoc, ['Kombinations-Referenz']);
 
-            $featureName     = $this->cell($assoc, ['Feature Name']);
-            $featureValue    = $this->cell($assoc, ['Feature Value']);
+            $featureName = $this->cell($assoc, ['Feature Name']);
+            $featureValue = $this->cell($assoc, ['Feature Value']);
             $featurePosition = $this->cell($assoc, ['Feature Position']);
 
             // 1) Parent-Produkt setzen/merken (nur wenn Produkt-ID befüllt ist)
@@ -187,7 +186,6 @@ class AliensCsvStreamImporter
                         'available_keys_sample' => array_slice(array_keys($assoc), 0, 30),
                     ]);
                 }
-
 
                 // Parent-Daten merken (für Finalize am nächsten Produktwechsel / am Ende)
                 $lastParentAssoc = $assoc;
@@ -241,7 +239,6 @@ class AliensCsvStreamImporter
                 ->sync($currentProduct);
         }
 
-
         if ($this->runId) {
             ImportRun::whereKey($this->runId)->update([
                 'processed_rows' => $importedVariations,
@@ -249,7 +246,7 @@ class AliensCsvStreamImporter
         }
 
         Log::info('Aliens CSV import finished (streamed)', [
-            'products_upserted'   => $importedProducts,
+            'products_upserted' => $importedProducts,
             'variations_upserted' => $importedVariations,
         ]);
     }
@@ -268,6 +265,7 @@ class AliensCsvStreamImporter
         if (isset($cache[$productId])) {
             // refresh LRU
             $this->touchCacheKey($productId, $order);
+
             return $cache[$productId];
         }
 
@@ -302,8 +300,8 @@ class AliensCsvStreamImporter
 
         // deterministischer slug: Aliens SEO-URL oder fallback productId
         $slug = $payload['slug'] ?? null;
-        if (!is_string($slug) || trim($slug) === '') {
-            $slug = 'aliens-' . $productId;
+        if (! is_string($slug) || trim($slug) === '') {
+            $slug = 'aliens-'.$productId;
         }
 
         $payload['slug'] = $slug;
@@ -335,13 +333,13 @@ class AliensCsvStreamImporter
                 $product = Product::query()->firstOrCreate(
                     [
                         'manufacturer_id' => $payload['manufacturer_id'],
-                        'slug'            => $payload['slug'],
+                        'slug' => $payload['slug'],
                     ],
                     [
                         'manufacturer_id' => $payload['manufacturer_id'],
-                        'slug'            => $payload['slug'],
-                        'product_name'    => $payload['product_name'] ?? null,
-                        'author_id'       => $payload['author_id'],
+                        'slug' => $payload['slug'],
+                        'product_name' => $payload['product_name'] ?? null,
+                        'author_id' => $payload['author_id'],
                     ]
                 );
 
@@ -405,7 +403,7 @@ class AliensCsvStreamImporter
         }
 
         // Interne, stabile Varianten-ID (global eindeutig)
-        $externalId = 'ALIENS-' . trim((string) $combinationId);
+        $externalId = 'ALIENS-'.trim((string) $combinationId);
 
         // Woo-SKU: garantiert eindeutig
         $sku = $externalId;
@@ -415,9 +413,9 @@ class AliensCsvStreamImporter
             array_merge(
                 $this->filterExistingColumns(ProductVariation::class, $payload),
                 [
-                    'product_id'  => $product->id,
+                    'product_id' => $product->id,
                     'external_id' => $externalId,
-                    'sku'         => $sku,
+                    'sku' => $sku,
                 ]
             )
         );
@@ -426,7 +424,6 @@ class AliensCsvStreamImporter
         if ($product->product_type !== 'variable') {
             $product->update(['product_type' => 'variable']);
         }
-
 
         // Kombinations-ID als Meta (damit wir sie trotzdem haben)
         $product->meta()->updateOrCreate(
@@ -473,7 +470,7 @@ class AliensCsvStreamImporter
      * - Fallback-Logik für short_description
      *
      * @param  array  $row  Assoziative CSV-Zeile
-     * @return array        DB-taugliches Produkt-Payload
+     * @return array DB-taugliches Produkt-Payload
      */
     protected function mapProductPayload(array $row): array
     {
@@ -498,11 +495,10 @@ class AliensCsvStreamImporter
                 ->clean($this->normalizeAliensHtml((string) $out['short_description']));
         }
 
-
         // Fallback short_description
         if (
-            (!isset($out['short_description']) || trim((string) $out['short_description']) === '')
-            && !empty($out['description'])
+            (! isset($out['short_description']) || trim((string) $out['short_description']) === '')
+            && ! empty($out['description'])
         ) {
             $out['short_description'] = \Illuminate\Support\Str::limit(strip_tags((string) $out['description']), 255);
         }
@@ -517,7 +513,7 @@ class AliensCsvStreamImporter
      * und als JSON in `attributes_json` gespeichert.
      *
      * @param  array  $row  Assoziative CSV-Zeile
-     * @return array        DB-taugliches Variation-Payload
+     * @return array DB-taugliches Variation-Payload
      */
     protected function mapVariationPayload(array $row): array
     {
@@ -536,12 +532,12 @@ class AliensCsvStreamImporter
         $attrs = [];
 
         foreach ($row as $k => $v) {
-            if (!is_string($k)) {
+            if (! is_string($k)) {
                 continue;
             }
 
             $key = trim($k);
-            if (!str_starts_with($key, 'Attribute Group:')) {
+            if (! str_starts_with($key, 'Attribute Group:')) {
                 continue;
             }
 
@@ -558,7 +554,6 @@ class AliensCsvStreamImporter
         }
         // --- Ende Einfügen ---
 
-
         return $out;
     }
 
@@ -568,9 +563,9 @@ class AliensCsvStreamImporter
      * Unterstützt Aliens-spezifische Duplicate-Header, die durch `makeUniqueHeaders()`
      * suffixiert werden (z. B. "Header__2", "Header__3", ...).
      *
-     * @param  array  $row         Assoziative CSV-Zeile
+     * @param  array  $row  Assoziative CSV-Zeile
      * @param  array  $candidates  Mögliche Headernamen (in Prioritätsreihenfolge)
-     * @return string|null         Getrimmter Wert oder null, wenn nicht vorhanden/leer
+     * @return string|null Getrimmter Wert oder null, wenn nicht vorhanden/leer
      */
     protected function cell(array $row, array $candidates): ?string
     {
@@ -592,11 +587,11 @@ class AliensCsvStreamImporter
         // 2) Fallback: unique header suffixe (candidate__2, candidate__3, ...)
         foreach ($candidates as $candidate) {
             foreach ($row as $k => $val) {
-                if (!is_string($k)) {
+                if (! is_string($k)) {
                     continue;
                 }
 
-                if (!str_starts_with($k, $candidate . '__')) {
+                if (! str_starts_with($k, $candidate.'__')) {
                     continue;
                 }
 
@@ -613,6 +608,7 @@ class AliensCsvStreamImporter
 
         return null;
     }
+
     /**
      * Macht CSV-Header eindeutig.
      *
@@ -620,7 +616,7 @@ class AliensCsvStreamImporter
      * eindeutig gemacht (z. B. "Foo", "Foo_2", "Foo_3", ...).
      *
      * @param  array  $headers  Roh-Headerliste
-     * @return array            Eindeutige Headerliste
+     * @return array Eindeutige Headerliste
      */
     protected function makeUniqueHeaders(array $headers): array
     {
@@ -630,14 +626,15 @@ class AliensCsvStreamImporter
         foreach ($headers as $h) {
             $base = $h !== '' ? $h : 'column';
 
-            if (!isset($seen[$base])) {
+            if (! isset($seen[$base])) {
                 $seen[$base] = 1;
                 $out[] = $base;
+
                 continue;
             }
 
             $seen[$base]++;
-            $out[] = $base . '_' . $seen[$base];
+            $out[] = $base.'_'.$seen[$base];
         }
 
         return $out;
@@ -650,8 +647,8 @@ class AliensCsvStreamImporter
      * - String-Werte werden am Ende getrimmt.
      *
      * @param  array  $headers  Eindeutige Headerliste
-     * @param  array  $row      Numerische CSV-Zeile
-     * @return array            Assoziative CSV-Zeile
+     * @param  array  $row  Numerische CSV-Zeile
+     * @return array Assoziative CSV-Zeile
      */
     protected function combineRow(array $headers, array $row): array
     {
@@ -659,7 +656,7 @@ class AliensCsvStreamImporter
         $max = max(count($headers), count($row));
 
         for ($i = 0; $i < $max; $i++) {
-            $key = $headers[$i] ?? ('column_' . $i);
+            $key = $headers[$i] ?? ('column_'.$i);
             $assoc[$key] = $row[$i] ?? null;
         }
 
@@ -682,8 +679,8 @@ class AliensCsvStreamImporter
      * Hinweis: nutzt Schema::getColumnListing() zur Laufzeit.
      *
      * @param  string  $modelClass  FQCN des Eloquent-Models
-     * @param  array   $payload     Ungefiltertes Payload
-     * @return array               Payload nur mit existierenden DB-Spalten
+     * @param  array  $payload  Ungefiltertes Payload
+     * @return array Payload nur mit existierenden DB-Spalten
      */
     protected function filterExistingColumns(string $modelClass, array $payload): array
     {
@@ -692,7 +689,7 @@ class AliensCsvStreamImporter
         $model = app($modelClass);
         $table = $model->getTable();
 
-        if (!isset($columnCache[$table])) {
+        if (! isset($columnCache[$table])) {
             $cols = \Illuminate\Support\Facades\Schema::getColumnListing($table);
             $columnCache[$table] = array_flip($cols);
         }
@@ -706,9 +703,8 @@ class AliensCsvStreamImporter
      * Entfernt den Key aus seiner aktuellen Position und hängt ihn ans Ende,
      * sodass er als "zuletzt benutzt" gilt.
      *
-     * @param  string  $key    Cache-Key
-     * @param  array   $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
-     * @return void
+     * @param  string  $key  Cache-Key
+     * @param  array  $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
      */
     protected function touchCacheKey(string $key, array &$order): void
     {
@@ -728,8 +724,7 @@ class AliensCsvStreamImporter
      *
      * @param  array  $cache  Referenz auf den Cache (key => Product)
      * @param  array  $order  Referenz auf die LRU-Reihenfolge (Liste von Keys)
-     * @param  int    $max    Maximal erlaubte Cache-Größe
-     * @return void
+     * @param  int  $max  Maximal erlaubte Cache-Größe
      */
     protected function evictCacheIfNeeded(array &$cache, array &$order, int $max): void
     {
@@ -749,13 +744,13 @@ class AliensCsvStreamImporter
      * 2) Fallback auf Datei: config/import_mappings/{name}.php
      *
      * @param  string  $name  Mapping-Slug (z. B. "aliens")
-     * @return array          Mapping-Array
+     * @return array Mapping-Array
      *
      * @throws \RuntimeException Wenn kein Mapping gefunden wird oder kein Array zurückgibt
      */
     protected function loadMapping(string $name): array
     {
-        $fromConfig = config("import_mappings." . $name);
+        $fromConfig = config('import_mappings.'.$name);
         if (is_array($fromConfig)) {
             return $fromConfig;
         }
@@ -763,9 +758,10 @@ class AliensCsvStreamImporter
         $path = base_path("config/import_mappings/{$name}.php");
         if (is_file($path)) {
             $map = require $path;
-            if (!is_array($map)) {
+            if (! is_array($map)) {
                 throw new \RuntimeException("Mapping file {$path} must return an array.");
             }
+
             return $map;
         }
 
@@ -781,8 +777,7 @@ class AliensCsvStreamImporter
      * - Speichert als key "feature.{slug}" im product_meta (scope=product)
      *
      * @param  Product  $product  Ziel-Produkt
-     * @param  array    $assoc    Assoziative CSV-Zeile
-     * @return void
+     * @param  array  $assoc  Assoziative CSV-Zeile
      */
     private function upsertProductFeaturesMeta(Product $product, array $assoc): void
     {
@@ -806,7 +801,7 @@ class AliensCsvStreamImporter
         ];
 
         foreach ($assoc as $colName => $raw) {
-            if (!is_string($colName)) {
+            if (! is_string($colName)) {
                 continue;
             }
 
@@ -816,7 +811,7 @@ class AliensCsvStreamImporter
             $col = preg_replace('/\s+/u', ' ', $col) ?? $col;
             $col = str_replace('Feature :', 'Feature:', $col);
 
-            if (!str_starts_with($col, 'Feature:')) {
+            if (! str_starts_with($col, 'Feature:')) {
                 continue;
             }
 
@@ -839,7 +834,7 @@ class AliensCsvStreamImporter
                 $s = preg_replace('/\s*,\s*/', ', ', $s) ?? $s;
                 $s = preg_replace('/\s+/', ' ', $s) ?? $s;
 
-                $val = trim($s, " ,");
+                $val = trim($s, ' ,');
             }
 
             if ($featureName === '') {
@@ -847,11 +842,11 @@ class AliensCsvStreamImporter
             }
 
             // Whitelist anwenden (wenn du erstmal alles willst: diesen Block entfernen)
-            if (!in_array($featureName, $allowed, true)) {
+            if (! in_array($featureName, $allowed, true)) {
                 continue;
             }
 
-            $metaKey = 'feature.' . Str::slug($featureName, '_');
+            $metaKey = 'feature.'.Str::slug($featureName, '_');
 
             ProductMeta::updateOrCreate(
                 [
@@ -880,12 +875,11 @@ class AliensCsvStreamImporter
      * - Bestehende Datensätze werden nicht automatisch migriert
      *
      * @param  string|null  $html  Rohes HTML aus der CSV
-     * @return string|null         Normalisiertes HTML
+     * @return string|null Normalisiertes HTML
      */
-
     private function normalizeAliensHtml(?string $html): ?string
     {
-        if (!$html) {
+        if (! $html) {
             return $html;
         }
 
@@ -895,7 +889,7 @@ class AliensCsvStreamImporter
 
         $htmlWithTokens = preg_replace($pattern, $token, $html);
 
-        if (!$htmlWithTokens || !str_contains($htmlWithTokens, $token)) {
+        if (! $htmlWithTokens || ! str_contains($htmlWithTokens, $token)) {
             return $html;
         }
 
@@ -903,18 +897,18 @@ class AliensCsvStreamImporter
         $iconPattern = '~<div[^>]*>\s*<a\s+href="([^"]+)"[^>]*>\s*<img[^>]*src="[^"]*/img/cms/([^"/]+)\.png"[^>]*?(?:title="([^"]*)")?[^>]*>\s*</a>\s*</div>~i';
 
         $htmlWithTokens = preg_replace_callback($iconPattern, static function (array $m): string {
-            $href  = $m[1] ?? '#';
-            $file  = $m[2] ?? 'icon';
+            $href = $m[1] ?? '#';
+            $file = $m[2] ?? 'icon';
             $title = $m[3] ?? '';
 
             $label = trim($title) !== '' ? trim($title) : $file;
 
             // rel noopener für target=_blank
-            return '<a class="alien-icon" href="' . $href . '" target="_blank" rel="noopener noreferrer">' . e($label) . '</a>';
+            return '<a class="alien-icon" href="'.$href.'" target="_blank" rel="noopener noreferrer">'.e($label).'</a>';
         }, $htmlWithTokens);
 
         // 2) Alles nach dem ersten Token als "Step"-Blöcke wrappen
-        $parts  = explode($token, $htmlWithTokens);
+        $parts = explode($token, $htmlWithTokens);
         $before = array_shift($parts);
 
         $steps = [];
@@ -932,13 +926,13 @@ class AliensCsvStreamImporter
         }
 
         $wrappedSteps = '<div class="alien-steps">'
-            . implode('', array_map(
-                static fn(string $step) => '<div class="alien-step">' . $step . '</div>',
+            .implode('', array_map(
+                static fn (string $step) => '<div class="alien-step">'.$step.'</div>',
                 $steps
             ))
-            . '</div>';
+            .'</div>';
 
-        return $before . $wrappedSteps;
+        return $before.$wrappedSteps;
     }
 
     /**
@@ -957,15 +951,18 @@ class AliensCsvStreamImporter
     private function isLikelyImageUrl(string $url): bool
     {
         $url = trim($url);
-        if ($url === '') return false;
+        if ($url === '') {
+            return false;
+        }
 
         // Muss URL sein
-        if (!preg_match('#^https?://#i', $url)) return false;
+        if (! preg_match('#^https?://#i', $url)) {
+            return false;
+        }
 
         // Bild-Endungen (häufigster/leichtester Filter)
         return (bool) preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $url);
     }
-
 
     /**
      * Sammelt Produktbild-URLs aus der aktuellen CSV-Zeile
@@ -981,8 +978,7 @@ class AliensCsvStreamImporter
      * erfolgt bewusst in einem separaten Schritt (Job/Command).
      *
      * @param  Product  $product  Aktuelles Parent-Produkt
-     * @param  array    $assoc    Assoziative CSV-Zeile
-     * @return void
+     * @param  array  $assoc  Assoziative CSV-Zeile
      */
     private function upsertProductImagesMeta(Product $product, array $assoc): void
     {
@@ -990,7 +986,7 @@ class AliensCsvStreamImporter
         $urls = [];
 
         foreach ($assoc as $colName => $raw) {
-            if (!is_string($colName)) {
+            if (! is_string($colName)) {
                 continue;
             }
 
@@ -1001,8 +997,7 @@ class AliensCsvStreamImporter
         || (bool) preg_match('/\burl\b/i', $col); */
             $isImageColumn = (bool) preg_match('/\b(bild|bilder|image|images|produktbild|foto|thumbnail|thumb)\b/i', $col);
 
-
-            if (!$isImageColumn) {
+            if (! $isImageColumn) {
                 continue;
             }
 
@@ -1021,12 +1016,12 @@ class AliensCsvStreamImporter
                 }
 
                 // akzeptiere nur http(s) und typische Bild-Endungen (oder image CDN ohne Endung)
-                if (!preg_match('~^https?://~i', $part)) {
+                if (! preg_match('~^https?://~i', $part)) {
                     continue;
                 }
 
                 // NEU: nur echte Bild-URLs (verhindert Produktseiten)
-                if (!preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $part)) {
+                if (! preg_match('#\.(jpe?g|png|webp|gif)(\?|$)#i', $part)) {
                     continue;
                 }
 
@@ -1036,8 +1031,7 @@ class AliensCsvStreamImporter
 
         $urls = array_values(array_filter(
             $urls,
-            fn($u) =>
-            is_string($u) && $this->isLikelyImageUrl($u)
+            fn ($u) => is_string($u) && $this->isLikelyImageUrl($u)
         ));
 
         if ($urls === []) {
@@ -1064,7 +1058,7 @@ class AliensCsvStreamImporter
      * identische Herstellernamen nicht mehrfach aus der DB gelesen/angelegt werden.
      *
      * @param  array  $row  Aktuelle assoziative CSV-Zeile
-     * @return int|null     Hersteller-ID oder Fallback-ID
+     * @return int|null Hersteller-ID oder Fallback-ID
      */
     protected function resolveManufacturerId(array $row): ?int
     {
@@ -1076,7 +1070,7 @@ class AliensCsvStreamImporter
         $name = $this->cell($row, ['Hersteller']);
         $name = is_string($name) ? trim($name) : null;
 
-        if (!$name) {
+        if (! $name) {
             return $this->manufacturerId;
         }
 
@@ -1101,10 +1095,8 @@ class AliensCsvStreamImporter
      * Wird absichtlich nur 1x pro Produkt ausgeführt (bei Produktwechsel + am Ende),
      * damit wir nicht pro CSV-Zeile neu speichern.
      *
-     * @param Product   $product
-     * @param array     $parentAssoc  Assoziative CSV-Zeile der Parent-Zeile (nicht Feature-only)
-     * @param int|null  $manufacturerId Optional: Hersteller-ID (perf/Cache)
-     * @return void
+     * @param  array  $parentAssoc  Assoziative CSV-Zeile der Parent-Zeile (nicht Feature-only)
+     * @param  int|null  $manufacturerId  Optional: Hersteller-ID (perf/Cache)
      */
     private function finalizeProductNaming(Product $product, array $parentAssoc, ?int $manufacturerId = null): void
     {
@@ -1188,7 +1180,7 @@ class AliensCsvStreamImporter
      */
     private function resolveManufacturerName(?int $manufacturerId): string
     {
-        if (!$manufacturerId) {
+        if (! $manufacturerId) {
             return '';
         }
 
@@ -1222,7 +1214,7 @@ class AliensCsvStreamImporter
     private function isSupplierOutOfStock(array $row): bool
     {
         foreach ($row as $value) {
-            if (!is_scalar($value)) {
+            if (! is_scalar($value)) {
                 continue;
             }
 
