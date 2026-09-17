@@ -26,7 +26,7 @@ class ProductFactory extends Factory
     $slug = Str::slug($this->faker->words(3, true)) . '-' . Str::lower(Str::uuid()->toString());
 
     return [
-      'manufacturer_id' => 1,
+      'manufacturer_id' => null,
 
       // NOT NULL
       'product_type' => 'simple',
