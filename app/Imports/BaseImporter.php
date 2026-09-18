@@ -2,14 +2,15 @@
 
 namespace App\Imports;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Arr;
 use App\Models\Product;
-use App\Models\ProductVariation;
 use App\Models\ProductImage;
+use App\Models\ProductVariation;
 use App\Services\Categories\CategoryResolver;
+use App\Services\ProductDescriptions\ImportedDescriptionSanitizer;
 use App\Support\Concerns\HasImportAuthor;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 abstract class BaseImporter
 {
@@ -17,9 +18,14 @@ abstract class BaseImporter
 
     protected ?int $authorId = null;
 
+    public function __construct(
+        protected ImportedDescriptionSanitizer $descriptionSanitizer
+    ) {}
+
     public function setAuthorId(?int $authorId): static
     {
         $this->authorId = $authorId;
+
         return $this;
     }
 
@@ -65,17 +71,24 @@ abstract class BaseImporter
                             'row' => $row,
                             'mapped' => $mapped,
                         ]);
+
                         continue;
                     }
 
                     $product = Product::firstOrNew([
                         'manufacturer_id' => $mapped['manufacturer_id'],
-                        'slug'            => $mapped['slug'],
+                        'slug' => $mapped['slug'],
                     ]);
 
                     $isNew = ! $product->exists;
 
                     $payload = Arr::except($mapped, ['variations', 'images', 'product_type']);
+
+                    if (array_key_exists('description', $payload)) {
+                        $payload['description'] = $this->descriptionSanitizer->sanitize(
+                            $payload['description']
+                        );
+                    }
 
                     /**
                      * Aliens-Konvention:
@@ -92,7 +105,7 @@ abstract class BaseImporter
                         unset($payload['product_name']);
 
                         // optional: beim Neuanlegen product_name initial setzen, falls noch leer
-                        if ($isNew && (!is_string($product->product_name) || trim((string) $product->product_name) === '')) {
+                        if ($isNew && (! is_string($product->product_name) || trim((string) $product->product_name) === '')) {
                             $product->product_name = $rawName;
                         }
                     }
@@ -108,13 +121,12 @@ abstract class BaseImporter
 
                     $this->syncCategories($product);
 
-
                     // Variationen
                     $variations = $this->parseVariations($row);
 
-                    if (!empty($variations)) {
+                    if (! empty($variations)) {
                         foreach ($variations as $variation) {
-                            $sku = trim((string)($variation['sku'] ?? ''));
+                            $sku = trim((string) ($variation['sku'] ?? ''));
 
                             if ($sku === '') {
                                 Log::warning('❗ Variation ohne SKU – wird übersprungen', [
@@ -123,18 +135,20 @@ abstract class BaseImporter
                                     'rowNumber' => $rowNumber,
                                     'variation' => $variation,
                                 ]);
+
                                 continue;
                             }
 
                             $existing = ProductVariation::where('sku', $sku)->first();
 
-                            if ($existing && (int)$existing->product_id !== (int)$product->id) {
+                            if ($existing && (int) $existing->product_id !== (int) $product->id) {
                                 Log::warning('❗ Duplicate SKU across products – variation skipped', [
                                     'sku' => $sku,
                                     'current_product_id' => $product->id,
                                     'existing_product_id' => $existing->product_id,
                                     'rowNumber' => $rowNumber,
                                 ]);
+
                                 continue;
                             }
 
@@ -153,10 +167,9 @@ abstract class BaseImporter
                         }
                     }
 
-
                     // Bilder
                     $images = $this->parseImages($row);
-                    if (!empty($images)) {
+                    if (! empty($images)) {
                         foreach ($images as $image) {
                             ProductImage::updateOrCreate(
                                 [
@@ -168,11 +181,11 @@ abstract class BaseImporter
                         }
                     }
 
-                    if (!empty($variations) && $product->product_type !== 'variable') {
+                    if (! empty($variations) && $product->product_type !== 'variable') {
                         $product->update(['product_type' => 'variable']);
                     }
 
-                    Log::info("✅ Produkt importiert", ['productnumber' => $mapped['productnumber']]);
+                    Log::info('✅ Produkt importiert', ['productnumber' => $mapped['productnumber']]);
                 } catch (\Throwable $e) {
                     Log::error("Fehler beim Import in Zeile {$rowNumber}", [
                         'exception' => $e->getMessage(),
