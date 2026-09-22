@@ -128,6 +128,20 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
                 );
         }
 
+        if (
+            array_key_exists(
+                'Länge Verbindungsmittel',
+                $this->mapping['variation'] ?? []
+            )
+        ) {
+            $row['SKYLOTEC_LAENGE_VERBINDUNGSMITTEL'] =
+                SkylotecVariationAttributeResolver::formatValue(
+                    'Länge Verbindungsmittel',
+                    $row['Länge Verbindungsmittel'] ?? null,
+                    $row
+                );
+        }
+
         return parent::importVariation($product, $row);
     }
 
@@ -164,6 +178,11 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
 
         if (array_key_exists('Seillänge', $variationMapping)) {
             $variationMapping['Seillänge'] = 'SKYLOTEC_SEILLAENGE';
+        }
+
+        if (array_key_exists('Länge Verbindungsmittel', $variationMapping)) {
+            $variationMapping['Länge Verbindungsmittel'] =
+                'SKYLOTEC_LAENGE_VERBINDUNGSMITTEL';
         }
 
         $this->mapping['variation'] = $variationMapping;

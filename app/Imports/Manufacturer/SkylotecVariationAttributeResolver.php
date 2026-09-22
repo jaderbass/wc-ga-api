@@ -20,6 +20,7 @@ class SkylotecVariationAttributeResolver
     {
         $candidates = [
             'Seillänge',
+            'Länge Verbindungsmittel',
             'Größe',
             'Kleidergröße',
             'Farbe',
@@ -102,7 +103,14 @@ class SkylotecVariationAttributeResolver
         if ($field === 'Seillänge') {
             return self::formatLength(
                 $value,
-                $row['Seillänge Einheit'] ?? $row['Seillänge_2'] ?? 'm'
+                $row['Seillänge Einheit'] ?? 'm'
+            );
+        }
+
+        if ($field === 'Länge Verbindungsmittel') {
+            return self::formatLength(
+                $value,
+                $row['Länge Verbindungsmittel Einheit'] ?? 'm'
             );
         }
 

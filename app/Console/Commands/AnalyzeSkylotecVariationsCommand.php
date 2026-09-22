@@ -8,7 +8,10 @@ use League\Csv\Reader;
 
 class AnalyzeSkylotecVariationsCommand extends Command
 {
-    protected $signature = 'skylotec:analyze-variations {file}';
+    protected $signature = 'skylotec:analyze-variations
+                            {file}
+                            {--sku= : Nur Datensätze mit dieser Artikelnummer bzw. diesem Präfix anzeigen}
+                            {--suspects : Zeigt mögliche noch nicht korrekt gruppierte Produktfamilien}';
 
     protected $description = 'Analysiert mögliche Variantenattribute in einer Skylotec-CSV-Datei.';
 
@@ -31,6 +34,54 @@ class AnalyzeSkylotecVariationsCommand extends Command
         }
 
         $rows = $this->readRows($path);
+
+        if ($this->option('suspects')) {
+            return $this->showGroupingSuspects($rows);
+        }
+
+        $skuFilter = trim((string) $this->option('sku'));
+
+        if ($skuFilter !== '') {
+            $rows = $rows
+                ->filter(fn (array $row) => str_starts_with(
+                    (string) ($row['Original Skylotec Artikelnummer'] ?? ''),
+                    $skuFilter
+                ))
+                ->values();
+
+            $this->table(
+                [
+                    'Artikelnummer',
+                    'Group Key',
+                    'Dimension',
+                    'Größe',
+                    'Kleidergröße',
+                    'Seillänge',
+                    'Farbe',
+                    'Seillänge Einheit',
+                    'Produktname',
+                    // 'Kurzbeschreibung',
+                    'Länge Verbindungsmittel',
+                    'Länge Verbindungsmittel Einheit',
+                ],
+                $rows->map(fn (array $row) => [
+                    $row['Original Skylotec Artikelnummer'] ?? '',
+                    SkylotecProductGroupResolver::resolve($row),
+                    $row['Dimension'] ?? '',
+                    $row['Größe'] ?? '',
+                    $row['Kleidergröße'] ?? '',
+                    $row['Seillänge'] ?? '',
+                    $row['Farbe'] ?? '',
+                    $row['Seillänge Einheit'] ?? '',
+                    $row['Produktname'] ?? '',
+                    // $row['Kurzbeschreibung Professional'] ?? '',
+                    $row['Länge Verbindungsmittel'] ?? '',
+                    $row['Länge Verbindungsmittel Einheit'] ?? '',
+                ])->all()
+            );
+
+            return self::SUCCESS;
+        }
 
         $groups = $rows
             ->groupBy(fn (array $row) => SkylotecProductGroupResolver::resolve($row))
@@ -314,5 +365,73 @@ class AnalyzeSkylotecVariationsCommand extends Command
         }
 
         return $value;
+    }
+
+    /**
+     * Zeigt Produktnamen, deren Datensätze aktuell auf mehrere
+     * Gruppenschlüssel verteilt werden.
+     *
+     * Dadurch lassen sich mögliche noch nicht erkannte Variantenfamilien
+     * gezielt prüfen.
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     */
+    private function showGroupingSuspects(
+        \Illuminate\Support\Collection $rows
+    ): int {
+        $suspects = $rows
+            ->filter(fn (array $row) => trim(
+                (string) ($row['Produktname'] ?? '')
+            ) !== '')
+            ->groupBy(fn (array $row) => trim(
+                (string) ($row['Produktname'] ?? '')
+            ))
+            ->map(function ($productRows, string $productName) {
+                $groupKeys = $productRows
+                    ->map(fn (array $row) => SkylotecProductGroupResolver::resolve($row))
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $skus = $productRows
+                    ->pluck('Original Skylotec Artikelnummer')
+                    ->filter()
+                    ->values();
+
+                return [
+                    'product' => $productName,
+                    'rows' => $productRows->count(),
+                    'groups' => $groupKeys->count(),
+                    'group_keys' => $groupKeys->implode(' | '),
+                    'skus' => $skus->take(5)->implode(' | '),
+                ];
+            })
+            ->filter(fn (array $item) => $item['rows'] > 1 && $item['groups'] > 1)
+            ->sortByDesc('groups')
+            ->values();
+
+        $this->info('Mögliche noch nicht korrekt gruppierte Produktfamilien');
+        $this->line('Treffer: '.$suspects->count());
+
+        $this->table(
+            [
+                'Produkt',
+                'Zeilen',
+                'Gruppen',
+                'Group Keys',
+                'Beispiel-Artikelnummern',
+            ],
+            $suspects
+                ->map(fn (array $item) => [
+                    $item['product'],
+                    $item['rows'],
+                    $item['groups'],
+                    $item['group_keys'],
+                    $item['skus'],
+                ])
+                ->all()
+        );
+
+        return self::SUCCESS;
     }
 }
