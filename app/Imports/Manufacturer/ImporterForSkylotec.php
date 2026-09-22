@@ -86,6 +86,10 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
         \Illuminate\Support\Collection $rows
     ): void {
         $originalFilter = $this->mapping['variation_row_filter'] ?? null;
+        $originalVariationMapping = $this->mapping['variation'] ?? [];
+
+        $this->mapping['variation'] =
+            SkylotecVariationAttributeResolver::resolve($rows);
 
         /*
         * Einzelne Zeile = simples Produkt.
@@ -105,6 +109,26 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
                 unset($this->mapping['variation_row_filter']);
             }
         }
+    }
+
+    /**
+     * Bereitet Skylotec-Variantenwerte vor und übergibt die Variante
+     * anschließend an den generischen CSV-Importer.
+     */
+    protected function importVariation(
+        \App\Models\Product $product,
+        array $row
+    ) {
+        if (array_key_exists('Seillänge', $this->mapping['variation'] ?? [])) {
+            $row['SKYLOTEC_SEILLAENGE'] =
+                SkylotecVariationAttributeResolver::formatValue(
+                    'Seillänge',
+                    $row['Seillänge'] ?? null,
+                    $row
+                );
+        }
+
+        return parent::importVariation($product, $row);
     }
 
     /**
@@ -129,6 +153,26 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
         array $productPayload,
         \Illuminate\Support\Collection $variationRows
     ): array {
+        /*
+        * Variantenattribute gruppenbezogen bestimmen.
+        *
+        * Nur Attribute, die innerhalb dieser Produktgruppe tatsächlich
+        * unterschiedliche Werte besitzen, werden als Variantenattribute
+        * verwendet.
+        */
+        $variationMapping = SkylotecVariationAttributeResolver::resolve($rows);
+
+        if (array_key_exists('Seillänge', $variationMapping)) {
+            $variationMapping['Seillänge'] = 'SKYLOTEC_SEILLAENGE';
+        }
+
+        $this->mapping['variation'] = $variationMapping;
+
+        ImportLog::debug('Skylotec variation attributes resolved', [
+            'group' => $groupKey,
+            'mapping' => $variationMapping,
+        ]);
+
         if ($variationRows->count() <= 1) {
             return $productPayload;
         }
