@@ -1084,17 +1084,17 @@ HTML;
                     ->sortable()
                     ->toggleable(),
 
-                /* Tables\Columns\TextColumn::make('product_number')
-          ->label('Artikelnummer')
-          ->searchable()
-          ->sortable()
-          ->toggleable(),
+                Tables\Columns\TextColumn::make('product_number')
+                    ->label('Artikelnummer')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-        Tables\Columns\TextColumn::make('ean')
-          ->label('EAN')
-          ->searchable()
-          ->sortable()
-          ->toggleable(), */
+                    /* Tables\Columns\TextColumn::make('ean')
+                    ->label('EAN')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(), */
 
                 // NEU: hart auf 45 Zeichen begrenzen + Tooltip mit vollem Text
                 Tables\Columns\TextColumn::make('short_description')
