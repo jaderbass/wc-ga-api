@@ -1,15 +1,19 @@
 <?php
 
 use App\Models\ColorTranslation;
+use App\Models\Product;
 use App\Models\ProductAttribute;
 use App\Models\ProductAttributeValue;
+use App\Models\ProductVariation;
 use App\Services\ColorTranslator;
+use App\Services\ProductNaming\ProductPropertyExtractor;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 uses(TestCase::class);
 
 beforeEach(function () {
+    ColorTranslation::flushDisplayCache();
     Schema::dropIfExists('color_translations');
     Schema::dropIfExists('product_attribute_values');
     Schema::dropIfExists('product_attributes');
@@ -101,6 +105,43 @@ it('marks a manually edited translation as not automatic', function () {
 
     expect($row->fresh()->is_auto)->toBeFalse()
         ->and(ColorTranslation::display('Yellow'))->toBe('Sonnengelb');
+});
+
+it('translates only color attributes via displayFor', function () {
+    ColorTranslation::ensureFor('Yellow');
+
+    expect(ColorTranslation::displayFor('Farbe', 'Yellow'))->toBe('Gelb')
+        ->and(ColorTranslation::displayFor('pa_color', 'Yellow'))->toBe('Gelb')
+        ->and(ColorTranslation::displayFor('size', 'Yellow'))->toBe('Yellow');
+});
+
+it('falls back to the original value when the table does not exist yet', function () {
+    Schema::dropIfExists('color_translations');
+    ColorTranslation::flushDisplayCache();
+
+    expect(ColorTranslation::display('Yellow'))->toBe('Yellow');
+});
+
+it('uses the german color in product and variation names', function () {
+    ColorTranslation::ensureFor('Yellow');
+    ColorTranslation::ensureFor('White Red');
+    ColorTranslation::where('source_slug', 'white-red')->first()->update(['translated_value' => 'Weiß-Rot']);
+
+    $makeProduct = function (string $color): Product {
+        $product = new Product;
+        $variation = new ProductVariation;
+        $variation->attributes_json = ['Attribute Group: Seilfarbe' => $color];
+        $product->setRelation('variations', collect([$variation]));
+        $variation->setRelation('attributeValues', collect([]));
+
+        return $product;
+    };
+
+    $extractor = app(ProductPropertyExtractor::class);
+
+    expect($extractor->extract($makeProduct('Yellow'))[0])->toBe('Gelb')
+        ->and($extractor->extract($makeProduct('White Red'))[0])->toBe('Weiß-Rot')
+        ->and($extractor->extract($makeProduct('Royal Blue'))[0])->toBe('Royal Blue');
 });
 
 it('keeps special colors as entered when translation equals original', function () {

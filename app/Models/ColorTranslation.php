@@ -26,7 +26,7 @@ class ColorTranslation extends Model
         'is_active' => 'boolean',
     ];
 
-    /** @var array<string,?string> */
+    /** @var array<string,array{value:?string,expires:int}> */
     private static array $displayCache = [];
 
     public static function ensureFor(string $rawValue): ?self
@@ -62,17 +62,42 @@ class ColorTranslation extends Model
             return $rawValue;
         }
 
-        if (! array_key_exists($slug, self::$displayCache)) {
-            $row = self::query()
-                ->where('source_slug', $slug)
-                ->where('is_active', true)
-                ->first();
+        $cached = self::$displayCache[$slug] ?? null;
+
+        if ($cached === null || $cached['expires'] < time()) {
+            try {
+                $row = self::query()
+                    ->where('source_slug', $slug)
+                    ->where('is_active', true)
+                    ->first();
+            } catch (\Throwable) {
+                // Tabelle fehlt (z. B. vor der Migration): Originalwert anzeigen.
+                $row = null;
+            }
 
             $translated = $row?->translated_value;
-            self::$displayCache[$slug] = filled($translated) ? $translated : null;
+            $cached = self::$displayCache[$slug] = [
+                'value' => filled($translated) ? $translated : null,
+                'expires' => time() + 60,
+            ];
         }
 
-        return self::$displayCache[$slug] ?? $rawValue;
+        return $cached['value'] ?? $rawValue;
+    }
+
+    public static function flushDisplayCache(): void
+    {
+        self::$displayCache = [];
+    }
+
+    /** Übersetzt den Wert nur, wenn der Attributname/-slug eine Farbe bezeichnet. */
+    public static function displayFor(string $attributeNameOrSlug, string $value): string
+    {
+        if (! preg_match('/farbe|colou?r/iu', $attributeNameOrSlug)) {
+            return $value;
+        }
+
+        return self::display($value);
     }
 
     protected static function booted(): void
