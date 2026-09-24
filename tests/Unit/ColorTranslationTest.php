@@ -7,6 +7,7 @@ use App\Models\ProductAttributeValue;
 use App\Models\ProductVariation;
 use App\Services\ColorTranslator;
 use App\Services\ProductNaming\ProductPropertyExtractor;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -15,6 +16,8 @@ uses(TestCase::class);
 beforeEach(function () {
     ColorTranslation::flushDisplayCache();
     Schema::dropIfExists('color_translations');
+    Schema::dropIfExists('product_variation_attribute_value');
+    Schema::dropIfExists('product_variations');
     Schema::dropIfExists('product_attribute_values');
     Schema::dropIfExists('product_attributes');
 
@@ -32,6 +35,17 @@ beforeEach(function () {
         $t->string('slug');
         $t->unsignedBigInteger('woo_term_id')->nullable();
         $t->timestamps();
+    });
+
+    Schema::create('product_variations', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('product_id')->nullable();
+        $t->timestamps();
+    });
+
+    Schema::create('product_variation_attribute_value', function ($t) {
+        $t->unsignedBigInteger('product_variation_id');
+        $t->unsignedBigInteger('product_attribute_value_id');
     });
 
     (require base_path('database/migrations/2026_09_24_090000_create_color_translations_table.php'))->up();
@@ -151,12 +165,44 @@ it('keeps special colors as entered when translation equals original', function 
     expect(ColorTranslation::display('Royal Blue'))->toBe('Royal Blue');
 });
 
-it('backfills existing color values via colors:sync', function () {
+it('backfills linked color values via colors:sync', function () {
     $attr = ProductAttribute::create(['name' => 'Farbe', 'slug' => 'farbe']);
-    ProductAttributeValue::create(['attribute_id' => $attr->id, 'value' => 'Black', 'slug' => 'black']);
+    $value = ProductAttributeValue::create([
+        'attribute_id' => $attr->id,
+        'value' => 'Black',
+        'slug' => 'black',
+    ]);
+
+    $variationId = DB::table('product_variations')->insertGetId([
+        'product_id' => null,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    DB::table('product_variation_attribute_value')->insert([
+        'product_variation_id' => $variationId,
+        'product_attribute_value_id' => $value->id,
+    ]);
+
     ColorTranslation::query()->delete();
 
     $this->artisan('colors:sync')->assertSuccessful();
 
     expect(ColorTranslation::where('source_slug', 'black')->value('translated_value'))->toBe('Schwarz');
+});
+
+it('does not backfill orphaned color values via colors:sync', function () {
+    $attr = ProductAttribute::create(['name' => 'Farbe', 'slug' => 'farbe']);
+
+    ProductAttributeValue::create([
+        'attribute_id' => $attr->id,
+        'value' => '10 to 11.5 mm',
+        'slug' => '10-to-115-mm',
+    ]);
+
+    ColorTranslation::query()->delete();
+
+    $this->artisan('colors:sync')->assertSuccessful();
+
+    expect(ColorTranslation::where('source_slug', '10-to-115-mm')->exists())->toBeFalse();
 });
