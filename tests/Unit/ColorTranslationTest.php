@@ -92,6 +92,17 @@ it('displays translation, falls back to original and respects manual edits', fun
     expect(ColorTranslation::display('White Red'))->toBe('Weiß-Rot');
 });
 
+it('marks a manually edited translation as not automatic', function () {
+    ColorTranslation::ensureFor('Yellow');
+    $row = ColorTranslation::where('source_slug', 'yellow')->first();
+    expect($row->is_auto)->toBeTrue();
+
+    $row->update(['translated_value' => 'Sonnengelb']);
+
+    expect($row->fresh()->is_auto)->toBeFalse()
+        ->and(ColorTranslation::display('Yellow'))->toBe('Sonnengelb');
+});
+
 it('keeps special colors as entered when translation equals original', function () {
     ColorTranslation::ensureFor('Royal Blue');
     ColorTranslation::where('source_slug', 'royal-blue')->first()->update(['translated_value' => 'Royal Blue', 'is_reviewed' => true]);
