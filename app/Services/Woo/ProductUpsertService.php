@@ -640,7 +640,7 @@ class ProductUpsertService
             }
             // Optional: Slug normalisieren (nur wenn nötig)
             // if (!str_starts_with($slug, 'pa_')) { $slug = 'pa_' . $slug; }
-            $acc[$slug][] = $val;
+            $acc[$slug][] = \App\Models\ColorTranslation::displayFor($slug, $val);
         }
 
         // Deduplizieren / leere entfernen
