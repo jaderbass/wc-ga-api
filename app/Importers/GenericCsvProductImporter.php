@@ -1576,6 +1576,11 @@ class GenericCsvProductImporter implements CsvImporterContract
             return [];
         }
 
+        // Bereiche wie "10 to 11.5 mm" oder "10-11.5 mm" sind kein Seiltyp + Durchmesser.
+        if (preg_match('/^\d+(?:[.,]\d+)?(?:\s*-\s*|\s+to\s+)\d+(?:[.,]\d+)?\s*mm$/i', $value)) {
+            return [];
+        }
+
         // Match: TEXT + Zahl + mm
         if (preg_match('/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*mm$/i', $value, $matches)) {
             $type = trim($matches[1]);

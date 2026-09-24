@@ -18,6 +18,7 @@ class SyncColorTranslationsCommand extends Command
 
         ProductAttributeValue::query()
             ->whereHas('attribute', fn ($q) => $q->whereIn('slug', ColorTranslation::COLOR_ATTRIBUTE_SLUGS))
+            ->whereHas('variations')
             ->orderBy('id')
             ->chunkById(500, function ($values): void {
                 foreach ($values as $value) {

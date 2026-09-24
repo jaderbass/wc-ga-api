@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Manufacturer;
 use App\Models\Product;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
-use App\Services\ProductNaming\ProductKind;
 use App\Services\ProductNaming\ProductNameContext;
 use App\Services\ProductNaming\ProductPropertyExtractor;
 use Illuminate\Console\Command;
@@ -81,8 +80,8 @@ final class RebuildProductNamesCommand extends Command
                 foreach ($products as $product) {
                     /** @var Product $product */
 
-                    // Decide kind by product_type OR variations existence
-                    $kind = $this->resolveKind($product);
+                    // Resolve naming kind from the persisted product_type.
+                    $kind = ProductNameContext::resolveKind($product);
 
                     // Designation source:
                     // Prefer original_product_name, otherwise fallback to existing product_name or slug.
@@ -153,27 +152,6 @@ final class RebuildProductNamesCommand extends Command
         $this->info("Done. changed={$changed}, skipped={$skipped}");
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Determines product kind for naming rules.
-     */
-    private function resolveKind(Product $product): ProductKind
-    {
-        if ($product->product_type === 'variable') {
-            return ProductKind::Variable;
-        }
-
-        if ($product->product_type === 'set') {
-            return ProductKind::Set;
-        }
-
-        // Fallback: if variations exist, treat as variable
-        if ($product->relationLoaded('variations')) {
-            return $product->variations->isNotEmpty() ? ProductKind::Variable : ProductKind::Simple;
-        }
-
-        return $product->variations()->exists() ? ProductKind::Variable : ProductKind::Simple;
     }
 
     /**
