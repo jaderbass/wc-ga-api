@@ -21,6 +21,21 @@ class ProductAttributeValue extends Model
     'woo_term_id',
   ];
 
+  protected static function booted(): void
+  {
+    static::created(function (ProductAttributeValue $value): void {
+      if (! in_array($value->attribute?->slug, ColorTranslation::COLOR_ATTRIBUTE_SLUGS, true)) {
+        return;
+      }
+
+      try {
+        ColorTranslation::ensureFor((string) $value->value);
+      } catch (\Throwable $e) {
+        report($e);
+      }
+    });
+  }
+
   /**
    * Definiert die n:1-Beziehung zum übergeordneten Attribut.
    */
