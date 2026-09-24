@@ -14,17 +14,13 @@ class ColorTranslationResource extends Resource
 {
     protected static ?string $model = ColorTranslation::class;
 
-    protected static ?string $navigationGroup = 'Produkte';
-
-    protected static ?string $navigationLabel = 'Farb-Übersetzungen';
+    protected static ?string $navigationLabel = 'Farben';
 
     protected static ?string $modelLabel = 'Farbe';
 
     protected static ?string $pluralModelLabel = 'Farben';
 
     protected static ?string $navigationIcon = 'heroicon-o-swatch';
-
-    protected static ?int $navigationSort = 30;
 
     public static function form(Form $form): Form
     {
@@ -65,8 +61,13 @@ class ColorTranslationResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('source_value')->label('Original')->searchable()->sortable(),
-                Tables\Columns\TextColumn::make('translated_value')->label('Deutsche Farbe')->searchable()->sortable()->placeholder('—'),
+                Tables\Columns\TextColumn::make('source_value')->label('Farbe (Original)')->searchable()->sortable(),
+                Tables\Columns\TextInputColumn::make('translated_value')
+                    ->label('Deutsche Übersetzung')
+                    ->placeholder('nicht übersetzt')
+                    ->searchable()
+                    ->sortable()
+                    ->afterStateUpdated(fn ($record) => $record->update(['is_reviewed' => true])),
                 Tables\Columns\IconColumn::make('is_auto')->label('Automatisch')->boolean(),
                 Tables\Columns\IconColumn::make('is_reviewed')->label('Geprüft')->boolean(),
                 Tables\Columns\IconColumn::make('is_active')->label('Aktiv')->boolean(),

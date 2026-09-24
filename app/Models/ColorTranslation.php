@@ -77,6 +77,11 @@ class ColorTranslation extends Model
 
     protected static function booted(): void
     {
+        static::updating(function (self $model): void {
+            if ($model->isDirty('translated_value') && ! $model->isDirty('is_auto')) {
+                $model->is_auto = false;
+            }
+        });
         static::saved(fn () => self::$displayCache = []);
         static::deleted(fn () => self::$displayCache = []);
     }
