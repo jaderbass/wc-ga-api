@@ -11,6 +11,7 @@
 
 namespace App\Filament\Resources\ProductResource\RelationManagers;
 
+use App\Models\ColorTranslation;
 use App\Models\ProductVariation;
 use App\Services\ProductNaming\VariationDisplayNameResolver;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -154,6 +155,10 @@ class ProductVariantRelationManager extends RelationManager
                             ->first(fn($attributeValue) => (int) $attributeValue->attribute_id === $attributeId);
 
                         $displayValue = trim((string) ($value->value ?? ''));
+
+                        if ($displayValue !== '' && in_array($value->attribute?->slug, ColorTranslation::COLOR_ATTRIBUTE_SLUGS, true)) {
+                            $displayValue = ColorTranslation::display($displayValue);
+                        }
 
                         return $displayValue !== '' ? $displayValue : '—';
                     }

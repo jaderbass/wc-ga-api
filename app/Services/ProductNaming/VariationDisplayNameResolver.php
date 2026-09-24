@@ -2,6 +2,7 @@
 
 namespace App\Services\ProductNaming;
 
+use App\Models\ColorTranslation;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Support\ProductNameNormalizer;
@@ -180,6 +181,10 @@ final class VariationDisplayNameResolver
                     continue;
                 }
 
+                if ($type === 'farbe') {
+                    $value = ColorTranslation::display($value);
+                }
+
                 $properties[$type] = $value;
             }
         }
@@ -197,6 +202,10 @@ final class VariationDisplayNameResolver
 
             if ($type === null || $value === '') {
                 continue;
+            }
+
+            if ($type === 'farbe') {
+                $value = ColorTranslation::display($value);
             }
 
             // Pivot hat Vorrang, JSON füllt nur Lücken
