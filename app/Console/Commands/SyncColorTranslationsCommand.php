@@ -30,7 +30,7 @@ class SyncColorTranslationsCommand extends Command
             ->where(fn ($q) => $q->whereNull('translated_value')->orWhere('translated_value', ''))
             ->count();
 
-        $this->info("Neu aufgenommen: ".($after - $before)." | Gesamt: {$after} | Noch ohne Übersetzung: {$missing}");
+        $this->info('Neu aufgenommen: '.($after - $before)." | Gesamt: {$after} | Noch ohne Übersetzung: {$missing}");
 
         return self::SUCCESS;
     }
