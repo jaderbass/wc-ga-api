@@ -70,7 +70,7 @@ it('collects color values on import and auto-translates basic ones', function ()
 
     expect($yellow->translated_value)->toBe('Gelb')
         ->and($yellow->is_auto)->toBeTrue()
-        ->and($royal->translated_value)->toBeNull()
+        ->and($royal->translated_value)->toBe('Royal Blue')
         ->and($royal->is_reviewed)->toBeFalse();
 });
 
