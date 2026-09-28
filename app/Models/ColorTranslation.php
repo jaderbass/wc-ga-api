@@ -38,15 +38,19 @@ class ColorTranslation extends Model
             return null;
         }
 
-        $auto = ColorTranslator::auto($rawValue);
+        $translated = ColorTranslator::auto($rawValue);
+        $certain = $translated !== null;
+
+        // Sonderfarben bleiben im Original, bekommen aber die deutsche Großschreibung und bleiben ungeprüft.
+        $translated ??= ColorTranslator::format($rawValue);
 
         return self::firstOrCreate(
             ['source_slug' => $slug],
             [
                 'source_value' => $rawValue,
-                'translated_value' => $auto,
-                'is_auto' => $auto !== null,
-                'is_reviewed' => $auto !== null,
+                'translated_value' => $translated,
+                'is_auto' => $translated !== null,
+                'is_reviewed' => $certain,
                 'is_active' => true,
             ]
         );
