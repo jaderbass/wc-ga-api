@@ -36,14 +36,14 @@ final class DefaultProductNameBuilder
         /** @var array<string, string|null> $tokens */
         $tokens = [
             'manufacturer' => $this->normalizeManufacturer($ctx->manufacturerName),
-            'category'     => $this->normalizePart($ctx->categoryName),
-            'designation'  => $this->normalizeDesignation(
+            'category' => $this->normalizePart($ctx->categoryName),
+            'designation' => $this->normalizeDesignation(
                 $ctx->designation,
                 $ctx->manufacturerName
             ),
-            'p1'           => $this->normalizePart($properties[0] ?? null),
-            'p2'           => $this->normalizePart($properties[1] ?? null),
-            'p3'           => $this->normalizePart($properties[2] ?? null),
+            'p1' => $this->normalizePart($properties[0] ?? null),
+            'p2' => $this->normalizePart($properties[1] ?? null),
+            'p3' => $this->normalizePart($properties[2] ?? null),
         ];
 
         $parts = [];
@@ -79,7 +79,7 @@ final class DefaultProductNameBuilder
     {
         $properties = array_values(array_filter(
             $ctx->properties,
-            static fn(mixed $value): bool => is_string($value) && trim($value) !== ''
+            static fn (mixed $value): bool => is_string($value) && trim($value) !== ''
         ));
 
         return array_slice($properties, 0, $ctx->kind->propertyLimit());
@@ -105,7 +105,7 @@ final class DefaultProductNameBuilder
     private function normalizeDesignation(string $designation, string $manufacturer): string
     {
         $designation = $this->removeManufacturerPrefix($designation, $manufacturer);
-        $designation = trim($designation);
+        $designation = $this->normalizeNamePart($designation);
 
         if ($designation === '') {
             return '';
@@ -125,7 +125,7 @@ final class DefaultProductNameBuilder
             return null;
         }
 
-        $v = trim($value);
+        $v = $this->normalizeNamePart($value);
 
         return $v === '' ? null : $v;
     }
@@ -133,7 +133,7 @@ final class DefaultProductNameBuilder
     /**
      * Joins parts and cleans whitespace.
      *
-     * @param array<int, string> $parts
+     * @param  array<int, string>  $parts
      */
     private function joinAndCleanup(array $parts, string $separator): string
     {
@@ -163,12 +163,27 @@ final class DefaultProductNameBuilder
         $quoted = preg_quote($manufacturer, '/');
 
         $updated = preg_replace(
-            '/^' . $quoted . '\b(?:\s*[-–—:|]\s*|\s+)/iu',
+            '/^'.$quoted.'\b(?:\s*[-–—:|]\s*|\s+)/iu',
             '',
             $designation,
             1
         );
 
         return is_string($updated) ? trim($updated) : $designation;
+    }
+
+    private function normalizeNamePart(string $value): string
+    {
+        $value = preg_replace('/(?:®|&reg;|&#174;|&#x0*ae;)/iu', '', $value) ?? $value;
+
+        $value = preg_replace(
+            '/(?<=\d)(mm|cm|m|kg|g|ml|l|kN)\b/iu',
+            ' $1',
+            $value
+        ) ?? $value;
+
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 }

@@ -25,6 +25,8 @@ use App\Services\ProductNaming\ProductNameContext;
 use App\Support\TextNormalizer;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Group;
@@ -33,6 +35,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Checkbox;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
@@ -43,12 +46,17 @@ use Filament\Tables\Table;
 use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use App\Jobs\RunPetzlDescriptionSyncJob;
+use App\Models\PetzlDescriptionSyncRun;
+use Filament\Forms\Components\Radio;
 
 /**
  * Class ProductResource
@@ -451,7 +459,11 @@ HTML;
                                             fn($record) =>
                                             new HtmlString(
                                                 '<h3 class="text-base font-semibold mb-2">Kurzbeschreibung</h3>'
-                                                    . ($record?->short_description ?: '<div class="text-gray-500">—</div>')
+                                                    . '<div class="petzl-short-description-html">'
+                                                    . ($record?->petzl_short_description_html
+                                                        ?: $record?->short_description
+                                                        ?: '<div class="text-gray-500">—</div>')
+                                                    . '</div>'
                                             )
                                         )
                                         ->columnSpanFull(),
@@ -462,9 +474,142 @@ HTML;
                                             fn($record) =>
                                             new HtmlString(
                                                 '<h3 class="text-base font-semibold mt-4 mb-2">Beschreibung</h3>'
-                                                    . ($record?->description ?: '<div class="text-gray-500">—</div>')
+                                                    . '<div class="petzl-description-html">'
+                                                    . ($record?->petzl_description_html
+                                                        ?: $record?->description
+                                                        ?: '<div class="text-gray-500">—</div>')
+                                                    . '</div>'
                                             )
                                         )
+                                        ->columnSpanFull(),
+
+                                    TextInput::make('petzl_description_source_url')
+                                        ->label('Petzl-Produktseite')
+                                        ->url()
+                                        ->maxLength(2048)
+                                        ->dehydrated(false)
+                                        ->helperText('Manuelle Petzl-Produktseite. Die URL wird erst übernommen, wenn die Beschreibung erfolgreich geladen wurde.')
+                                        ->visible(fn(?Product $record): bool => $record?->manufacturer_id === 3)
+                                        ->suffixActions([
+                                            Forms\Components\Actions\Action::make('loadManualPetzlDescription')
+                                                ->label('Beschreibung laden')
+                                                ->icon('heroicon-m-arrow-down-tray')
+                                                ->tooltip('Beschreibung von dieser Petzl-Produktseite laden')
+                                                ->action(function (?Product $record, Get $get, Set $set): void {
+                                                    if (! $record) {
+                                                        return;
+                                                    }
+
+                                                    $url = trim((string) $get('petzl_description_source_url'));
+
+                                                    if ($url === '') {
+                                                        Notification::make()
+                                                            ->title('Petzl-URL fehlt')
+                                                            ->body('Bitte zuerst eine Petzl-Produktseite eintragen.')
+                                                            ->warning()
+                                                            ->send();
+
+                                                        return;
+                                                    }
+
+                                                    try {
+                                                        /** @var \App\Services\Petzl\PetzlDescriptionImportService $importService */
+                                                        $importService = app(
+                                                            \App\Services\Petzl\PetzlDescriptionImportService::class
+                                                        );
+
+                                                        $importService->importManuallyFromUrl($record, $url);
+
+                                                        $record->refresh();
+
+                                                        $set(
+                                                            'petzl_description_source_url',
+                                                            $record->petzl_description_source_url
+                                                        );
+
+                                                        Notification::make()
+                                                            ->title('Petzl-Beschreibung geladen')
+                                                            ->body('Die Produktseite wurde manuell zugeordnet.')
+                                                            ->success()
+                                                            ->send();
+                                                    } catch (\Throwable $exception) {
+                                                        Notification::make()
+                                                            ->title('Petzl-Beschreibung konnte nicht geladen werden')
+                                                            ->body($exception->getMessage())
+                                                            ->danger()
+                                                            ->send();
+                                                    }
+                                                }),
+
+                                            Forms\Components\Actions\Action::make('resetManualPetzlDescription')
+                                                ->label('Automatik')
+                                                ->icon('heroicon-m-arrow-path')
+                                                ->tooltip('Manuelle Zuordnung entfernen und Automatik wieder aktivieren')
+                                                ->visible(
+                                                    fn(?Product $record): bool =>
+                                                    $record?->description_source === 'manual'
+                                                )
+                                                ->requiresConfirmation()
+                                                ->modalHeading('Automatische Petzl-Zuordnung aktivieren?')
+                                                ->modalDescription(
+                                                    'Die manuell geladene Petzl-Beschreibung und ihre Zuordnung werden entfernt. Das Produkt kann anschließend wieder automatisch aufgelöst werden.'
+                                                )
+                                                ->action(function (?Product $record, Set $set): void {
+                                                    if (! $record) {
+                                                        return;
+                                                    }
+
+                                                    $record->forceFill([
+                                                        'petzl_short_description_html' => null,
+                                                        'petzl_description_html' => null,
+                                                        'petzl_description_source_url' => null,
+                                                        'petzl_description_fetched_at' => null,
+                                                        'petzl_description_hash' => null,
+                                                        'description_source' => 'auto',
+                                                    ])->save();
+
+                                                    $record->refresh();
+
+                                                    $set('petzl_description_source_url', null);
+
+                                                    Notification::make()
+                                                        ->title('Automatische Zuordnung aktiviert')
+                                                        ->body('Die manuelle Petzl-Zuordnung wurde entfernt.')
+                                                        ->success()
+                                                        ->send();
+                                                }),
+                                        ])
+                                        ->columnSpanFull(),
+
+                                    Placeholder::make('petzl_description_meta')
+                                        ->label('')
+                                        ->content(function ($record) {
+                                            if (! $record?->petzl_description_html) {
+                                                return new HtmlString('');
+                                            }
+
+                                            $sourceUrl = e($record->petzl_description_source_url);
+
+                                            $fetchedAt = $record->petzl_description_fetched_at
+                                                ? \Illuminate\Support\Carbon::parse(
+                                                    $record->petzl_description_fetched_at
+                                                )->format('d.m.Y H:i')
+                                                : 'unbekannt';
+
+                                            $descriptionSource = match ($record->description_source) {
+                                                'auto' => 'Automatisch',
+                                                'manual' => 'Manuell',
+                                                default => 'Unbekannt',
+                                            };
+
+                                            return new HtmlString(
+                                                '<div class="mt-3 text-xs text-gray-500">'
+                                                    . 'Quelle: <a href="' . $sourceUrl . '" target="_blank" class="underline">Petzl.com</a>'
+                                                    . ' · abgerufen am ' . e($fetchedAt)
+                                                    . ' · Typ: ' . e($descriptionSource)
+                                                    . '</div>'
+                                            );
+                                        })
                                         ->columnSpanFull(),
                                 ])
                                 ->columnSpanFull(),
@@ -939,17 +1084,17 @@ HTML;
                     ->sortable()
                     ->toggleable(),
 
-                /* Tables\Columns\TextColumn::make('product_number')
-          ->label('Artikelnummer')
-          ->searchable()
-          ->sortable()
-          ->toggleable(),
+                Tables\Columns\TextColumn::make('product_number')
+                    ->label('Artikelnummer')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-        Tables\Columns\TextColumn::make('ean')
-          ->label('EAN')
-          ->searchable()
-          ->sortable()
-          ->toggleable(), */
+                    /* Tables\Columns\TextColumn::make('ean')
+                    ->label('EAN')
+                    ->searchable()
+                    ->sortable()
+                    ->toggleable(), */
 
                 // NEU: hart auf 45 Zeichen begrenzen + Tooltip mit vollem Text
                 Tables\Columns\TextColumn::make('short_description')
@@ -987,8 +1132,8 @@ HTML;
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('product_name')
-            ->paginated([10, 25, 50])
-            ->defaultPaginationPageOption(25)
+            ->paginated([10, 25, 50, 100, 250])
+            ->defaultPaginationPageOption(50)
             ->filters([
                 Tables\Filters\SelectFilter::make('manufacturer_id')
                     ->label('Hersteller')
@@ -1056,14 +1201,36 @@ HTML;
                             ->searchable()         // Typeahead-Suche aktivieren
                             ->preload()            // Optionen vorladen (besseres UX im Modal)
                             ->reactive()
-                            ->afterStateUpdated(function ($state, callable $set) {
-                                // Automatisch den Import-Typ setzen
-                                $importType = \App\Models\Manufacturer::find($state)?->import_type ?? 'csv';
+                            ->afterStateUpdated(function (?int $state, Set $set): void {
+                                $importType = \App\Models\Manufacturer::query()
+                                    ->whereKey($state)
+                                    ->value('import_type') ?? 'csv';
+
                                 $set('sourceType', $importType);
                             })
                             ->required(),
+                        Checkbox::make('sync_petzl_descriptions')
+                            ->label('Petzl-Beschreibungen anschließend synchronisieren')
+                            ->helperText('Startet nach dem abgeschlossenen Petzl-Import einen separaten Beschreibungssync.')
+                            ->default(true)
+                            ->visible(function (Get $get): bool {
+                                $manufacturerId = $get('manufacturer_id');
+
+                                if (! $manufacturerId) {
+                                    return false;
+                                }
+
+                                return \App\Models\Manufacturer::query()
+                                    ->whereKey($manufacturerId)
+                                    ->where('manufacturer', 'Petzl')
+                                    ->exists();
+                            }),
                         Hidden::make('sourceType')
-                            ->default(fn($get) => \App\Models\Manufacturer::find($get('manufacturer_id'))?->import_type ?? 'csv'),
+                            ->default(function (Get $get): string {
+                                return \App\Models\Manufacturer::query()
+                                    ->whereKey($get('manufacturer_id'))
+                                    ->value('import_type') ?? 'csv';
+                            }),
                         // Info-Box bei API-Import
                         Placeholder::make('api_info')
                             ->label('')
@@ -1162,6 +1329,8 @@ HTML;
                             'status'          => 'queued',
                         ]);
 
+                        $syncPetzlDescriptions = (bool) ($data['sync_petzl_descriptions'] ?? false);
+
                         // 🔥 Job starten – sonst nichts
                         \App\Jobs\RunManufacturerImportJob::dispatch(
                             $manufacturerId,
@@ -1169,11 +1338,16 @@ HTML;
                             $payloadSource,
                             $run->author_id,
                             $run->id,
+                            $syncPetzlDescriptions,
                         )
                             ->onConnection(config('queue.default', 'database'))
                             ->onQueue('imports');
 
-                        $livewire->dispatch('import-run-started', runId: $run->id);
+                        $livewire->dispatch(
+                            'import-run-started',
+                            runId: $run->id,
+                            waitForPetzlSync: $syncPetzlDescriptions,
+                        );
 
                         // ✅ DAS ist entscheidend
                         $action->success();
@@ -1182,10 +1356,185 @@ HTML;
                     ->closeModalByClickingAway(false)
                     ->modalSubmitActionLabel('Import starten'),
 
+                Tables\Actions\Action::make('syncPetzlDescriptions')
+                    ->label('Petzl-Beschreibungen synchronisieren')
+                    ->icon('heroicon-o-arrow-path')
+                    ->form([
+                        Radio::make('mode')
+                            ->label('Synchronisieren')
+                            ->options([
+                                'missing' => 'Fehlende Beschreibungen',
+                                'refresh' => 'Alle automatisch verwalteten Beschreibungen',
+                            ])
+                            ->descriptions([
+                                'missing' => 'Synchronisiert nur Petzl-Produkte, für die noch keine automatische Beschreibung vorhanden ist.',
+                                'refresh' => 'Ruft alle automatisch verwalteten Petzl-Beschreibungen erneut ab. Manuell gepflegte Beschreibungen bleiben geschützt.',
+                            ])
+                            ->default('missing')
+                            ->required(),
+                    ])
+                    ->action(function (
+                        array $data,
+                        Tables\Actions\Action $action,
+                        \Livewire\Component $livewire
+                    ): void {
+                        $runningSync = PetzlDescriptionSyncRun::query()
+                            ->whereIn('status', ['queued', 'running'])
+                            ->exists();
+
+                        if ($runningSync) {
+                            Notification::make()
+                                ->title('Petzl-Beschreibungssync läuft bereits')
+                                ->body('Bitte warten Sie, bis der aktuelle Beschreibungssync abgeschlossen ist.')
+                                ->warning()
+                                ->send();
+
+                            $action->halt();
+
+                            return;
+                        }
+
+                        $run = PetzlDescriptionSyncRun::create([
+                            'trigger' => 'manual',
+                            'mode' => $data['mode'],
+                            'status' => 'queued',
+                            'author_id' => Auth::id(),
+                        ]);
+
+                        RunPetzlDescriptionSyncJob::dispatch(
+                            runId: $run->id,
+                        )
+                            ->onConnection(config('queue.default', 'database'))
+                            ->onQueue('imports');
+
+                        $livewire->dispatch(
+                            'petzl-description-sync-started',
+                            runId: $run->id,
+                        );
+
+                        Notification::make()
+                            ->title('Petzl-Beschreibungssync gestartet')
+                            ->body(
+                                $data['mode'] === 'refresh'
+                                    ? 'Alle automatisch verwalteten Petzl-Beschreibungen werden neu synchronisiert.'
+                                    : 'Fehlende Petzl-Beschreibungen werden synchronisiert.'
+                            )
+                            ->success()
+                            ->send();
+                    })
+                    ->closeModalByClickingAway(false)
+                    ->modalSubmitActionLabel('Synchronisierung starten'),
+
             ])
             ->bulkActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make()->label('Löschen'),
+
+                    BulkAction::make('sync_petzl_descriptions')
+                        ->label('Petzl-Beschreibungen synchronisieren')
+                        ->icon('heroicon-o-arrow-path')
+                        ->form([
+                            Radio::make('mode')
+                                ->label('Synchronisieren')
+                                ->options([
+                                    'missing' => 'Nur fehlende Beschreibungen der Auswahl',
+                                    'refresh' => 'Ausgewählte automatische Beschreibungen neu laden',
+                                ])
+                                ->descriptions([
+                                    'missing' => 'Synchronisiert nur ausgewählte Petzl-Produkte, für die noch keine automatische Beschreibung vorhanden ist.',
+                                    'refresh' => 'Lädt die Beschreibungen der ausgewählten automatisch verwalteten Petzl-Produkte erneut. Manuell gepflegte Beschreibungen bleiben geschützt.',
+                                ])
+                                ->default('missing')
+                                ->required(),
+                        ])
+                        ->action(function (
+                            Collection $records,
+                            array $data,
+                            BulkAction $action,
+                            \Livewire\Component $livewire
+                        ): void {
+                            $runningSync = PetzlDescriptionSyncRun::query()
+                                ->whereIn('status', ['queued', 'running'])
+                                ->exists();
+
+                            if ($runningSync) {
+                                Notification::make()
+                                    ->title('Petzl-Beschreibungssync läuft bereits')
+                                    ->body('Bitte warten Sie, bis der aktuelle Beschreibungssync abgeschlossen ist.')
+                                    ->warning()
+                                    ->send();
+
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $petzlManufacturerId = \App\Models\Manufacturer::query()
+                                ->where('manufacturer', 'Petzl')
+                                ->value('id');
+
+                            $nonPetzlProducts = $records->filter(
+                                fn (Product $product): bool =>
+                                    $product->manufacturer_id !== $petzlManufacturerId
+                            );
+
+                            if ($nonPetzlProducts->isNotEmpty()) {
+                                Notification::make()
+                                    ->title('Auswahl enthält andere Hersteller')
+                                    ->body('Für den Petzl-Beschreibungssync dürfen ausschließlich Petzl-Produkte ausgewählt sein.')
+                                    ->warning()
+                                    ->send();
+
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $productIds = $records
+                                ->pluck('id')
+                                ->map(fn ($id) => (int) $id)
+                                ->values()
+                                ->all();
+
+                            if ($productIds === []) {
+                                $action->halt();
+
+                                return;
+                            }
+
+                            $run = PetzlDescriptionSyncRun::create([
+                                'trigger' => 'selection',
+                                'mode' => $data['mode'],
+                                'status' => 'queued',
+                                'author_id' => Auth::id(),
+                            ]);
+
+                            RunPetzlDescriptionSyncJob::dispatch(
+                                runId: $run->id,
+                                productIds: $productIds,
+                            )
+                                ->onConnection(config('queue.default', 'database'))
+                                ->onQueue('imports');
+
+                            $livewire->dispatch(
+                                'petzl-description-sync-started',
+                                runId: $run->id,
+                            );
+
+                            Notification::make()
+                                ->title('Petzl-Beschreibungssync gestartet')
+                                ->body(
+                                    count($productIds) === 1
+                                        ? '1 ausgewähltes Produkt wird synchronisiert.'
+                                        : count($productIds) . ' ausgewählte Produkte werden synchronisiert.'
+                                )
+                                ->success()
+                                ->send();
+                        })
+                        ->closeModalByClickingAway(false)
+                        ->modalSubmitActionLabel('Synchronisierung starten')
+                        ->deselectRecordsAfterCompletion(),
+
                     SyncProductsBulkAction::make('sync_to_woo'),
                     SyncVariationsBulkAction::make('sync_variations_to_woo'),
                 ])

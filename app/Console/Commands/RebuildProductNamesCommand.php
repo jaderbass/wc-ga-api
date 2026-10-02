@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\Manufacturer;
 use App\Models\Product;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
-use App\Services\ProductNaming\ProductKind;
 use App\Services\ProductNaming\ProductNameContext;
 use App\Services\ProductNaming\ProductPropertyExtractor;
 use Illuminate\Console\Command;
@@ -59,7 +58,7 @@ final class RebuildProductNamesCommand extends Command
         }
 
         $total = (clone $query)->count();
-        $this->info("Rebuilding product names for {$total} products" . ($dryRun ? ' (dry-run)' : '') . '…');
+        $this->info("Rebuilding product names for {$total} products".($dryRun ? ' (dry-run)' : '').'…');
 
         $changed = 0;
         $skipped = 0;
@@ -81,11 +80,8 @@ final class RebuildProductNamesCommand extends Command
                 foreach ($products as $product) {
                     /** @var Product $product */
 
-                    // Decide kind by product_type OR variations existence
-                    $kind = $this->resolveKind($product);
-
-                    // Category: currently unknown in your DB -> keep empty (will be skipped by builder)
-                    $categoryName = $this->resolveCategoryName($product);
+                    // Resolve naming kind from the persisted product_type.
+                    $kind = ProductNameContext::resolveKind($product);
 
                     // Designation source:
                     // Prefer original_product_name, otherwise fallback to existing product_name or slug.
@@ -93,8 +89,11 @@ final class RebuildProductNamesCommand extends Command
 
                     if ($designation === null || $designation === '') {
                         $skipped++;
+
                         continue;
                     }
+
+                    $categoryName = ProductNameContext::resolveCategoryName($designation);
 
                     $properties = $extractor->extract($product);
 
@@ -118,6 +117,7 @@ final class RebuildProductNamesCommand extends Command
 
                     if (! $shouldUpdate && ! $overwriteOriginal) {
                         $skipped++;
+
                         continue;
                     }
 
@@ -127,6 +127,7 @@ final class RebuildProductNamesCommand extends Command
                         } else {
                             $skipped++;
                         }
+
                         continue;
                     }
 
@@ -154,40 +155,6 @@ final class RebuildProductNamesCommand extends Command
     }
 
     /**
-     * Determines product kind for naming rules.
-     */
-    private function resolveKind(Product $product): ProductKind
-    {
-        if ($product->product_type === 'variable') {
-            return ProductKind::Variable;
-        }
-
-        if ($product->product_type === 'set') {
-            return ProductKind::Set;
-        }
-
-        // Fallback: if variations exist, treat as variable
-        if ($product->relationLoaded('variations')) {
-            return $product->variations->isNotEmpty() ? ProductKind::Variable : ProductKind::Simple;
-        }
-
-        return $product->variations()->exists() ? ProductKind::Variable : ProductKind::Simple;
-    }
-
-    /**
-     * Resolves category name for naming.
-     *
-     * For now category is unknown/managed in Woo/UI, so keep empty.
-     * Later you can:
-     * - read from a mirrored column
-     * - read from product_meta
-     */
-    private function resolveCategoryName(Product $product): string
-    {
-        return '';
-    }
-
-    /**
      * Resolves the designation/original product name used for naming.
      *
      * Priority:
@@ -211,7 +178,7 @@ final class RebuildProductNamesCommand extends Command
     /**
      * Resolves manufacturer name for naming with in-memory cache.
      *
-     * @param array<int, string> $cache
+     * @param  array<int, string>  $cache
      */
     private function resolveManufacturerName(int $manufacturerId, array &$cache): string
     {
