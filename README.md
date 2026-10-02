@@ -13,6 +13,7 @@
 - [⚙️ Systemvoraussetzungen](#️-systemvoraussetzungen)
 - [🚀 Installation & Setup](#-installation--setup)
 - [🧩 Import-Module](#-import-module)
+- [Petzl aktueller Entwicklungsstand](#petzl-aktueller-entwicklungsstand)
 - [🔄 Produkt- & Varianten-Synchronisation](#-produkt---varianten-synchronisation)
 - [🗂️ Kategorien & Regelbasierte Zuordnung](#️-kategorien--regelbasierte-zuordnung)
 - [📡 Webhooks (Inbound)](#-webhooks-inbound)
@@ -124,6 +125,25 @@ Zugriff: [http://127.0.0.1:8000/admin](http://127.0.0.1:8000/admin)
 
 Konfigurationen unter `config/import_mappings/*.php`  
 Logik unter `app/Importers/` und `app/Helpers/`
+
+---
+
+## Petzl aktueller Entwicklungsstand
+
+Der Branch `feature/petzl-csv-translations` enthält derzeit zusätzlich zur Übersetzungslogik weitere Arbeiten rund um Petzl-Produktdaten.
+
+Aktuell umgesetzt:
+
+- Extraktion von Produktbeschreibungen aus `petzl.com`
+- HTML-Bereinigung für spätere WooCommerce-Nutzung
+- Speicherung von Herstellerbeschreibungen in separaten Produktfeldern
+- `PetzlDescriptionFetcher`
+- `PetzlDescriptionImportService`
+- Grundlage für automatische URL-Auflösung und Queue-Verarbeitung
+
+Hinweis:
+
+Die Erweiterung wurde bewusst im bestehenden Branch umgesetzt, um laufende Entwicklungsarbeiten nicht durch nachträgliche Branch-Umstellungen zu unterbrechen.
 
 ---
 

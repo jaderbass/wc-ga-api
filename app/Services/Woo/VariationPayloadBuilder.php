@@ -186,7 +186,7 @@ class VariationPayloadBuilder
       }
       $attrs[] = [
         'name'   => $slug,
-        'option' => $val,
+        'option' => \App\Models\ColorTranslation::displayFor($slug, $val),
       ];
     }
 

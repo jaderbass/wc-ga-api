@@ -64,6 +64,10 @@ class Product extends Model
         'certification',
         'author_id',
         'manufacturer_price_cents',
+        'petzl_description_fetched_at',
+        'petzl_source_category',
+        'petzl_source_subcategory',
+        'online_sellable',
     ];
 
     protected $guarded = ['id'];
@@ -81,6 +85,8 @@ class Product extends Model
         'manufacturer_price_cents' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'petzl_description_fetched_at' => 'datetime',
+        'online_sellable' => 'boolean',
     ];
 
     /**

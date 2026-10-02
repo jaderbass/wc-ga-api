@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\ImportRunEventsController;
 use App\Http\Controllers\AliensImageController;
+use App\Http\Controllers\PetzlDescriptionSyncRunEventsController;
 
 /*
 Route::get('/', function () {
@@ -43,3 +44,8 @@ Route::get('/aliens-image/{manufacturerId}/{productId}/{filename}', [AliensImage
         'productId' => '[0-9]+',
         'filename' => '.+',
     ]);
+
+    Route::get(
+        '/petzl-description-sync/runs/{run}/events',
+        [PetzlDescriptionSyncRunEventsController::class, 'show']
+    );
