@@ -78,7 +78,7 @@ class ProductPropertyExtractorTest extends TestCase
         $extractor = app(ProductPropertyExtractor::class);
         $props = $extractor->extract($product->fresh());
 
-        $this->assertSame(['0.5', '90 mm', 'red'], $props);
+        $this->assertSame(['0.5', '90 mm', 'Rot'], $props);
     }
 
     #[Test]
