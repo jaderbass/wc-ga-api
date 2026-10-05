@@ -98,7 +98,12 @@ jobs:
             exit 0
           fi
 
-          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- '*.php')
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CHANGED_FILES=$(git diff --name-only "${HEAD_SHA}^" "$HEAD_SHA" -- '*.php')
+          else
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- '*.php')
+          fi
 
           if [ -n "$CHANGED_FILES" ]; then
             echo "Checking changed PHP files:"
