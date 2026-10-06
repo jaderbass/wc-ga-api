@@ -12,9 +12,13 @@ use RuntimeException;
 class WooClient
 {
     protected Shop $shop;
+
     protected Client $http;
 
-    public function __construct(Shop $shop)
+    /**
+     * @param  Client|null  $http  Nur für Tests (z. B. mit MockHandler); Standard ist ein eigener Guzzle-Client.
+     */
+    public function __construct(Shop $shop, ?Client $http = null)
     {
         $this->shop = $shop;
 
@@ -33,7 +37,7 @@ class WooClient
         $ver = trim((string) ($shop->api_version ?: (config('woo.api_version') ?? env('WOO_API_VERSION', 'wc/v3'))), '/');
 
         // Harte Validierung: ohne Host kein Request → verhindert cURL error 3
-        if ($base === '' || !preg_match('#^https?://#i', $base)) {
+        if ($base === '' || ! preg_match('#^https?://#i', $base)) {
             throw new \InvalidArgumentException("Invalid Woo base URL (Shop + .env): '{$base}'");
         }
         if ($ver === '') {
@@ -41,13 +45,13 @@ class WooClient
         }
         // --- END: robuste Ermittlung von Base + Version ---
 
-        $this->http = new Client([
-            'base_uri'         => $base . '/wp-json/' . trim($ver, '/') . '/',
-            'timeout'          => 30,
-            'connect_timeout'  => 10,              // <— schneller Fail bei DNS/Netz
+        $this->http = $http ?? new Client([
+            'base_uri' => $base.'/wp-json/'.trim($ver, '/').'/',
+            'timeout' => 30,
+            'connect_timeout' => 10,              // <— schneller Fail bei DNS/Netz
             'force_ip_resolve' => 'v4',            // <— Guzzle-eigener Schalter
-            'curl'             => [
-                CURLOPT_IPRESOLVE         => CURL_IPRESOLVE_V4, // <— cURL-Seite
+            'curl' => [
+                CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4, // <— cURL-Seite
                 CURLOPT_DNS_CACHE_TIMEOUT => 60,
             ],
         ]);
@@ -57,14 +61,17 @@ class WooClient
     {
         return $this->request('GET', $endpoint, ['query' => $query]);
     }
+
     public function post(string $endpoint, array $json = []): array
     {
         return $this->request('POST', $endpoint, ['json' => $json]);
     }
+
     public function put(string $endpoint, array $json = []): array
     {
         return $this->request('PUT', $endpoint, ['json' => $json]);
     }
+
     public function delete(string $endpoint, array $query = []): array
     {
         return $this->request('DELETE', $endpoint, ['query' => $query]);
@@ -79,74 +86,64 @@ class WooClient
         // Immer JSON akzeptieren
         $opts['headers']['Accept'] = 'application/json';
 
-        // 1) Versuch: Basic Auth (funktionierte bei dir früher zuverlässig)
-        $optsBasic = $opts + [
-            'auth' => [$this->shop->consumer_key, $this->shop->consumer_secret],
-        ];
-
+        // Schreibanfragen nie wiederholen (sonst Doppelanlagen im Shop); Fehler bleiben Guzzle-Exceptions, Aufrufer prüfen auf 404.
         $isWrite = in_array(strtoupper($method), ['POST', 'PUT', 'DELETE'], true);
 
-        if ($isWrite) {
-            // Query-Auth erzwingen
-            $optsQuery = $opts;
-            $optsQuery['query'] = array_merge($opts['query'] ?? [], [
-                'consumer_key'    => $this->shop->consumer_key,
-                'consumer_secret' => $this->shop->consumer_secret,
-            ]);
-            unset($optsQuery['auth']);
-            $res = $this->http->request($method, $url, $optsQuery);
-        } else {
-            // GET: Basic-Auth beibehalten
-            $optsBasic = $opts + ['auth' => [$this->shop->consumer_key, $this->shop->consumer_secret]];
-            $res = $this->http->request($method, $url, $optsBasic);
-        }
-
-
         try {
-            Log::debug('WooClient request (basic)', [
-                'base_uri' => (string) $this->http->getConfig('base_uri'),
-                'method'   => $method,
-                'endpoint' => $url,
-                'shop_id'  => $this->shop->id,
-            ]);
+            $this->logRequest($isWrite ? 'query' : 'basic', $method, $url);
 
-            $res = $this->http->request($method, $url, $optsBasic);
-        } catch (\GuzzleHttp\Exception\ClientException $e) {
-            // Nur bei 401 auf Query-Auth ausweichen
-            if ($e->getResponse()?->getStatusCode() !== 401) {
-                throw $this->wrap($e, $method, $url);
+            $res = $isWrite
+                ? $this->http->request($method, $url, $this->withQueryAuth($opts))
+                : $this->http->request($method, $url, $opts + ['auth' => [$this->shop->consumer_key, $this->shop->consumer_secret]]);
+        } catch (ClientException $e) {
+            if ($isWrite || $e->getResponse()?->getStatusCode() !== 401) {
+                $this->logFailure($e, $method, $url);
+                throw $e;
             }
-
-            // 2) Fallback: Query-Auth (manche Hosts strippen den Authorization-Header)
-            $optsQuery = $opts;
-            $optsQuery['query'] = array_merge($opts['query'] ?? [], [
-                'consumer_key'    => $this->shop->consumer_key,
-                'consumer_secret' => $this->shop->consumer_secret,
-            ]);
-            unset($optsQuery['auth']);
 
             try {
-                Log::debug('WooClient request (query-fallback)', [
-                    'base_uri' => (string) $this->http->getConfig('base_uri'),
-                    'method'   => $method,
-                    'endpoint' => $url,
-                    'shop_id'  => $this->shop->id,
-                ]);
-
-                $res = $this->http->request($method, $url, $optsQuery);
+                $this->logRequest('query-fallback', $method, $url);
+                $res = $this->http->request($method, $url, $this->withQueryAuth($opts));
             } catch (\Throwable $e2) {
-                throw $this->wrap($e2, $method, $url);
+                $this->logFailure($e2, $method, $url);
+                throw $e2;
             }
         } catch (\Throwable $e) {
-            throw $this->wrap($e, $method, $url);
+            $this->logFailure($e, $method, $url);
+            throw $e;
         }
 
-        $body    = (string) $res->getBody();
+        $body = (string) $res->getBody();
         $decoded = json_decode($body, true);
+
         return is_array($decoded) ? $decoded : $body;
     }
 
+    protected function withQueryAuth(array $opts): array
+    {
+        $opts['query'] = array_merge($opts['query'] ?? [], [
+            'consumer_key' => $this->shop->consumer_key,
+            'consumer_secret' => $this->shop->consumer_secret,
+        ]);
+        unset($opts['auth']);
 
+        return $opts;
+    }
+
+    protected function logRequest(string $auth, string $method, string $endpoint): void
+    {
+        Log::debug("WooClient request ({$auth})", [
+            'base_uri' => (string) $this->http->getConfig('base_uri'),
+            'method' => $method,
+            'endpoint' => $endpoint,
+            'shop_id' => $this->shop->id,
+        ]);
+    }
+
+    protected function logFailure(\Throwable $e, string $method, string $endpoint): void
+    {
+        Log::warning($this->wrap($e, $method, $endpoint)->getMessage());
+    }
 
     protected function wrap(\Throwable $e, string $method, string $endpoint): RuntimeException
     {
@@ -159,7 +156,7 @@ class WooClient
 
         if ($e instanceof ClientException && $e->getResponse()) {
             $snippet = substr((string) $e->getResponse()->getBody(), 0, 600);
-            $msg .= ' | body: ' . $snippet;
+            $msg .= ' | body: '.$snippet;
         }
 
         // Extra Hinweis bei DNS/Connect-Fehlern
@@ -167,6 +164,6 @@ class WooClient
             $msg .= sprintf(' | base_uri=%s', (string) $this->http->getConfig('base_uri'));
         }
 
-        return new RuntimeException($msg, (int)$e->getCode(), $e);
+        return new RuntimeException($msg, (int) $e->getCode(), $e);
     }
 }
