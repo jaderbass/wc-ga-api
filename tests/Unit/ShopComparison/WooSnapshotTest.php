@@ -14,30 +14,36 @@ use Tests\TestCase;
 uses(TestCase::class);
 
 beforeEach(function () {
-    Schema::dropIfExists('woo_snapshot_items');
-    Schema::dropIfExists('woo_snapshots');
-    Schema::dropIfExists('product_variations');
-    Schema::dropIfExists('products');
+    Schema::disableForeignKeyConstraints();
 
-    Schema::create('products', function ($t) {
-        $t->id();
-        $t->string('sku')->nullable();
-        $t->string('product_number')->nullable();
-        $t->string('ean')->nullable();
-        $t->string('product_name')->nullable();
-        $t->timestamps();
-    });
+    try {
+        Schema::dropIfExists('woo_snapshot_items');
+        Schema::dropIfExists('woo_snapshots');
+        Schema::dropIfExists('product_variations');
+        Schema::dropIfExists('products');
 
-    Schema::create('product_variations', function ($t) {
-        $t->id();
-        $t->unsignedBigInteger('product_id');
-        $t->string('sku')->nullable();
-        $t->string('ean')->nullable();
-        $t->timestamps();
-    });
+        Schema::create('products', function ($t) {
+            $t->id();
+            $t->string('sku')->nullable();
+            $t->string('product_number')->nullable();
+            $t->string('ean')->nullable();
+            $t->string('product_name')->nullable();
+            $t->timestamps();
+        });
 
-    (require base_path('database/migrations/2026_10_06_100000_create_woo_snapshots_table.php'))->up();
-    (require base_path('database/migrations/2026_10_06_100001_create_woo_snapshot_items_table.php'))->up();
+        Schema::create('product_variations', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('product_id');
+            $t->string('sku')->nullable();
+            $t->string('ean')->nullable();
+            $t->timestamps();
+        });
+
+        (require base_path('database/migrations/2026_10_06_100000_create_woo_snapshots_table.php'))->up();
+        (require base_path('database/migrations/2026_10_06_100001_create_woo_snapshot_items_table.php'))->up();
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
 });
 
 function fakeShopApi(array $responses, array &$calls = []): Closure
