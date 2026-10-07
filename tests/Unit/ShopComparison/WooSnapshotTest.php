@@ -163,6 +163,45 @@ it('matches shop items to the database by sku, then ean, and parents via variati
         ->and($item(60)->match_status)->toBe('no_key');
 });
 
+it('stores no product id when a match is ambiguous', function () {
+    DB::table('products')->insert([
+        ['id' => 900, 'sku' => null, 'product_number' => 'A900', 'ean' => null, 'product_name' => 'Teil A'],
+        ['id' => 901, 'sku' => null, 'product_number' => 'B901', 'ean' => null, 'product_name' => 'Teil B'],
+        ['id' => 950, 'sku' => null, 'product_number' => 'C950', 'ean' => null, 'product_name' => 'Zwilling'],
+    ]);
+    DB::table('product_variations')->insert([
+        ['id' => 9001, 'product_id' => 900, 'sku' => 'SPLIT-1', 'ean' => null],
+        ['id' => 9011, 'product_id' => 901, 'sku' => 'SPLIT-2', 'ean' => null],
+        ['id' => 9501, 'product_id' => 950, 'sku' => 'TWIN', 'ean' => null],
+        ['id' => 9502, 'product_id' => 950, 'sku' => 'TWIN', 'ean' => null],
+    ]);
+
+    $api = [
+        'products' => [1 => [
+            ['id' => 70, 'type' => 'variable', 'name' => 'Geteilt', 'sku' => ''],
+            ['id' => 80, 'type' => 'simple', 'name' => 'Zwilling', 'sku' => 'TWIN'],
+        ]],
+        'products/70/variations' => [1 => [
+            ['id' => 71, 'sku' => 'SPLIT-1'],
+            ['id' => 72, 'sku' => 'SPLIT-2'],
+        ]],
+    ];
+    $snapshot = (new WooSnapshotService(fakeShopApi($api)))->run(new Shop(['name' => 'Test']));
+    (new WooSnapshotMatcher)->match($snapshot);
+
+    $item = fn (int $wooId) => WooSnapshotItem::where('woo_id', $wooId)->first();
+
+    expect($item(71)->matched_product_id)->toBe(900)
+        ->and($item(72)->matched_product_id)->toBe(901)
+        ->and($item(70)->match_status)->toBe('ambiguous')
+        ->and($item(70)->matched_product_id)->toBeNull()
+        ->and($item(70)->candidate_count)->toBe(2)
+        ->and($item(80)->match_status)->toBe('ambiguous')
+        ->and($item(80)->matched_product_id)->toBeNull()
+        ->and($item(80)->candidate_count)->toBe(2)
+        ->and(WooSnapshotStats::for($snapshot)['db_products_matched'])->toBe(2);
+});
+
 it('summarizes the comparison including products only in the database', function () {
     seedDatabase();
     $snapshot = (new WooSnapshotService(fakeShopApi(shopFixture())))->run(new Shop(['name' => 'Test']));

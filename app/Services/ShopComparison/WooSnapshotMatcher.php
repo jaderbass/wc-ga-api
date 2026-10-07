@@ -87,10 +87,12 @@ final class WooSnapshotMatcher
                     $counts = $childProducts->get($parent->woo_id);
 
                     if ($counts && $counts->isNotEmpty()) {
+                        $single = $counts->count() === 1;
+
                         $this->save($parent->id, [
-                            'status' => $counts->count() === 1 ? WooSnapshotItem::MATCH_VIA_VARIATIONS : WooSnapshotItem::MATCH_AMBIGUOUS,
+                            'status' => $single ? WooSnapshotItem::MATCH_VIA_VARIATIONS : WooSnapshotItem::MATCH_AMBIGUOUS,
                             'method' => WooSnapshotItem::MATCH_VIA_VARIATIONS,
-                            'product' => (int) $counts->keys()->first(),
+                            'product' => $single ? (int) $counts->keys()->first() : null,
                             'variation' => null,
                             'candidates' => $counts->count(),
                         ]);
@@ -150,13 +152,12 @@ final class WooSnapshotMatcher
                 $byVariation[$variationId] = $productId;
             }
 
-            $products = array_values(array_unique($byVariation));
             $single = count($byVariation) === 1;
 
             return [
                 'status' => $single ? $method : WooSnapshotItem::MATCH_AMBIGUOUS,
                 'method' => $method,
-                'product' => count($products) === 1 ? $products[0] : null,
+                'product' => $single ? reset($byVariation) : null,
                 'variation' => $single ? array_key_first($byVariation) : null,
                 'candidates' => count($byVariation),
             ];
