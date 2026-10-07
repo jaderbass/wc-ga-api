@@ -15,7 +15,7 @@ use Tests\TestCase;
  * This test does NOT hit the database.
  * It verifies:
  * - manufacturer is uppercased
- * - designation is first-letter uppercased only
+ * - designation is normalized to title case
  * - separator is " - "
  * - empty parts are skipped
  * - template differs by kind (simple vs variable/set)
@@ -89,7 +89,7 @@ class DefaultProductNameBuilderTest extends TestCase
     }
 
     #[Test]
-    public function it_normalizes_designation_words(): void
+    public function it_normalizes_designation_to_title_case(): void
     {
         $ctx = new ProductNameContext(
             kind: ProductKind::Simple,

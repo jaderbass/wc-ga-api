@@ -2,89 +2,195 @@
 
 namespace App\Imports\Manufacturer;
 
-use App\Models\Product;
+use App\Importers\Contracts\CsvImporterContract;
+use App\Importers\Contracts\HandlesUploadedFile;
+use App\Importers\GenericCsvProductImporter;
+use App\Support\ImportLog;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
- * Importer für KASK-Produktdaten.
+ * Hersteller-Importer für Kask (CSV).
  *
- * Dieser Importer liest CSV-Dateien mit Produktdaten von KASK,
- * mappt die CSV-Spalten auf die Datenbankfelder der Products-Tabelle
- * und speichert sie. Maße und Gewichte werden als Strings übernommen.
+ * Verwendet das Kask-spezifische Mapping aus
+ * config/import_mappings/kask.php.
  */
-class ImporterForKask
+class ImporterForKask extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
-  /**
-   * Verarbeitet eine hochgeladene CSV-Datei.
-   *
-   * Liest die Datei zeilenweise ein, mappt die Werte und speichert sie
-   * als neue Produkte in der Datenbank. Fehler werden im Log protokolliert.
-   *
-   * @param string $filePath Pfad zur hochgeladenen CSV-Datei im Storage
-   * @return void
-   */
-  public function handleUploadedFile(string $filePath): void
-  {
-    Log::info('CSV-Import gestartet', [
-      'importer' => self::class,
-      'file' => $filePath,
-      'model' => Product::class,
-    ]);
+    protected ?int $manufacturerId = null;
 
-    $handle = fopen(storage_path('app/' . $filePath), 'r');
-    $header = null;
-    $rowCount = 0;
+    protected array $mapping = [];
 
-    while (($row = fgetcsv($handle, 1000, ';')) !== false) {
-      if (!$header) {
-        $header = $row;
-        continue;
-      }
+    public function __construct(int $manufacturerId)
+    {
+        parent::__construct(
+            mappingFile: 'kask',
+            manufacturerId: $manufacturerId
+        );
 
-      $row = array_combine($header, $row);
-      $mappedData = $this->mapRow($row);
-      $rowCount++;
-
-      try {
-        $product = Product::create($mappedData);
-        Log::debug('Importiert', $product->toArray());
-      } catch (\Throwable $e) {
-        Log::error("Fehler beim Import in Zeile {$rowCount}", [
-          'exception' => $e->getMessage(),
-          'row' => $row
-        ]);
-      }
+        $this->mapping = config('import_mappings.kask', []);
     }
 
-    fclose($handle);
+    /**
+     * Verarbeitet eine hochgeladene Kask-CSV-Datei.
+     */
+    public function handleUploadedFile(UploadedFile $file): void
+    {
+        ImportLog::debug('ImporterForKask.handleUploadedFile ENTER', [
+            'mapping_keys' => array_keys($this->mapping),
+        ]);
 
-    Log::info('CSV-Import abgeschlossen');
-  }
+        $filename = uniqid('kask_', true) . '.csv';
+        $stored = $file->storeAs('imports', $filename);
 
-  /**
-   * Mappt eine CSV-Zeile auf die Felder der Products-Tabelle.
-   *
-   * @param array $row Array der CSV-Zeile (Spaltenname => Wert)
-   * @return array Gemappte Produktdaten
-   */
-  private function mapRow(array $row): array
-  {
-    return [
-      'product_name' => $row['DESCRIPTION'] ?? 'Unbenanntes Produkt',
-      'product_number' => $row['PART #'] ?? null,
-      'description' => $row['DESCRIPTION'] ?? null,
-      'ean' => $row['EAN CODE'] ?? null,
-      'width' => $row['SWIDHT'] ?? null,
-      'length' => $row['SLENGHT'] ?? null,
-      'height' => $row['SHEIGHT'] ?? null,
-      'pcs_per_box' => $row['PCS X BOX'] ?? null,
-      'box_width' => $row['MWIDHT'] ?? null,
-      'box_length' => $row['MLENGHT'] ?? null,
-      'box_height' => $row['MHEIGHT'] ?? null,
-      'weight' => $row['GROSS WEIGHT'] ?? null,
-      'manufacturer_id' => 2,
-      'slug' => $row['DESCRIPTION'] ?? uniqid('produkt-'),
-      'status' => 'draft',
-    ];
-  }
+        Log::info('Import gestartet', [
+            'class'           => static::class,
+            'manufacturer_id' => (string) $this->manufacturerId,
+            'sourceType'      => 'csv',
+            'source'          => $stored,
+        ]);
+
+        $this->import(Storage::path($stored));
+    }
+
+    /**
+     * CSV-Import über einen absoluten Pfad.
+     */
+    public function import(string $filePath): void
+    {
+        // Kask-Mapping unmittelbar vor dem Import nochmals erzwingen.
+        $this->mapping = config('import_mappings.kask', []);
+
+        ImportLog::debug('ImporterForKask import mapping', [
+            'product_map'    => $this->mapping['product'] ?? null,
+            'variation_map'  => $this->mapping['variation'] ?? null,
+            'var_fields_map' => $this->mapping['variation_fields'] ?? null,
+        ]);
+
+        parent::import($filePath);
+    }
+
+    /**
+     * Ergänzt Kask-spezifische Varianteninformationen aus DESCRIPTION
+     * und übergibt die Zeile anschließend an den Generic Importer.
+     */
+    protected function importVariation(
+        \App\Models\Product $product,
+        array $row
+    ) {
+        $description = trim((string) ($row['DESCRIPTION'] ?? ''));
+
+        if ($description !== '') {
+            $parts = array_map('trim', explode(',', $description));
+
+            /*
+            * Erwartetes Format:
+            *
+            * Produktname, 202-Yellow, Tg
+            * Produktname, 240-Black/White, 00
+            */
+            $colorPart = $parts[1] ?? null;
+            $sizePart  = $parts[2] ?? null;
+
+            if ($colorPart !== null && $colorPart !== '') {
+                if (preg_match('/^(\d+)-(.*)$/', $colorPart, $matches)) {
+                    $row['KASK_COLOR_CODE'] = trim($matches[1]);
+                    $row['KASK_COLOR']      = trim($matches[2]);
+                } else {
+                    $row['KASK_COLOR'] = $colorPart;
+                }
+            }
+
+            if ($sizePart !== null && $sizePart !== '') {
+                $row['KASK_SIZE'] = $sizePart;
+            }
+        }
+
+        return parent::importVariation($product, $row);
+    }
+
+    /**
+     * Bereitet Kask-Hauptprodukte vor dem Upsert auf.
+     *
+     * Regeln:
+     * - vorhandene Basiszeile (z. B. WAC00001-) bevorzugen
+     * - wenn keine Basiszeile existiert, Parent-SKU aus dem Gruppenschlüssel bilden
+     * - Variantenanteile aus der Beschreibung entfernen
+     * - variantenspezifische EAN am Parent nicht übernehmen
+     */
+    protected function beforeProductUpsert(
+        string $groupKey,
+        \Illuminate\Support\Collection $rows,
+        array $productPayload,
+        \Illuminate\Support\Collection $variationRows
+    ): array {
+        $baseRow = $rows->first(function (array $row): bool {
+            $partNumber = trim((string) ($row['PART #'] ?? ''));
+
+            return $partNumber !== ''
+                && preg_match('/-$/', $partNumber) === 1;
+        });
+
+        if ($baseRow !== null) {
+            $partNumber = trim((string) ($baseRow['PART #'] ?? ''));
+
+            if ($partNumber !== '') {
+                $productPayload['product_number'] = $partNumber;
+            }
+
+            $description = trim((string) ($baseRow['DESCRIPTION'] ?? ''));
+
+            if ($description !== '') {
+                $productPayload['product_name'] = $description;
+                $productPayload['original_product_name'] = $description;
+                $productPayload['description'] = $description;
+            }
+
+            $ean = trim((string) ($baseRow['EAN CODE'] ?? ''));
+
+            $productPayload['ean'] = $ean !== ''
+                ? $ean
+                : null;
+
+            return $productPayload;
+        }
+
+        /*
+        * Keine Basiszeile vorhanden:
+        * Parent aus Gruppenschlüssel und erster Variantenzeile ableiten.
+        */
+        $productPayload['product_number'] = $groupKey . '-';
+
+        $firstRow = $rows->first();
+
+        $description = trim((string) ($firstRow['DESCRIPTION'] ?? ''));
+
+        if ($description !== '') {
+            /*
+            * Typisches Kask-Format:
+            *
+            * "SUN SHIELD HI V, 221-Yellow Fluo, Tg"
+            * -> "SUN SHIELD HI V"
+            */
+            $parts = array_map('trim', explode(',', $description));
+
+            $parentName = $parts[0] ?? $description;
+
+            if ($parentName !== '') {
+                $productPayload['product_name'] = $parentName;
+                $productPayload['original_product_name'] = $parentName;
+                $productPayload['description'] = $parentName;
+            }
+        }
+
+        /*
+        * Eine Varianten-EAN und ein Varianten-Gewicht
+        * dürfen nicht zum synthetischen Parent übernommen werden.
+        */
+        $productPayload['ean'] = null;
+        $productPayload['weight'] = null;
+
+        return $productPayload;
+    }
 }

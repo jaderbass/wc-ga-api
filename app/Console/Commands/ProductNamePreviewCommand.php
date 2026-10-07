@@ -45,20 +45,19 @@ class ProductNamePreviewCommand extends Command
             return self::FAILURE;
         }
 
-        return $this->previewProduct((int) $productId, $builder, $registry, $debug);
+        return $this->previewProduct((int) $productId, $builder, $debug);
     }
 
     private function previewProduct(
         int $productId,
         DefaultProductNameBuilder $builder,
-        NameTemplateRegistry $registry,
         bool $debug
     ): int {
         $product = Product::query()
             ->with(['manufacturer', 'variations'])
             ->find($productId);
 
-        if (!$product) {
+        if (! $product) {
             $this->error("Produkt mit ID {$productId} wurde nicht gefunden.");
 
             return self::FAILURE;
@@ -66,7 +65,6 @@ class ProductNamePreviewCommand extends Command
 
         $ctx = ProductNameContext::fromProduct($product);
         $result = $builder->build($ctx);
-        $template = $registry->get($ctx);
 
         $this->renderPreview(
             source: 'Produkt',
@@ -76,7 +74,7 @@ class ProductNamePreviewCommand extends Command
             resultName: $result->productName,
             parts: $result->parts,
             tokens: $result->tokens,
-            template: $template,
+            template: $result->template,
             separator: $result->separator,
             expected: null,
             debug: $debug,
@@ -96,12 +94,12 @@ class ProductNamePreviewCommand extends Command
 
         $case = $cases[$caseKey] ?? null;
 
-        if (!is_array($case)) {
+        if (! is_array($case)) {
             $this->error("Unbekannter Testfall: {$caseKey}");
             $this->newLine();
             $this->info('Verfügbare Testfälle:');
             foreach (array_keys($cases) as $key) {
-                $this->line(' - ' . $key);
+                $this->line(' - '.$key);
             }
 
             return self::FAILURE;
@@ -143,7 +141,7 @@ class ProductNamePreviewCommand extends Command
         );
 
         if ($expected !== '') {
-            $this->line('Vergleich:     ' . ($result->productName === $expected ? 'OK' : 'ABWEICHUNG'));
+            $this->line('Vergleich:     '.($result->productName === $expected ? 'OK' : 'ABWEICHUNG'));
         }
 
         $this->newLine();
@@ -161,7 +159,7 @@ class ProductNamePreviewCommand extends Command
 
         foreach ($cases as $key => $case) {
             $label = (string) ($case['label'] ?? $key);
-            $this->line($key . '  =>  ' . $label);
+            $this->line($key.'  =>  '.$label);
         }
 
         $this->newLine();
@@ -170,8 +168,8 @@ class ProductNamePreviewCommand extends Command
     }
 
     /**
-     * @param array<int, string> $parts
-     * @param array{separator:string, template:array<int, string>} $template
+     * @param  array<int, string>  $parts
+     * @param  array{separator:string, template:array<int, string>}  $template
      */
     private function renderPreview(
         string $source,
@@ -190,19 +188,19 @@ class ProductNamePreviewCommand extends Command
         $this->info('Produktname-Vorschau');
         $this->line(str_repeat('-', 60));
 
-        $this->line('Quelle:        ' . $source);
-        $this->line('Referenz:      ' . $label);
+        $this->line('Quelle:        '.$source);
+        $this->line('Referenz:      '.$label);
         if ($productType !== '') {
-            $this->line('Produkttyp:    ' . $productType);
+            $this->line('Produkttyp:    '.$productType);
         }
-        $this->line('Kind:          ' . $ctx->kind->value);
-        $this->line('Hersteller:    ' . $ctx->manufacturerName);
-        $this->line('Kategorie:     ' . ($ctx->categoryName !== '' ? $ctx->categoryName : '-'));
-        $this->line('Bezeichnung:   ' . $ctx->designation);
+        $this->line('Kind:          '.$ctx->kind->value);
+        $this->line('Hersteller:    '.$ctx->manufacturerName);
+        $this->line('Kategorie:     '.($ctx->categoryName !== '' ? $ctx->categoryName : '-'));
+        $this->line('Bezeichnung:   '.$ctx->designation);
         $limit = $ctx->kind->propertyLimit();
 
         $this->line(sprintf(
-            "Eigenschaften (max %d): %s",
+            'Eigenschaften (max %d): %s',
             $limit,
             $ctx->properties ? implode(' | ', $ctx->properties) : '-'
         ));
@@ -212,7 +210,7 @@ class ProductNamePreviewCommand extends Command
         foreach (['manufacturer', 'category', 'designation', 'p1', 'p2', 'p3'] as $token) {
             $this->line(sprintf(
                 '  %-12s %s',
-                $token . ':',
+                $token.':',
                 $tokens[$token] ?? '-'
             ));
         }
@@ -231,20 +229,20 @@ class ProductNamePreviewCommand extends Command
                 ? $separator
                 : '-'
         ));
-        $this->line('Ergebnis:      ' . $resultName);
+        $this->line('Ergebnis:      '.$resultName);
 
         if ($expected !== null && $expected !== '') {
-            $this->line('Erwartet:      ' . $expected);
+            $this->line('Erwartet:      '.$expected);
         }
 
         if ($debug) {
             $this->newLine();
             $this->info('Debug');
             $this->line(str_repeat('-', 60));
-            $this->line('Separator:     ' . $separator);
-            $this->line('Template:      ' . ($template !== [] ? implode(', ', $template) : '-'));
-            $this->line('Parts:         ' . ($parts !== [] ? implode(' | ', $parts) : '-'));
-            $this->line('ManufacturerID:' . ($ctx->manufacturerId ?? '-'));
+            $this->line('Separator:     '.$separator);
+            $this->line('Template:      '.($template !== [] ? implode(', ', $template) : '-'));
+            $this->line('Parts:         '.($parts !== [] ? implode(' | ', $parts) : '-'));
+            $this->line('ManufacturerID:'.($ctx->manufacturerId ?? '-'));
         }
     }
 }

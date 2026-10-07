@@ -16,6 +16,8 @@ class RecentProductsWidget extends BaseWidget
             ->query(
                 Product::query()->latest()->limit(5)
             )
+            ->defaultPaginationPageOption(10)
+            ->paginated([5, 10, 25, 50])
             ->columns([
                 Tables\Columns\TextColumn::make('product_number')
                     ->label('Artikelnummer')

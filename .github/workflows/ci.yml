@@ -99,15 +99,10 @@ jobs:
           fi
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- '*.php')
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CHANGED_FILES=$(git diff --name-only "${HEAD_SHA}^" "$HEAD_SHA" -- '*.php')
           else
-            BEFORE="${{ github.event.before }}"
-
-            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- '*.php')
-            else
-              CHANGED_FILES=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- '*.php')
-            fi
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- '*.php')
           fi
 
           if [ -n "$CHANGED_FILES" ]; then

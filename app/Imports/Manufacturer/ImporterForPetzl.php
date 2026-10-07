@@ -4,6 +4,9 @@ namespace App\Imports\Manufacturer;
 
 use App\Importers\GenericCsvProductImporter;
 use Illuminate\Support\Facades\Log;
+use App\Models\Product;
+use App\Models\PetzlCategoryMapping;
+use Illuminate\Support\Collection;
 
 /**
  * Importer für Petzl-Produktdaten (CSV), unterstützt variable Produkte.
@@ -189,4 +192,79 @@ class ImporterForPetzl extends GenericCsvProductImporter
 
     return $normalizedPath;
   }
+
+    /**
+     * Verarbeitet Petzl-spezifische Daten nach dem Produkt-Upsert.
+     *
+     * Stellt die Kategorie-Zuordnungen sicher und speichert die
+     * Petzl-Quellkategorie sowie -unterkategorie am Produkt, damit
+     * ein späterer entkoppelter Beschreibungssync die passende
+     * Produktseite gezielt auflösen kann.
+     *
+     * @param Product $product Importiertes oder aktualisiertes Produkt.
+     * @param Collection<int, array<string, mixed>> $rows CSV-Zeilen der Produktgruppe.
+     * @param array<string, mixed> $productPayload Aufbereitete Produktdaten aus dem Mapping.
+     */
+    protected function afterProductUpserted(
+        Product $product,
+        Collection $rows,
+        array $productPayload
+    ): void {
+        $rows->each(function (array $row): void {
+            $this->ensureCategoryMapping($row);
+        });
+
+        $firstRow = $rows->first() ?? [];
+
+        $productName = $productPayload['product_name']
+            ?? $rows->first()['Product name']
+            ?? null;
+
+        Log::info('Storing Petzl source category mapping.', [
+            'product_id' => $product->id,
+            'product_name' => $productName,
+            'category' => $firstRow['Category'] ?? null,
+            'subcategory' => $firstRow['Subcategory'] ?? null,
+        ]);
+
+        $product->update([
+            'petzl_source_category' => filled($firstRow['Category'] ?? null)
+                ? trim((string) $firstRow['Category'])
+                : null,
+
+            'petzl_source_subcategory' => filled($firstRow['Subcategory'] ?? null)
+                ? trim((string) $firstRow['Subcategory'])
+                : null,
+        ]);
+    }
+
+    /**
+     * Stellt sicher, dass die Petzl-Kategorie/Subkategorie aus der CSV
+     * als Mapping-Datensatz vorhanden ist.
+     *
+     * Fehlende Übersetzungen werden bewusst leer gelassen und später
+     * über Filament gepflegt.
+     *
+     * @param array<string, mixed> $row CSV-Zeile aus dem Petzl-Import.
+     */
+    protected function ensureCategoryMapping(array $row): ?PetzlCategoryMapping
+    {
+        $category = trim((string) ($row['Category'] ?? ''));
+        $subcategory = trim((string) ($row['Subcategory'] ?? ''));
+
+        if ($category === '') {
+            return null;
+        }
+
+        return PetzlCategoryMapping::firstOrCreate(
+            [
+                'source_category' => $category,
+                'source_subcategory' => $subcategory !== '' ? $subcategory : null,
+            ],
+            [
+                'is_reviewed' => false,
+                'is_active' => true,
+            ],
+        );
+    }
 }
