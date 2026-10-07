@@ -2,6 +2,7 @@
 
 namespace App\Services\ProductNaming;
 
+use App\Models\ColorTranslation;
 use App\Models\Product;
 use App\Support\ProductNameNormalizer;
 
@@ -135,6 +136,10 @@ final class ProductPropertyExtractor
                     continue;
                 }
 
+                if ($type === 'farbe') {
+                    $value = ColorTranslation::display($value);
+                }
+
                 $groups[$type][$value] = true;
             }
 
@@ -157,6 +162,10 @@ final class ProductPropertyExtractor
 
                 if ($type === null) {
                     continue;
+                }
+
+                if ($type === 'farbe') {
+                    $value = ColorTranslation::display($value);
                 }
 
                 $groups[$type][$value] = true;
@@ -200,6 +209,8 @@ final class ProductPropertyExtractor
                     continue;
                 }
 
+                $normalized = ColorTranslation::displayFor($attrSlug, $normalized);
+
                 $candidate = $this->candidateFromSlug($attrSlug, $normalized);
                 if ($candidate === null) {
                     continue;
@@ -230,7 +241,7 @@ final class ProductPropertyExtractor
                     continue;
                 }
 
-                $candidate = $this->candidateFromAliensKey(trim($k), $val);
+                $candidate = $this->candidateFromAliensKey(trim($k), ColorTranslation::displayFor($k, $val));
                 if ($candidate === null) {
                     continue;
                 }

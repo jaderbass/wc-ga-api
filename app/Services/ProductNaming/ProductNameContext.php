@@ -2,8 +2,8 @@
 
 namespace App\Services\ProductNaming;
 
-use App\Models\Product;
 use App\Models\Manufacturer;
+use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Services\Categories\CategoryResolver;
 
@@ -24,7 +24,7 @@ use App\Services\Categories\CategoryResolver;
 final class ProductNameContext
 {
     /**
-     * @param array<int, string|null> $properties
+     * @param  array<int, string|null>  $properties
      */
     public function __construct(
         public readonly ProductKind $kind,
@@ -43,9 +43,6 @@ final class ProductNameContext
      * - designation is taken from `original_product_name` (preferred),
      *   falls back to `product_name` and finally `slug`.
      * - properties are extracted via ProductPropertyExtractor (pivot or attributes_json fallback).
-     *
-     * @param  Product  $product
-     * @return self
      */
     public static function fromProduct(Product $product): self
     {
@@ -67,19 +64,11 @@ final class ProductNameContext
 
         $categoryName = self::resolveCategoryName($designation);
 
-        $variationsCount = $product->relationLoaded('variations')
-            ? $product->variations->count()
-            : $product->variations()->count();
-
-        $kind = match ($product->product_type) {
-            'variable' => ($variationsCount <= 1 ? ProductKind::Simple : ProductKind::Variable),
-            'set'      => ProductKind::Set,
-            default    => ProductKind::Simple,
-        };
+        $kind = self::resolveKind($product);
 
         $properties = collect($extractor->extract($product) ?? [])
-            ->filter(fn($v) => is_string($v) && trim($v) !== '')
-            ->map(fn($v) => trim($v))
+            ->filter(fn ($v) => is_string($v) && trim($v) !== '')
+            ->map(fn ($v) => trim($v))
             ->unique()
             ->values()
             ->all();
@@ -95,6 +84,18 @@ final class ProductNameContext
     }
 
     /**
+     * Resolves the naming kind from the persisted product type.
+     */
+    public static function resolveKind(Product $product): ProductKind
+    {
+        return match ($product->product_type) {
+            'variable' => ProductKind::Variable,
+            'set' => ProductKind::Set,
+            default => ProductKind::Simple,
+        };
+    }
+
+    /**
      * Builds a naming context from a ProductVariation model.
      *
      * Notes:
@@ -102,9 +103,6 @@ final class ProductNameContext
      *   from the parent product.
      * - Properties come from the variation itself.
      * - Variations always use ProductKind::Variable for naming.
-     *
-     * @param ProductVariation $variation
-     * @return self
      */
     public static function fromVariation(ProductVariation $variation): self
     {

@@ -12,6 +12,7 @@ use Filament\PanelProvider;
 use Filament\Widgets;
 use Filament\Facades\Filament;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\MaxWidth;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -45,6 +46,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            ->maxContentWidth(MaxWidth::Full)
             ->registration()
             ->profile()
             ->login()
@@ -76,7 +78,7 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
-            ->favicon(asset('images/geoalpin-shop-favicon.svg'))
+            ->favicon(asset('favicon.svg'))
             // ->brandLogo(asset('images/geoalpin-shop-favicon.svg'))
             ->brandLogo(fn () => view('components.filament-brand-logo'))
             ->brandLogoHeight('2rem')

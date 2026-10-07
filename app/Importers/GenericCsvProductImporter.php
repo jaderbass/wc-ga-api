@@ -3,19 +3,23 @@
 namespace App\Importers;
 
 use App\Importers\Contracts\CsvImporterContract;
-use App\Support\ImportLog;
-use App\Services\Categories\ProductCategorySyncService;
-use App\Services\Product\AssemblyGroupResolver;
 use App\Models\Product;
-use App\Models\ProductVariation;
-use App\Models\ProductMeta;
 use App\Models\ProductAttribute;
 use App\Models\ProductAttributeValue;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Schema;
+use App\Models\ProductMeta;
+use App\Models\ProductVariation;
+use App\Services\Categories\ProductCategorySyncService;
+use App\Services\Petzl\PetzlCsvTranslationService;
+use App\Support\ImportLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+// BEGIN Petzl translation collection
+
+use Illuminate\Support\Str;
+
+// END Petzl translation collection
 
 /**
  * Class GenericCsvProductImporter
@@ -32,8 +36,8 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Initialisiert den Importer mit dem spezifischen Mapping und der Hersteller-ID.
      *
-     * @param string $mappingFile Der Name der Mapping-Datei (ohne .php), die unter `config/import_mappings/` liegt.
-     * @param int|null $manufacturerId Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
+     * @param  string  $mappingFile  Der Name der Mapping-Datei (ohne .php), die unter `config/import_mappings/` liegt.
+     * @param  int|null  $manufacturerId  Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
      */
     public function __construct(
         protected ?string $mappingFile = null,
@@ -71,14 +75,11 @@ class GenericCsvProductImporter implements CsvImporterContract
      *
      * Beispiel:
      *   $this->flag('auto_features', false)
-     *
-     * @param string $key
-     * @param mixed  $default
-     * @return mixed
      */
     protected function flag(string $key, mixed $default = null): mixed
     {
         $flags = $this->mapping['flags'] ?? [];
+
         return is_array($flags) && array_key_exists($key, $flags) ? $flags[$key] : $default;
     }
 
@@ -90,9 +91,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - Erkennt Edelrid an „Artikelbezeichnung“/„Artikelnummer“ (deutsche Header)
      * - Erkennt Petzl an „Product name“/„Reference“ (englische Header)
      * - Überschreibt nur dann das Mapping, wenn es noch nicht gesetzt ist
-     *
-     * @param string $filePath
-     * @return void
      */
     public function import(string $filePath): void
     {
@@ -137,15 +135,15 @@ class GenericCsvProductImporter implements CsvImporterContract
             $firstRow = $records[0] ?? [];
         }
 
-        if ((empty($this->mapping) || !is_array($this->mapping)) && $mappingType !== null) {
-            $this->mapping = config('import_mappings.' . $mappingType);
+        if ((empty($this->mapping) || ! is_array($this->mapping)) && $mappingType !== null) {
+            $this->mapping = config('import_mappings.'.$mappingType);
             ImportLog::debug('Auto-selected mapping', ['mapping' => $mappingType]);
         }
 
         ImportLog::debug('Active mapping snapshot', [
-            'product_keys'   => array_keys($this->mapping['product'] ?? []),
+            'product_keys' => array_keys($this->mapping['product'] ?? []),
             'variation_keys' => array_keys($this->mapping['variation'] ?? []),
-            'vf_keys'        => array_keys($this->mapping['variation_fields'] ?? []),
+            'vf_keys' => array_keys($this->mapping['variation_fields'] ?? []),
         ]);
 
         $normalized = collect($records)->map(function (array $row) {
@@ -159,6 +157,19 @@ class GenericCsvProductImporter implements CsvImporterContract
         ImportLog::debug('Normalized record sample', [
             'sample' => array_slice($normalized->values()->toArray(), 0, 3),
         ]);
+
+        // BEGIN Petzl translation collection
+
+        if ($mappingType === 'petzl' || $this->mappingFile === 'petzl') {
+            $translationService = app(PetzlCsvTranslationService::class);
+
+            $normalized->each(function (array $row) use ($translationService): void {
+                $translationService->rememberTerm('Category', $row['Category'] ?? null);
+                $translationService->rememberTerm('Designation', $row['Designation'] ?? null);
+            });
+        }
+
+        // END Petzl translation collection
 
         $groupBy = $this->mapping['group_by'] ?? null;
         $groupByCols = is_array($groupBy)
@@ -216,22 +227,40 @@ class GenericCsvProductImporter implements CsvImporterContract
             return $row;
         });
 
-        $grouped = $indexed->groupBy(function (array $row) use ($groupByCols, $fallbackCols, $firstNonEmpty, $clean): string {
-            if (!empty($groupByCols)) {
+        $groupByTransform = $this->mapping['group_by_transform'] ?? null;
+
+        $grouped = $indexed->groupBy(function (array $row) use (
+            $groupByCols,
+            $fallbackCols,
+            $firstNonEmpty,
+            $clean,
+            $groupByTransform
+        ): string {
+            if ($groupByTransform instanceof \Closure) {
+                $value = $groupByTransform($row);
+
+                if ($value !== null && trim((string) $value) !== '') {
+                    return $clean((string) $value);
+                }
+            }
+
+            if (! empty($groupByCols)) {
                 $val = $firstNonEmpty($row, $groupByCols);
+
                 if ($val !== '') {
                     return $clean($val);
                 }
             }
 
             $val = $firstNonEmpty($row, $fallbackCols);
+
             if ($val !== '') {
                 return $clean($val);
             }
 
             $i = $row['__row_index'] ?? 'x';
 
-            return '__ROW__:' . $i;
+            return '__ROW__:'.$i;
         });
 
         ImportLog::debug('CSV group keys (normalized)', [
@@ -241,7 +270,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         foreach ($grouped as $groupKey => $rows) {
             ImportLog::debug('Import group', [
                 'groupKey' => $groupKey,
-                'rows'     => $rows->count(),
+                'rows' => $rows->count(),
             ]);
 
             try {
@@ -249,12 +278,17 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $this->importProductGroup($groupKey, $rows);
                 });
             } catch (\Throwable $e) {
+                Log::info('Importing group', [
+                    'groupKey' => $groupKey,
+                    'rows' => $rows->count(),
+                ]);
                 Log::error('Import group failed', [
-                    'groupKey'  => $groupKey,
-                    'rows'      => $rows->count(),
+                    'groupKey' => $groupKey,
+                    'rows' => $rows->count(),
                     'exception' => $e->getMessage(),
-                    'file'      => $e->getFile(),
-                    'line'      => $e->getLine(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'first_row' => $rows->first(),
                 ]);
             }
         }
@@ -269,7 +303,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Zeilen zusammengeführt. Beim CSV-Export steht der Wert dann nur in der ersten
      * Zeile, die Folgezeile bleibt leer.
      *
-     * @param array<int, array<string, mixed>> $records
+     * @param  array<int, array<string, mixed>>  $records
      * @return array<int, array<string, mixed>>
      */
     private function fillForwardPetzlMergedColumns(array $records): array
@@ -290,6 +324,7 @@ class GenericCsvProductImporter implements CsvImporterContract
 
                 if ($value !== null && $value !== '') {
                     $lastSeen[$column] = $value;
+
                     continue;
                 }
 
@@ -305,14 +340,13 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Sucht in den CSV-Zeilen die wahrscheinlich echte Header-Zeile.
      *
-     * @param array<int, array<int, mixed>> $rows
-     * @return int
+     * @param  array<int, array<int, mixed>>  $rows
      */
     private function detectHeaderRowIndex(array $rows): int
     {
         foreach ($rows as $index => $row) {
             $cells = array_map(
-                fn($value) => is_string($value) ? trim($value) : (string) $value,
+                fn ($value) => is_string($value) ? trim($value) : (string) $value,
                 array_values($row)
             );
 
@@ -341,8 +375,7 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Erkennt anhand der CSV-Header grob den Hersteller bzw. das Mapping.
      *
-     * @param array<int, string> $headers
-     * @return string|null
+     * @param  array<int, string>  $headers
      */
     private function detectMappingTypeFromHeaders(array $headers): ?string
     {
@@ -384,8 +417,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Für andere Hersteller werden nur Duplikate mit Suffixen (_2, _3, ...)
      * eindeutig gemacht.
      *
-     * @param array<int, string> $headers
-     * @param string|null $mappingType
+     * @param  array<int, string>  $headers
      * @return array<int, string>
      */
     private function buildNormalizedHeaders(array $headers, ?string $mappingType): array
@@ -400,7 +432,7 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Macht doppelte Header eindeutig, z. B. "Unit", "Unit" => "Unit", "Unit_2".
      *
-     * @param array<int, string> $headers
+     * @param  array<int, string>  $headers
      * @return array<int, string>
      */
     private function makeHeadersUnique(array $headers): array
@@ -418,14 +450,15 @@ class GenericCsvProductImporter implements CsvImporterContract
                 $base = 'column';
             }
 
-            if (!isset($seen[$base])) {
+            if (! isset($seen[$base])) {
                 $seen[$base] = 1;
                 $out[] = $base;
+
                 continue;
             }
 
             $seen[$base]++;
-            $out[] = $base . '_' . $seen[$base];
+            $out[] = $base.'_'.$seen[$base];
         }
 
         return $out;
@@ -436,7 +469,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - Unit-Spalten der vorherigen Spalte zu
      * - leere Header (aus Excel-Merge) der vorherigen Spalte zu (z. B. Specifications_2)
      *
-     * @param array<int, string> $headers
+     * @param  array<int, string>  $headers
      * @return array<int, string>
      */
     private function makePetzlHeadersContextAware(array $headers): array
@@ -451,27 +484,28 @@ class GenericCsvProductImporter implements CsvImporterContract
             if ($header === '') {
                 // 👉 WICHTIG: leere Header vom Excel-Merge
                 if ($lastValueHeader !== null) {
-                    $base = $lastValueHeader . '_2';
+                    $base = $lastValueHeader.'_2';
                 } else {
                     $base = 'column';
                 }
             } elseif ($this->isUnitHeader($header)) {
                 $base = $lastValueHeader !== null
-                    ? $lastValueHeader . '_Unit'
+                    ? $lastValueHeader.'_Unit'
                     : 'Unit';
             } else {
                 $base = $header;
                 $lastValueHeader = $header;
             }
 
-            if (!isset($seen[$base])) {
+            if (! isset($seen[$base])) {
                 $seen[$base] = 1;
                 $out[] = $base;
+
                 continue;
             }
 
             $seen[$base]++;
-            $out[] = $base . '_' . $seen[$base];
+            $out[] = $base.'_'.$seen[$base];
         }
 
         return $out;
@@ -479,9 +513,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Prüft, ob ein Header eine generische Unit-Spalte ist.
-     *
-     * @param string $header
-     * @return bool
      */
     private function isUnitHeader(string $header): bool
     {
@@ -496,9 +527,8 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Liefert den ersten nicht-leeren Zellwert aus $row für eine Spalten-Spezifikation.
      * $spec kann 'Spaltenname' oder ['Alt1','Alt2', …] sein.
      *
-     * @param  array<string,mixed>      $row
-     * @param  string|array<int,string> $spec
-     * @return string|null
+     * @param  array<string,mixed>  $row
+     * @param  string|array<int,string>  $spec
      */
     private function cell(array $row, string|array $spec): ?string
     {
@@ -508,6 +538,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                     return trim((string) $row[$col]);
                 }
             }
+
             return null;
         }
 
@@ -524,18 +555,29 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - Upsert schema-robust (nur existierende Spalten) + forceFill()
      * - Klare Diagnose-Logs: welche Felder werden geschrieben / gefiltert / Variantenanzahl
      *
-     * @param string                                $groupKey
-     * @param \Illuminate\Support\Collection<int,array<string,mixed>> $rows
-     * @return void
+     * @param  \Illuminate\Support\Collection<int,array<string,mixed>>  $rows
      */
     protected function importProductGroup(string $groupKey, \Illuminate\Support\Collection $rows): void
     {
         $payload = null;
         $writablePayload = null;
 
+        $variationRowFilter = $this->mapping['variation_row_filter'] ?? null;
+
+        $variationRows = $rows;
+
+        if ($variationRowFilter instanceof \Closure) {
+            $variationRows = $rows
+                ->filter(fn (array $row) => $variationRowFilter($row))
+                ->values();
+        }
+
+        $productType = $variationRows->isNotEmpty()
+            ? 'variable'
+            : 'simple';
 
         // reference kann String oder Array sein
-        $referenceKey  = $this->mapping['reference'] ?? null;
+        $referenceKey = $this->mapping['reference'] ?? null;
         $referenceCols = is_array($referenceKey)
             ? $referenceKey
             : ((is_string($referenceKey) && $referenceKey !== '') ? [$referenceKey] : []);
@@ -551,7 +593,7 @@ class GenericCsvProductImporter implements CsvImporterContract
          * 'product' überschreibt ggf. Einträge aus 'fields'.
          */
         $baseProductMapping = $this->mapping['product'] ?? [];
-        $fieldMapping       = $this->mapping['fields'] ?? [];
+        $fieldMapping = $this->mapping['fields'] ?? [];
 
         // Effektives Produkt-Mapping: zuerst alle Felder, dann explizite Produkt-Felder
         $productMapping = array_merge($fieldMapping, $baseProductMapping);
@@ -567,14 +609,15 @@ class GenericCsvProductImporter implements CsvImporterContract
             // erste Zeile in der Gruppe mit nicht-leerem Wert (robust) finden
             $sourceRow = $rows->first(function (array $row) use ($candidates) {
                 $v = $this->firstNonEmptyFromRow($row, $candidates);
-                return $v !== null && trim((string)$v) !== '';
+
+                return $v !== null && trim((string) $v) !== '';
             });
 
             $resolved = null;
             if ($sourceRow) {
                 $val = $this->firstNonEmptyFromRow($sourceRow, $candidates);
-                if ($val !== null && trim((string)$val) !== '') {
-                    $resolved = trim((string)$val);
+                if ($val !== null && trim((string) $val) !== '') {
+                    $resolved = trim((string) $val);
                 }
             }
 
@@ -582,7 +625,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             $finalForField = $resolved;
 
             // Optional: Transform für dieses Feld anwenden
-            if (!empty($this->mapping['transforms'][$dbField])) {
+            if (! empty($this->mapping['transforms'][$dbField])) {
                 $transform = $this->mapping['transforms'][$dbField];
 
                 // Variante: [ClassName::class, 'method']
@@ -603,7 +646,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             if (is_array($finalForField)) {
                 // Unterscheide numerische Arrays (z. B. Liste von Bild-URLs)
                 // von assoziativen Arrays (z. B. dimensions_raw + *_mm)
-                $keys        = array_keys($finalForField);
+                $keys = array_keys($finalForField);
                 $isSequential = $keys === range(0, count($finalForField) - 1);
 
                 if ($isSequential) {
@@ -621,18 +664,18 @@ class GenericCsvProductImporter implements CsvImporterContract
 
             // Diagnose-Log: zeigt pro Feld, welche Kandidaten probiert wurden und was rauskam
             ImportLog::debug('Mapping check', [
-                'group'      => $groupKey,
-                'field'      => $dbField,
+                'group' => $groupKey,
+                'field' => $dbField,
                 'candidates' => $candidates,
-                'resolved'   => $resolved, // Originalwert vor Transform
+                'resolved' => $resolved, // Originalwert vor Transform
             ]);
         }
 
         // Fallback: Shortdescription aus Description (max 255, HTML raus)
         if (
-            (!array_key_exists('short_description', $productPayload) ||
-                trim((string)($productPayload['short_description'] ?? '')) === '')
-            && !empty($productPayload['description'])
+            (! array_key_exists('short_description', $productPayload) ||
+                trim((string) ($productPayload['short_description'] ?? '')) === '')
+            && ! empty($productPayload['description'])
         ) {
             $productPayload['short_description'] = \Illuminate\Support\Str::limit(
                 strip_tags((string) $productPayload['description']),
@@ -642,48 +685,55 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         // original_product_name muss gesetzt sein, sonst wird später der berechnete Name erneut als Designation verwendet.
         if (
-            (!array_key_exists('original_product_name', $productPayload) || trim((string) ($productPayload['original_product_name'] ?? '')) === '')
+            (! array_key_exists('original_product_name', $productPayload) || trim((string) ($productPayload['original_product_name'] ?? '')) === '')
             && \Illuminate\Support\Facades\Schema::hasColumn('products', 'original_product_name')
         ) {
             $productPayload['original_product_name'] = trim((string) $groupKey);
         }
 
+        $productPayload = $this->beforeProductUpsert(
+            $groupKey,
+            $rows,
+            $productPayload,
+            $variationRows
+        );
+
         // Name/Slug/Feste Werte
         $name = $productPayload['product_name'] ?? trim($groupKey) ?: 'Unnamed Product';
-        $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-' . uniqid());
+        $slug = \Illuminate\Support\Str::slug($name) ?: \Illuminate\Support\Str::slug('product-'.uniqid());
 
         $finalProductPayload = array_merge($productPayload, [
-            'product_name'    => $name,
+            'product_name' => $name,
             // Achtung: diese Keys schreiben wir nur, wenn Spalten existieren (siehe unten)
-            'product_type'    => 'variable',
+            'product_type' => $productType,
             'manufacturer_id' => $this->manufacturerId,
-            'status'          => 'draft',
+            'status' => 'draft',
         ]);
 
         $authorId = $this->resolveAuthorId();
 
         // --- Upsert schema-robust + Diagnose ---
         /** @var \App\Models\Product $tmpModel */
-        $tmpModel   = app(\App\Models\Product::class);
-        $tableName  = $tmpModel->getTable();
-        $columns    = \Illuminate\Support\Facades\Schema::getColumnListing($tableName);
-        $columnSet  = array_flip($columns);
+        $tmpModel = app(\App\Models\Product::class);
+        $tableName = $tmpModel->getTable();
+        $columns = \Illuminate\Support\Facades\Schema::getColumnListing($tableName);
+        $columnSet = array_flip($columns);
 
         // Welche Felder KÖNNEN wir wirklich schreiben?
         $writablePayload = array_intersect_key($finalProductPayload, $columnSet);
-        $droppedKeys     = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
+        $droppedKeys = array_diff(array_keys($finalProductPayload), array_keys($writablePayload));
 
         ImportLog::debug('Product payload before upsert', [
-            'group'           => $groupKey,
-            'slug'            => $slug,
-            'final_payload'   => $finalProductPayload,
+            'group' => $groupKey,
+            'slug' => $slug,
+            'final_payload' => $finalProductPayload,
             'writable_payload' => $writablePayload,
-            'dropped_keys'    => $droppedKeys,
+            'dropped_keys' => $droppedKeys,
         ]);
 
         if (($finalProductPayload['product_number'] ?? null) === '717620003600') {
             ImportLog::debug('DEBUG Bud payload', [
-                'group'         => $groupKey,
+                'group' => $groupKey,
                 'final_payload' => $finalProductPayload,
             ]);
         }
@@ -692,12 +742,12 @@ class GenericCsvProductImporter implements CsvImporterContract
         $baseCreate = [];
         foreach (
             [
-                'slug'            => $slug,
+                'slug' => $slug,
                 'manufacturer_id' => $this->manufacturerId,
-                'product_name'    => $name,
-                'product_type'    => $finalProductPayload['product_type'] ?? null,
-                'status'          => $finalProductPayload['status'] ?? null,
-                'author_id'       => $authorId,
+                'product_name' => $name,
+                'product_type' => $finalProductPayload['product_type'] ?? null,
+                'status' => $finalProductPayload['status'] ?? null,
+                'author_id' => $authorId,
             ] as $col => $val
         ) {
             if (isset($columnSet[$col]) && $val !== null) {
@@ -710,22 +760,26 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         $query = \App\Models\Product::query();
 
-        if ($productLookupBy === 'sku') {
+        $productNumber = trim((string) ($writablePayload['product_number'] ?? ''));
+
+        if ($productNumber !== '') {
+            $query
+                ->where('manufacturer_id', $this->manufacturerId)
+                ->where('product_number', $productNumber);
+        } elseif ($productLookupBy === 'sku') {
             // Für Aliens: Parent-SKU = Prefix + Produkt-ID
             $productIdSpec = $this->mapping['group_by'] ?? null;
-            $productIdCol  = is_array($productIdSpec) ? ($productIdSpec[0] ?? null) : $productIdSpec;
+            $productIdCol = is_array($productIdSpec) ? ($productIdSpec[0] ?? null) : $productIdSpec;
             $aliensProductId = $productIdCol ? $this->firstNonEmptyFromRow($rows->first() ?? [], [$productIdCol]) : null;
             $aliensProductId = $aliensProductId !== null ? trim((string) $aliensProductId) : null;
 
             $productSkuPrefix = (string) ($this->flag('product_sku_prefix', '') ?? '');
-            $prefixedSku = ($productSkuPrefix !== '' && $aliensProductId) ? $productSkuPrefix . $aliensProductId : null;
+            $prefixedSku = ($productSkuPrefix !== '' && $aliensProductId) ? $productSkuPrefix.$aliensProductId : null;
 
             if ($prefixedSku) {
                 $query->where('sku', $prefixedSku);
-                // stellen wir sicher, dass SKU im Payload gesetzt ist
                 $writablePayload['sku'] = $prefixedSku;
             } else {
-                // Fallback auf slug
                 $query->where('slug', $slug);
             }
         } else {
@@ -750,18 +804,20 @@ class GenericCsvProductImporter implements CsvImporterContract
             $product->forceFill($writablePayload)->save();
         } else {
             $product = \App\Models\Product::create($baseCreate);
-            if (!empty($writablePayload)) {
+            if (! empty($writablePayload)) {
                 $product->forceFill($writablePayload)->save();
             }
         }
 
         app(ProductCategorySyncService::class)->sync($product);
 
+        $this->afterProductUpserted($product, $rows, $productPayload);
+
         Log::info('Product upserted', [
-            'id'              => $product->id,
-            'name'            => $product->product_name,
-            'product_number'  => $product->product_number,
-            'ean'             => $product->external_url,
+            'id' => $product->id,
+            'name' => $product->product_name,
+            'product_number' => $product->product_number,
+            'ean' => $product->external_url,
         ]);
 
         /**
@@ -794,7 +850,9 @@ class GenericCsvProductImporter implements CsvImporterContract
                     ]);
                 }
                 foreach ($row as $colName => $raw) {
-                    if (!is_string($colName)) continue;
+                    if (! is_string($colName)) {
+                        continue;
+                    }
 
                     $col = is_string($colName) ? $colName : '';
                     $col = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $col) ?? $col;
@@ -804,7 +862,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $colNorm = preg_replace('/\s+/u', ' ', $col) ?? $col;
                     $colNorm = str_replace('Feature :', 'Feature:', $colNorm);
 
-                    if (!str_starts_with($colNorm, 'Feature:')) {
+                    if (! str_starts_with($colNorm, 'Feature:')) {
                         continue;
                     }
 
@@ -812,31 +870,34 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
                     $val = trim($val);
 
-                    if ($val === '') continue;
+                    if ($val === '') {
+                        continue;
+                    }
 
                     $featureName = trim(substr($colNorm, strlen('Feature:')));
                     $featureName = preg_replace('/\s+/u', ' ', $featureName) ?? $featureName;
                     $featureName = trim($featureName);
 
-                    if ($featureName === '') continue;
+                    if ($featureName === '') {
+                        continue;
+                    }
 
                     if (($this->flag('debug_features', false) === true)) {
                         Log::info('Aliens auto_features: writing meta', [
                             'product_id' => $product->id,
                             'col' => $colNorm ?? $col,
                             'featureName' => $featureName,
-                            'meta_key' => 'feature.' . Str::slug($featureName, '_'),
+                            'meta_key' => 'feature.'.Str::slug($featureName, '_'),
                             'value_preview' => mb_substr($val, 0, 120),
                         ]);
                     }
 
-
                     ProductMeta::updateOrCreate(
                         [
-                            'product_id'   => $product->id,
+                            'product_id' => $product->id,
                             'variation_id' => null,
-                            'scope'        => 'product',
-                            'key'          => 'feature.' . Str::slug($featureName, '_'),
+                            'scope' => 'product',
+                            'key' => 'feature.'.Str::slug($featureName, '_'),
                         ],
                         ['value' => $val]
                     );
@@ -854,7 +915,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                 $fp = is_string($fp) ? trim($fp) : null;
 
                 if (($fn ?? '') !== '' || ($fv ?? '') !== '' || ($fp ?? '') !== '') {
-                    $featuresListPayload  = [
+                    $featuresListPayload = [
                         [
                             'name' => $fn,
                             'value' => $fv,
@@ -864,10 +925,10 @@ class GenericCsvProductImporter implements CsvImporterContract
 
                     ProductMeta::updateOrCreate(
                         [
-                            'product_id'   => $product->id,
+                            'product_id' => $product->id,
                             'variation_id' => null,
-                            'scope'        => 'product',
-                            'key'          => 'features.list_json',
+                            'scope' => 'product',
+                            'key' => 'features.list_json',
                         ],
                         ['value' => json_encode($featuresListPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]
                     );
@@ -880,24 +941,25 @@ class GenericCsvProductImporter implements CsvImporterContract
         $imported = 0;
         $loggedRefDiag = false;
 
-        foreach ($rows as $row) {
+        foreach ($variationRows as $row) {
             $ref = $this->firstNonEmptyFromRow($row, $referenceCols);
             $ref = $ref !== null ? trim((string) $ref) : '';
 
-            if (!$loggedRefDiag) {
+            if (! $loggedRefDiag) {
                 /**
                  * ! Mit Flag !!!
                  */
                 ImportLog::debug('Reference detection (group)', [
-                    'group'          => $groupKey,
+                    'group' => $groupKey,
                     'reference_cols' => $referenceCols,
-                    'sample_ref'     => $ref,
+                    'sample_ref' => $ref,
                 ]);
                 $loggedRefDiag = true;
             }
 
             if ($ref === '') {
                 $skipped++;
+
                 continue;
             }
 
@@ -919,9 +981,9 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         if ($skipped > 0 || $imported > 0) {
             Log::info('Variation summary', [
-                'group'          => $groupKey,
-                'imported'       => $imported,
-                'skipped'        => $skipped,
+                'group' => $groupKey,
+                'imported' => $imported,
+                'skipped' => $skipped,
                 'relation_count' => $relCount,
             ]);
         }
@@ -934,8 +996,8 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Führt ein `updateOrCreate` für die Variante durch und stößt die Zuweisung
      * der Attribute (z.B. Farbe, Größe) an.
      *
-     * @param Product $product Das übergeordnete Hauptprodukt.
-     * @param array   $row     Die CSV-Zeile, die die Daten der Variante enthält.
+     * @param  Product  $product  Das übergeordnete Hauptprodukt.
+     * @param  array  $row  Die CSV-Zeile, die die Daten der Variante enthält.
      * @return void
      */
     protected function importVariation(Product $product, array $row)
@@ -950,7 +1012,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         $variationSkuPrefix = (string) ($this->flag('variation_sku_prefix', '') ?? '');
-        $variationSku = $variationSkuPrefix !== '' ? $variationSkuPrefix . $ref : $ref;
+        $variationSku = $variationSkuPrefix !== '' ? $variationSkuPrefix.$ref : $ref;
 
         // 1) Payload aus variation_fields
         // Unterstützte Formate:
@@ -1006,10 +1068,28 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         // 2) Variante erstellen oder aktualisieren (bestehende Logik beibehalten)
-        $variation = ProductVariation::updateOrCreate(
-            ['product_id' => $product->id, 'sku' => $variationSku],
-            $variationPayload
-        );
+        $variation = ProductVariation::query()
+            ->where('sku', $variationSku)
+            ->first();
+
+        if ($variation) {
+            $variation->forceFill(array_merge(
+                $variationPayload,
+                [
+                    'product_id' => $product->id,
+                ]
+            ))->save();
+        } else {
+            $variation = new ProductVariation;
+
+            $variation->forceFill(array_merge(
+                $variationPayload,
+                [
+                    'product_id' => $product->id,
+                    'sku' => $variationSku,
+                ]
+            ))->save();
+        }
 
         // Attribute zuweisen
         $this->handleVariationAttributes($variation, $row);
@@ -1019,14 +1099,12 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Liest Varianten-Attribute aus der CSV-Zeile und verknüpft deren Werte
      * mit der Variante (Pivot-Tabelle).
      *
-     * @param  \App\Models\ProductVariation  $variation
-     * @param  array<string,mixed>           $row
-     * @return void
+     * @param  array<string,mixed>  $row
      */
     protected function handleVariationAttributes(\App\Models\ProductVariation $variation, array $row): void
     {
         $attributeValueIds = [];
-        $variationMapping  = $this->mapping['variation'] ?? [];
+        $variationMapping = $this->mapping['variation'] ?? [];
 
         if ($this->isPetzlVariationRow($row)) {
 
@@ -1052,12 +1130,12 @@ class GenericCsvProductImporter implements CsvImporterContract
 
         if ($this->flag('auto_attribute_groups', false) === true) {
             foreach ($row as $colName => $raw) {
-                if (!is_string($colName)) {
+                if (! is_string($colName)) {
                     continue;
                 }
 
                 $colNameClean = trim($colName);
-                if (!str_starts_with($colNameClean, 'Attribute Group:')) {
+                if (! str_starts_with($colNameClean, 'Attribute Group:')) {
                     continue;
                 }
 
@@ -1080,13 +1158,14 @@ class GenericCsvProductImporter implements CsvImporterContract
                 if (str_contains($attributeDisplayName, '|')) {
                     ProductMeta::updateOrCreate(
                         [
-                            'product_id'   => $variation->product_id,
+                            'product_id' => $variation->product_id,
                             'variation_id' => $variation->id,
-                            'scope'        => 'variation',
-                            'key'          => 'attribute_group_raw.' . Str::slug($attributeDisplayName, '_'),
+                            'scope' => 'variation',
+                            'key' => 'attribute_group_raw.'.Str::slug($attributeDisplayName, '_'),
                         ],
                         ['value' => $value]
                     );
+
                     continue;
                 }
 
@@ -1098,7 +1177,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             if ($this->isPetzlVariationRow($row)) {
                 $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
             } else {
-                if (!empty($attributeValueIds)) {
+                if (! empty($attributeValueIds)) {
                     $variation->attributeValues()->sync(array_values(array_unique($attributeValueIds)));
                 }
             }
@@ -1112,8 +1191,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - typische Petzl-Spalten wie "Product name", "Reference"
      * - sowie vorhandene Specifications-Spalten
      *
-     * @param array<string, mixed> $row
-     * @return bool
+     * @param  array<string, mixed>  $row
      */
     protected function isPetzlVariationRow(array $row): bool
     {
@@ -1122,6 +1200,8 @@ class GenericCsvProductImporter implements CsvImporterContract
             && (
                 array_key_exists('Specifications', $row)
                 || array_key_exists('Specifications_2', $row)
+                || array_key_exists('Specifications 1', $row)
+                || array_key_exists('Specifications 2', $row)
             );
     }
 
@@ -1133,7 +1213,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Nicht eindeutig zuordenbare Specifications werden bewusst ignoriert, damit
      * sie nicht fälschlich als Farbe gespeichert werden.
      *
-     * @param array<string, mixed> $row
+     * @param  array<string, mixed>  $row
      * @return array<int, int> Liste von ProductAttributeValue IDs
      */
     protected function resolvePetzlVariationAttributeValueIds(array $row): array
@@ -1143,6 +1223,8 @@ class GenericCsvProductImporter implements CsvImporterContract
         $specCandidates = [
             $row['Specifications'] ?? null,
             $row['Specifications_2'] ?? null,
+            $row['Specifications 1'] ?? null,
+            $row['Specifications 2'] ?? null,
         ];
 
         $specValues = [];
@@ -1176,46 +1258,54 @@ class GenericCsvProductImporter implements CsvImporterContract
 
             if ($this->looksLikePetzlSize($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('size', $value)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlClosure($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('closure', $value)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlDiameter($value)) {
                 $normalizedDiameter = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
                 $ids[] = $this->firstOrCreateAttributeValue('diameter', $normalizedDiameter)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlLength($value)) {
                 $normalizedLength = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
                 $ids[] = $this->firstOrCreateAttributeValue('length', $normalizedLength)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlWeight($value)) {
                 $normalizedWeight = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
                 $ids[] = $this->firstOrCreateAttributeValue('weight', $normalizedWeight)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlType($value)) {
                 $normalizedType = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
                 $ids[] = $this->firstOrCreateAttributeValue('type', $normalizedType)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlVolume($value)) {
                 $normalizedVolume = \App\Support\ProductNameNormalizer::normalizeAttributeValue($value);
                 $ids[] = $this->firstOrCreateAttributeValue('volume', $normalizedVolume)->id;
+
                 continue;
             }
 
             if ($this->looksLikePetzlColor($value)) {
                 $ids[] = $this->firstOrCreateAttributeValue('color', $value)->id;
+
                 continue;
             }
 
@@ -1236,9 +1326,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - S, M, L, XL, XXL
      * - numerische Größen (0, 1, 2, ...)
      * - kombinierte Größen wie S/M oder M/L
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlSize(string $value): bool
     {
@@ -1265,9 +1352,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Erkennt typische Petzl-Verschluss-/Lock-Angaben.
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlClosure(string $value): bool
     {
@@ -1295,9 +1379,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Unterstützt auch kombinierte Farben wie:
      * - Gray/Yellow
      * - Black, Yellow
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlColor(string $value): bool
     {
@@ -1333,7 +1414,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         ];
 
         foreach ($colorWords as $word) {
-            if (preg_match('/\b' . preg_quote($word, '/') . '\b/u', $value)) {
+            if (preg_match('/\b'.preg_quote($word, '/').'\b/u', $value)) {
                 return true;
             }
         }
@@ -1368,9 +1449,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - 120cm
      * - 30-200 cm
      * - 10 to 13 m
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlLength(string $value): bool
     {
@@ -1386,9 +1464,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Erkennt allgemeine Petzl-Typ-/Ausprägungsangaben.
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlType(string $value): bool
     {
@@ -1436,9 +1511,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - 15 liters
      * - 30 liters
      * - 65 liters
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlVolume(string $value): bool
     {
@@ -1457,9 +1529,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Beispiele:
      * - 12 mm
      * - 10,5 mm
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlDiameter(string $value): bool
     {
@@ -1478,9 +1547,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Beispiele:
      * - 350 g
      * - 1,2 kg
-     *
-     * @param string $value
-     * @return bool
      */
     protected function looksLikePetzlWeight(string $value): bool
     {
@@ -1500,7 +1566,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * - "AXIS 11 mm" → ["type" => "AXIS", "diameter" => "11 mm"]
      * - "PARALLEL 10.5 mm" → ["type" => "PARALLEL", "diameter" => "10.5 mm"]
      *
-     * @param string $value
      * @return array{type?: string, diameter?: string}
      */
     protected function parsePetzlRopeSpec(string $value): array
@@ -1511,10 +1576,15 @@ class GenericCsvProductImporter implements CsvImporterContract
             return [];
         }
 
+        // Bereiche wie "10 to 11.5 mm" oder "10-11.5 mm" sind kein Seiltyp + Durchmesser.
+        if (preg_match('/^\d+(?:[.,]\d+)?(?:\s*-\s*|\s+to\s+)\d+(?:[.,]\d+)?\s*mm$/i', $value)) {
+            return [];
+        }
+
         // Match: TEXT + Zahl + mm
         if (preg_match('/^(.+?)\s+(\d+(?:[.,]\d+)?)\s*mm$/i', $value, $matches)) {
             $type = trim($matches[1]);
-            $diameter = str_replace(',', '.', $matches[2]) . ' mm';
+            $diameter = str_replace(',', '.', $matches[2]).' mm';
 
             return [
                 'type' => $type,
@@ -1531,10 +1601,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Kapselt die Standardlogik für:
      * - ProductAttribute
      * - ProductAttributeValue
-     *
-     * @param string $attributeDisplayName
-     * @param string $value
-     * @return \App\Models\ProductAttributeValue
      */
     protected function firstOrCreateAttributeValue(string $attributeDisplayName, string $value): \App\Models\ProductAttributeValue
     {
@@ -1562,9 +1628,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Gibt den fachlichen Anzeigenamen für ein Attribut zurück.
-     *
-     * @param string $attributeDisplayName
-     * @return string
      */
     protected function resolveAttributeDisplayName(string $attributeDisplayName): string
     {
@@ -1583,10 +1646,6 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Normalisiert CSV-Headernamen robust.
-     *
-     * @param string $header
-     * @param bool $toLower
-     * @return string
      */
     protected function normalizeHeader(string $header, bool $toLower = true): string
     {
@@ -1609,13 +1668,10 @@ class GenericCsvProductImporter implements CsvImporterContract
 
     /**
      * Normalisiert einen CSV-Zellwert robust.
-     *
-     * @param mixed $value
-     * @return mixed
      */
     protected function normalizeCellValue(mixed $value): mixed
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 
@@ -1635,9 +1691,9 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Beispiel:
      *   firstNonEmptyFromRow($row, ['Farbe Bezeichnung','Farb-Code','Farbcode','Farbe'])
      *
-     * @param array<string,mixed> $row         Assoziatives Array (CSV-Zeile)
-     * @param array<int,string>   $candidates  Mögliche Spaltennamen (in Priorität)
-     * @return ?string                         Erster gefundener, getrimmter Wert oder null
+     * @param  array<string,mixed>  $row  Assoziatives Array (CSV-Zeile)
+     * @param  array<int,string>  $candidates  Mögliche Spaltennamen (in Priorität)
+     * @return ?string Erster gefundener, getrimmter Wert oder null
      */
     protected function firstNonEmptyFromRow(array $row, array $candidates): ?string
     {
@@ -1648,11 +1704,11 @@ class GenericCsvProductImporter implements CsvImporterContract
         // Map: normalisierter Header -> Original-Header
         $keyMap = [];
         foreach (array_keys($row) as $key) {
-            $keyMap[$this->normalizeHeader((string)$key)] = $key;
+            $keyMap[$this->normalizeHeader((string) $key)] = $key;
         }
 
         foreach ($candidates as $cand) {
-            $normCand = $this->normalizeHeader((string)$cand);
+            $normCand = $this->normalizeHeader((string) $cand);
 
             // 1) bevorzugt über normalisierte Header-Map
             if (isset($keyMap[$normCand])) {
@@ -1663,7 +1719,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
                 }
                 if ($val !== null && $val !== '') {
-                    return (string)$val;
+                    return (string) $val;
                 }
             }
 
@@ -1675,7 +1731,7 @@ class GenericCsvProductImporter implements CsvImporterContract
                     $val = preg_replace('/[\x{00}-\x{1F}\x{7F}\x{A0}\x{FEFF}]/u', '', $val) ?? $val;
                 }
                 if ($val !== null && $val !== '') {
-                    return (string)$val;
+                    return (string) $val;
                 }
             }
         }
@@ -1691,7 +1747,7 @@ class GenericCsvProductImporter implements CsvImporterContract
      */
     protected function loadMapping(string $name): array
     {
-        $fromConfig = config("import_mappings." . $name);
+        $fromConfig = config('import_mappings.'.$name);
         if (is_array($fromConfig)) {
             return $fromConfig;
         }
@@ -1702,6 +1758,7 @@ class GenericCsvProductImporter implements CsvImporterContract
             if (! is_array($map)) {
                 throw new \RuntimeException("Mapping file {$path} must return an array.");
             }
+
             return $map;
         }
 
@@ -1716,9 +1773,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      * Die Varianten-Relation wird bewusst frisch geladen, da diese Methode
      * während des Imports mehrfach pro Produkt aufgerufen wird und bereits
      * geladene Relations sonst veraltete Daten enthalten können.
-     *
-     * @param \App\Models\Product $product
-     * @return void
      */
     protected function persistComputedProductName(\App\Models\Product $product): void
     {
@@ -1742,9 +1796,6 @@ class GenericCsvProductImporter implements CsvImporterContract
      *
      * Voraussetzung:
      * - Der Produktname wurde zuvor über persistComputedProductName() aktualisiert.
-     *
-     * @param \App\Models\Product $product
-     * @return void
      */
     protected function persistComputedAssemblyGroup(\App\Models\Product $product): void
     {
@@ -1773,5 +1824,43 @@ class GenericCsvProductImporter implements CsvImporterContract
         $product->assembly_group = $resolvedAssemblyGroup;
         $product->assembly_group_source = 'auto';
         $product->save();
+    }
+
+    /**
+     * Ermöglicht herstellerspezifische Anpassungen der Produkt-Payload
+     * unmittelbar vor dem Produkt-Upsert.
+     *
+     * Standardmäßig wird die Payload unverändert zurückgegeben.
+     *
+     * @param  \Illuminate\Support\Collection<int,array<string,mixed>>  $rows
+     * @param  array<string,mixed>  $productPayload
+     * @param  \Illuminate\Support\Collection<int,array<string,mixed>>  $variationRows
+     * @return array<string,mixed>
+     */
+    protected function beforeProductUpsert(
+        string $groupKey,
+        \Illuminate\Support\Collection $rows,
+        array $productPayload,
+        \Illuminate\Support\Collection $variationRows
+    ): array {
+        return $productPayload;
+    }
+
+    /**
+     * Hook nach dem Anlegen oder Aktualisieren eines Produkts.
+     *
+     * Kind-Importer können diese Methode überschreiben, um herstellerspezifische
+     * Folgeprozesse auszulösen, ohne den generischen Importfluss zu verändern.
+     *
+     * @param  Product  $product  Importiertes oder aktualisiertes Produkt.
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows  CSV-Zeilen der Produktgruppe.
+     * @param  array<string, mixed>  $productPayload  Aufbereitete Produktdaten aus dem Mapping.
+     */
+    protected function afterProductUpserted(
+        Product $product,
+        \Illuminate\Support\Collection $rows,
+        array $productPayload
+    ): void {
+        //
     }
 }
