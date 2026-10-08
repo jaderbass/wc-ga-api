@@ -43,24 +43,24 @@ return [
      * Felder des Hauptprodukts.
      */
     'product' => [
-        'product_number'        => 'PART #',
-        'product_name'          => 'DESCRIPTION',
+        'product_number' => 'PART #',
+        'product_name' => 'DESCRIPTION',
         'original_product_name' => 'DESCRIPTION',
-        'description'           => 'DESCRIPTION',
-        'ean'                   => 'EAN CODE',
+        'description' => 'DESCRIPTION',
+        'ean' => 'EAN CODE',
 
-        'weight'                => 'NET WEIGHT',
+        'weight' => 'NET WEIGHT',
 
         'dimension_height_mm' => 'SHEIGHT',
-        'dimension_width_mm'  => 'SWIDHT',
+        'dimension_width_mm' => 'SWIDHT',
         'dimension_length_mm' => 'SLENGHT',
 
         'box_height' => 'MHEIGHT',
-        'box_width'  => 'MWIDHT',
+        'box_width' => 'MWIDHT',
         'box_length' => 'MLENGHT',
 
-        'hs_code'               => 'TARIF CODE',
-        'country_of_origin'     => 'COUNTRY OF ORIGIN',
+        'hs_code' => 'TARIF CODE',
+        'country_of_origin' => 'COUNTRY OF ORIGIN',
     ],
 
     /*
@@ -124,9 +124,9 @@ return [
     ],
 
     'variation' => [
-        'Farbe'    => 'KASK_COLOR',
+        'Farbe' => 'KASK_COLOR',
         'Farbcode' => 'KASK_COLOR_CODE',
-        'Größe'    => 'KASK_SIZE',
+        'Größe' => 'KASK_SIZE',
     ],
 
     /*
