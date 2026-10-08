@@ -7,12 +7,14 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Einkaufspreise: Listenpreis + zwei Rabattstufen je Hersteller → EK.
  *
- * - manufacturers.purchase_discount_1 / _2: Rabatt in Prozent, nacheinander
+ * - manufacturers.purchase_discount_1 / _2: Standard-Rabatt in Prozent, nacheinander
  *   angewendet (Petzl: 35 %, dann 5 % vom bereits rabattierten Preis)
- * - list_price_cents: Listenpreis netto laut Preisliste
- * - purchase_price_cents: EK netto
- * - purchase_price_source: "calculated" (aus Listenpreis und Rabatten)
- *   oder "pricelist" (EK direkt aus der Liste, z. B. Aliens HEK)
+ * - products / product_variations:
+ *   - list_price_cents: Listenpreis netto
+ *   - purchase_discount_1 / _2: Sonderkondition (leer = vom Produkt bzw. Hersteller)
+ *   - purchase_price_cents: EK netto
+ *   - purchase_price_source: "calculated" (Listenpreis − Rabatte),
+ *     "pricelist" (EK direkt aus der Liste, z. B. Aliens HEK) oder "manual" (von Hand)
  */
 return new class extends Migration
 {
@@ -26,6 +28,8 @@ return new class extends Migration
         foreach (['products', 'product_variations'] as $tableName) {
             Schema::table($tableName, function (Blueprint $table) {
                 $table->unsignedInteger('list_price_cents')->nullable();
+                $table->decimal('purchase_discount_1', 5, 2)->nullable();
+                $table->decimal('purchase_discount_2', 5, 2)->nullable();
                 $table->unsignedInteger('purchase_price_cents')->nullable();
                 $table->string('purchase_price_source', 20)->nullable();
             });
@@ -36,7 +40,7 @@ return new class extends Migration
     {
         foreach (['products', 'product_variations'] as $tableName) {
             Schema::table($tableName, function (Blueprint $table) {
-                $table->dropColumn(['list_price_cents', 'purchase_price_cents', 'purchase_price_source']);
+                $table->dropColumn(['list_price_cents', 'purchase_discount_1', 'purchase_discount_2', 'purchase_price_cents', 'purchase_price_source']);
             });
         }
 
