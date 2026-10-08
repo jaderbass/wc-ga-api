@@ -17,8 +17,8 @@ interface PriceListParser
     public function manufacturerName(): ?string;
 
     /**
-     * @param  list<list<string|null>>  $rows  Zeilen des Tabellenblatts
+     * @param  array<string, list<list<string|null>>>  $sheets  Blattname => Zeilen
      * @return list<PriceListRow>
      */
-    public function parse(array $rows): array;
+    public function parse(array $sheets): array;
 }

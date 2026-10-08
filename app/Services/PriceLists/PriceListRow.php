@@ -21,11 +21,25 @@ final class PriceListRow
         public readonly ?string $unit = null,
         public readonly ?string $customsTariff = null,
         public readonly ?string $countryOfOrigin = null,
+        public readonly ?int $listPriceCents = null,
+        public readonly ?string $availableFrom = null,
     ) {}
 
-    public function isSoldOut(): bool
+    /**
+     * Nicht mehr lieferbar: Aliens "AUSVERKAUFT", Petzl "EOL" (End of Life).
+     */
+    public function isUnavailable(): bool
     {
-        return $this->marker !== null && str_starts_with($this->marker, 'AUSVERKAUFT');
+        return $this->marker !== null
+            && (str_starts_with($this->marker, 'AUSVERKAUFT') || str_starts_with($this->marker, 'EOL'));
+    }
+
+    /**
+     * Neu im Sortiment (Petzl "NEW"), ggf. erst ab {@see $availableFrom} lieferbar.
+     */
+    public function isNew(): bool
+    {
+        return $this->marker !== null && str_starts_with($this->marker, 'NEW');
     }
 
     public function isClearance(): bool
@@ -49,6 +63,8 @@ final class PriceListRow
             'ean' => $this->ean,
             'purchase_price_cents' => $this->purchasePriceCents,
             'retail_price_cents' => $this->retailPriceCents,
+            'list_price_cents' => $this->listPriceCents,
+            'available_from' => $this->availableFrom,
             'weight_g' => $this->weightGrams,
             'unit' => $this->unit,
             'customs_tariff' => $this->customsTariff,

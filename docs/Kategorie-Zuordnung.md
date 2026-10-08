@@ -48,16 +48,18 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
   - unbekannte Herstellerkategorien erscheinen beim Import automatisch als „offen“
 - **Neu zuordnen:** Button „Kategorien neu zuordnen“ auf der Seite oder `php artisan categories:resync`. Manuell gesetzte Kategorien bleiben immer erhalten. Es wird nichts in den Shop übertragen.
 
-- **Preislisten einlesen** (Aliens, Edelrid): ergänzt vorhandene Produkte, legt keine neuen an.
+- **Preislisten einlesen** (Aliens, Edelrid, Petzl): ergänzt vorhandene Produkte, legt keine neuen an.
   ```
   php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx --dry-run   # Probelauf, nur Bericht
   php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx             # speichern
   php artisan pricelist:apply edelrid storage/app/imports/<datei>.xlsx
+  php artisan pricelist:apply petzl storage/app/imports/<datei>.xlsx
   ```
   - Zuordnung je Zeile: Varianten-SKU = Artikelnr. → Produkt-SKU/Artikelnummer → Varianten-EAN → Produkt-EAN
-  - setzt die Herstellerkategorie (Aliens: Produktart aus dem Kurztext, Edelrid: Zwischenüberschrift) und legt die Einträge in der Hersteller-Zuordnung an; leere, ungeprüfte Einträge bekommen den Vorschlag aus `config/price_lists.php` (geprüfte werden nie überschrieben)
-  - `AUSVERKAUFT` (alle Zeilen eines Produkts) → `online_sellable = false`; `ABVERKAUF` → Kategorie „SALE“ (Zuordnungsart `import`, verschwindet beim nächsten Einlesen ohne Markierung)
-  - Listendaten (Artikelnr., Kurztext, HEK/UVP, Gewicht, Einheit, Zolltarif, Ursprungsland, Markierung) als Produkt-Meta `pricelist_<liste>`; leere EAN und leeres Variantengewicht werden ergänzt
+  - setzt die Herstellerkategorie (Aliens: Produktart aus dem Kurztext, Edelrid: Zwischenüberschrift, Petzl: `Category > Subcategory`) und legt die Einträge in der Hersteller-Zuordnung an; leere, ungeprüfte Einträge bekommen den Vorschlag aus `config/price_lists.php` (geprüfte werden nie überschrieben)
+  - `AUSVERKAUFT` (Aliens) bzw. `EOL` (Petzl), jeweils alle Zeilen eines Produkts → `online_sellable = false`; `ABVERKAUF` → Kategorie „SALE“ (Zuordnungsart `import`, verschwindet beim nächsten Einlesen ohne Markierung)
+  - Petzl `NEW` → normal, plus Hinweis „Neu – lieferbar ab TT.MM.JJJJ“ (Meta `pricelist_petzl_availability`); **offen:** beim späteren Shop-Import als Lieferzeit „ab …“ in WooCommerce setzen
+  - Listendaten (Artikelnr., Kurztext, HEK/UVP bzw. Listenpreis, Gewicht, Einheit, Zolltarif, Ursprungsland, Markierung, „verfügbar ab“) als Produkt-Meta `pricelist_<liste>`; leere EAN und leeres Variantengewicht werden ergänzt
   - Namen, Beschreibungen und Preise werden **nicht** überschrieben; kein Shop-Sync
   - nicht gefundene Zeilen: CSV unter `storage/app/exports/`
 
@@ -66,8 +68,14 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
 ## 4. Je Hersteller
 
 ### 4.1 Petzl
-- **Quelle:** Spalten `Category` / `Subcategory`
-- **Zuordnung:** besteht bereits (`petzl_category_mappings`, Menü „Produktkategorien“). Wird in die herstellerunabhängige Zuordnung überführt.
+- **Quelle:** Spalten `Category` / `Subcategory` (Import-CSV und Preisliste „PRO BASIC Price List 2027“, Blatt „Logistic Info“; Preise aus Blatt „Price List“) → Herstellerkategorie `Category > Subcategory`
+- Die Übersetzungstabelle `petzl_category_mappings` bleibt für die Petzl-Produktseiten bestehen.
+- **Zuordnung** (Maik, 08.10.2026; vollständig für alle 85 Unterkategorien in `config/price_lists.php` → `petzl.sources`), u. a.:
+  - Gurte: **nur NEWTON → Auffanggurt** (Petzl-Seite „Auffanggurte“); alle anderen Gurte → **Arbeitsgurt** + Einsatzgebiet (Fall-Arrest/Energy & Networks/Rope Access → PSAgA, Rescue → Rettung, Tree Care → Baumpflege)
+  - Positioning Lanyards → Positionierung; Hats & Balaclavas → Zubehör Schutzhelme
+  - alle „Spare Parts for …“ → Ersatzteil **und** Zubehör der Gruppe, sofern vorhanden (Helme, Gurte, Abseilgeräte, Stirnlampen, Karabiner)
+  - Tree-Care- und Rescue-Unterkategorien bekommen zusätzlich das Einsatzgebiet Baumpflege bzw. Rettung
+- **Status:** `EOL` → nicht in den Shop (wie AUSVERKAUFT); `NEW` → normal + Hinweis „lieferbar ab …“
 
 ### 4.2 Skylotec
 - **Quelle:** keine Kategoriespalte. eCl@ss (Spalte 15) nur teilweise brauchbar (~1.240 Zeilen in Sammelklassen „-90“, 295 leer).

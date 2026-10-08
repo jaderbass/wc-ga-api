@@ -8,7 +8,7 @@ use SimpleXMLElement;
 use ZipArchive;
 
 /**
- * Liest die Zeilen des ersten Tabellenblatts einer .xlsx- oder .csv-Datei.
+ * Liest die Zeilen der Tabellenblätter einer .xlsx- oder .csv-Datei.
  *
  * Bewusst ohne zusätzliche Bibliothek (PhpSpreadsheet): .xlsx ist ein ZIP mit
  * XML-Dateien, mehr als Text und Zahlen brauchen die Herstellerlisten nicht.
@@ -18,9 +18,23 @@ use ZipArchive;
 class SpreadsheetRowReader
 {
     /**
+     * Zeilen des ersten Tabellenblatts.
+     *
      * @return list<list<string|null>>
      */
     public static function read(string $path): array
+    {
+        $sheets = self::readSheets($path);
+
+        return reset($sheets) ?: [];
+    }
+
+    /**
+     * Alle Tabellenblätter in Dateireihenfolge (CSV: ein Blatt "csv").
+     *
+     * @return array<string, list<list<string|null>>> Blattname => Zeilen
+     */
+    public static function readSheets(string $path): array
     {
         if (! is_file($path)) {
             throw new RuntimeException("Datei nicht gefunden: {$path}");
@@ -28,7 +42,7 @@ class SpreadsheetRowReader
 
         return match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
             'xlsx' => self::readXlsx($path),
-            'csv', 'txt' => self::readCsv($path),
+            'csv', 'txt' => ['csv' => self::readCsv($path)],
             default => throw new RuntimeException('Nur .xlsx oder .csv werden unterstützt.'),
         };
     }
@@ -60,7 +74,7 @@ class SpreadsheetRowReader
     }
 
     /**
-     * @return list<list<string|null>>
+     * @return array<string, list<list<string|null>>>
      */
     protected static function readXlsx(string $path): array
     {
@@ -70,19 +84,35 @@ class SpreadsheetRowReader
             throw new RuntimeException("Excel-Datei kann nicht geöffnet werden: {$path}");
         }
 
+        $sheets = [];
+
         try {
             $sharedStrings = self::sharedStrings($zip);
-            $sheetXml = $zip->getFromName(self::firstSheetPath($zip));
 
-            if ($sheetXml === false) {
-                throw new RuntimeException('Kein Tabellenblatt in der Excel-Datei gefunden.');
+            foreach (self::sheetPaths($zip) as $name => $sheetPath) {
+                $sheetXml = $zip->getFromName($sheetPath);
+
+                if ($sheetXml !== false) {
+                    $sheets[$name] = self::sheetRows(new SimpleXMLElement($sheetXml), $sharedStrings);
+                }
             }
-
-            $sheet = new SimpleXMLElement($sheetXml);
         } finally {
             $zip->close();
         }
 
+        if ($sheets === []) {
+            throw new RuntimeException('Kein Tabellenblatt in der Excel-Datei gefunden.');
+        }
+
+        return $sheets;
+    }
+
+    /**
+     * @param  list<string>  $sharedStrings
+     * @return list<list<string|null>>
+     */
+    protected static function sheetRows(SimpleXMLElement $sheet, array $sharedStrings): array
+    {
         $rows = [];
 
         foreach ($sheet->sheetData->row as $row) {
@@ -144,28 +174,38 @@ class SpreadsheetRowReader
         return $strings;
     }
 
-    protected static function firstSheetPath(ZipArchive $zip): string
+    /**
+     * Blattname => Pfad im ZIP, in der Reihenfolge der Arbeitsmappe.
+     *
+     * @return array<string, string>
+     */
+    protected static function sheetPaths(ZipArchive $zip): array
     {
         $workbook = $zip->getFromName('xl/workbook.xml');
         $rels = $zip->getFromName('xl/_rels/workbook.xml.rels');
 
         if ($workbook === false || $rels === false) {
-            return 'xl/worksheets/sheet1.xml';
+            return ['Tabelle1' => 'xl/worksheets/sheet1.xml'];
         }
 
-        $workbookXml = new SimpleXMLElement($workbook);
-        $sheet = $workbookXml->sheets->sheet[0] ?? null;
-        $relationId = $sheet?->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'] ?? null;
+        $targets = [];
 
         foreach ((new SimpleXMLElement($rels))->Relationship as $relationship) {
-            if ((string) $relationship['Id'] === (string) $relationId) {
-                $target = ltrim((string) $relationship['Target'], '/');
+            $target = ltrim((string) $relationship['Target'], '/');
+            $targets[(string) $relationship['Id']] = str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
+        }
 
-                return str_starts_with($target, 'xl/') ? $target : 'xl/'.$target;
+        $paths = [];
+
+        foreach ((new SimpleXMLElement($workbook))->sheets->sheet as $sheet) {
+            $relationId = (string) ($sheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'] ?? '');
+
+            if (isset($targets[$relationId])) {
+                $paths[(string) $sheet['name']] = $targets[$relationId];
             }
         }
 
-        return 'xl/worksheets/sheet1.xml';
+        return $paths ?: ['Tabelle1' => 'xl/worksheets/sheet1.xml'];
     }
 
     /**
