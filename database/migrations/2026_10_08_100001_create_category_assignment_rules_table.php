@@ -15,6 +15,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Ein früherer Lauf konnte auf MariaDB nach der ersten Tabelle abbrechen
+        // (zu langer FK-Name in der Pivot-Tabelle) – Reste davon aufräumen.
+        Schema::dropIfExists('category_category_assignment_rule');
+
+        if (Schema::hasTable('category_assignment_rules')) {
+            Schema::drop('category_assignment_rules');
+        }
+
         Schema::create('category_assignment_rules', function (Blueprint $table) {
             $table->id();
             $table->foreignId('manufacturer_id')->nullable()->constrained()->cascadeOnDelete();
@@ -30,8 +38,13 @@ return new class extends Migration
         });
 
         Schema::create('category_category_assignment_rule', function (Blueprint $table) {
-            $table->foreignId('category_assignment_rule_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('category_id')->constrained()->cascadeOnDelete();
+            // explizite, kurze Namen: der automatische FK-Name wäre länger als 64 Zeichen
+            $table->foreignId('category_assignment_rule_id')
+                ->constrained('category_assignment_rules', 'id', 'ccar_rule_id_foreign')
+                ->cascadeOnDelete();
+            $table->foreignId('category_id')
+                ->constrained('categories', 'id', 'ccar_category_id_foreign')
+                ->cascadeOnDelete();
 
             $table->primary(['category_assignment_rule_id', 'category_id'], 'ccar_primary');
         });
