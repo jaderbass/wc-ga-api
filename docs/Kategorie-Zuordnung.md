@@ -48,6 +48,19 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
   - unbekannte Herstellerkategorien erscheinen beim Import automatisch als „offen“
 - **Neu zuordnen:** Button „Kategorien neu zuordnen“ auf der Seite oder `php artisan categories:resync`. Manuell gesetzte Kategorien bleiben immer erhalten. Es wird nichts in den Shop übertragen.
 
+- **Preislisten einlesen** (Aliens, Edelrid): ergänzt vorhandene Produkte, legt keine neuen an.
+  ```
+  php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx --dry-run   # Probelauf, nur Bericht
+  php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx             # speichern
+  php artisan pricelist:apply edelrid storage/app/imports/<datei>.xlsx
+  ```
+  - Zuordnung je Zeile: Varianten-SKU = Artikelnr. → Produkt-SKU/Artikelnummer → Varianten-EAN → Produkt-EAN
+  - setzt die Herstellerkategorie (Aliens: Produktart aus dem Kurztext, Edelrid: Zwischenüberschrift) und legt die Einträge in der Hersteller-Zuordnung an; leere, ungeprüfte Einträge bekommen den Vorschlag aus `config/price_lists.php` (geprüfte werden nie überschrieben)
+  - `AUSVERKAUFT` (alle Zeilen eines Produkts) → `online_sellable = false`; `ABVERKAUF` → Kategorie „SALE“ (Zuordnungsart `import`, verschwindet beim nächsten Einlesen ohne Markierung)
+  - Listendaten (Artikelnr., Kurztext, HEK/UVP, Gewicht, Einheit, Zolltarif, Ursprungsland, Markierung) als Produkt-Meta `pricelist_<liste>`; leere EAN und leeres Variantengewicht werden ergänzt
+  - Namen, Beschreibungen und Preise werden **nicht** überschrieben; kein Shop-Sync
+  - nicht gefundene Zeilen: CSV unter `storage/app/exports/`
+
 ---
 
 ## 4. Je Hersteller
@@ -229,3 +242,5 @@ Bestehend: Baumpflege, Bergsteigen, Feuerwehr, Klettern, PSAgA, Spezialkräfte, 
 - Zuordnung Singing Rock (eigene Liste)
 - Edelrid: Spalte `Einsatzbereich` für Einsatzgebiete nutzen?
 - Bildquelle für Produkte, die nicht im Live-Shop sind
+- Aliens-Zeilen ohne passendes Produkt in der Datenbank: neu anlegen oder nicht? (Entscheidung nach dem ersten Probelauf)
+- `online_sellable = false` wird beim späteren Shop-Import/Sync noch nicht berücksichtigt
