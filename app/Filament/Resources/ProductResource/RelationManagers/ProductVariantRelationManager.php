@@ -76,6 +76,20 @@ class ProductVariantRelationManager extends RelationManager
                         : '—')
                     ->alignEnd()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('list_price_cents')
+                    ->label('Listenpreis')
+                    ->formatStateUsing(fn ($state) => \App\Filament\Resources\ProductResource::formatCents($state !== null ? (int) $state : null))
+                    ->placeholder('—')
+                    ->alignEnd()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('purchase_price_cents')
+                    ->label('EK')
+                    ->formatStateUsing(fn ($state) => \App\Filament\Resources\ProductResource::formatCents($state !== null ? (int) $state : null))
+                    ->placeholder('—')
+                    ->alignEnd()
+                    ->sortable(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()

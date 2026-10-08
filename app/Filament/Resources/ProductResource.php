@@ -35,6 +35,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use App\Services\Pricing\PurchasePriceCalculator;
 use Filament\Forms\Components\Checkbox;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
@@ -401,6 +402,26 @@ HTML;
                                     ? number_format($record->manufacturer_price_cents / 100, 2, ',', '.') . ' €'
                                     : '—')
                                 ->helperText('Importierter Hersteller-/Einkaufspreis')
+                                ->columnSpan(3),
+
+                            Placeholder::make('list_price_cents_display')
+                                ->label('Listenpreis (netto)')
+                                ->content(fn (?Product $record) => self::formatCents($record?->list_price_cents))
+                                ->helperText('Aus der Preisliste des Herstellers')
+                                ->columnSpan(3),
+
+                            Placeholder::make('purchase_discounts_display')
+                                ->label('Rabatte')
+                                ->content(fn (?Product $record) => PurchasePriceCalculator::describeDiscounts($record?->manufacturer) ?? '—')
+                                ->helperText('Einkaufskonditionen des Herstellers (nacheinander)')
+                                ->columnSpan(3),
+
+                            Placeholder::make('purchase_price_cents_display')
+                                ->label('EK (netto)')
+                                ->content(fn (?Product $record) => self::formatCents($record?->purchase_price_cents))
+                                ->helperText(fn (?Product $record) => $record?->purchase_price_source === PurchasePriceCalculator::SOURCE_PRICELIST
+                                    ? 'Direkt aus der Preisliste'
+                                    : 'Listenpreis abzüglich Rabatte')
                                 ->columnSpan(3),
 
                         ]) //Grid
@@ -1562,6 +1583,16 @@ HTML;
             'create' => Pages\CreateProduct::route('/create'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Cent-Betrag als "45,39 €", leer/0 als "—".
+     */
+    public static function formatCents(?int $cents): string
+    {
+        return filled($cents) && $cents > 0
+            ? number_format($cents / 100, 2, ',', '.').' €'
+            : '—';
     }
 
     /**

@@ -2,12 +2,14 @@
 
 use App\Models\Category;
 use App\Models\CategoryAssignmentRule;
+use App\Models\Manufacturer;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\PriceListApplier;
+use App\Services\Pricing\PurchasePriceCalculator;
 use App\Support\Imports\SpreadsheetRowReader;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -36,6 +38,8 @@ beforeEach(function () {
         Schema::create('manufacturers', function ($t) {
             $t->id();
             $t->string('manufacturer');
+            $t->decimal('purchase_discount_1', 5, 2)->nullable();
+            $t->decimal('purchase_discount_2', 5, 2)->nullable();
             $t->timestamps();
         });
 
@@ -51,6 +55,9 @@ beforeEach(function () {
             $t->text('short_description')->nullable();
             $t->string('source_category')->nullable();
             $t->boolean('online_sellable')->nullable();
+            $t->unsignedInteger('list_price_cents')->nullable();
+            $t->unsignedInteger('purchase_price_cents')->nullable();
+            $t->string('purchase_price_source', 20)->nullable();
             $t->timestamps();
         });
 
@@ -60,6 +67,9 @@ beforeEach(function () {
             $t->string('sku')->nullable();
             $t->string('ean')->nullable();
             $t->integer('weight')->nullable();
+            $t->unsignedInteger('list_price_cents')->nullable();
+            $t->unsignedInteger('purchase_price_cents')->nullable();
+            $t->string('purchase_price_source', 20)->nullable();
             $t->timestamps();
         });
 
@@ -102,9 +112,9 @@ beforeEach(function () {
     (require base_path('database/migrations/2026_10_08_100001_create_category_assignment_rules_table.php'))->up();
 
     DB::table('manufacturers')->insert([
-        ['id' => 1, 'manufacturer' => 'Kong Italy'],
-        ['id' => 2, 'manufacturer' => 'Edelrid'],
-        ['id' => 3, 'manufacturer' => 'Petzl'],
+        ['id' => 1, 'manufacturer' => 'Kong Italy', 'purchase_discount_1' => null, 'purchase_discount_2' => null],
+        ['id' => 2, 'manufacturer' => 'Edelrid', 'purchase_discount_1' => null, 'purchase_discount_2' => null],
+        ['id' => 3, 'manufacturer' => 'Petzl', 'purchase_discount_1' => 35, 'purchase_discount_2' => 5],
     ]);
 
     foreach (['Allgemein', 'SALE', 'Statisch', 'Alukarabiner', 'Zubehör', 'Gurte', 'Zubehör Gurte', 'Handschuhe', 'Arbeitsgurt', 'Auffanggurt', 'PSAgA', 'Ersatzteil', 'Zubehör Schutzhelme'] as $name) {
@@ -203,6 +213,9 @@ it('enriches matched products, suggests mappings, handles markers and re-runs cl
         ->and($paddle->source_category)->toBe('Alukarabiner')
         ->and($variation->fresh()->ean)->toBe('8023577066943')
         ->and($variation->fresh()->weight)->toBe(135)
+        ->and($variation->fresh()->list_price_cents)->toBe(5400)
+        ->and($variation->fresh()->purchase_price_cents)->toBe(3500)
+        ->and($variation->fresh()->purchase_price_source)->toBe('pricelist')
         ->and($paddle->categories()->pluck('name')->sort()->values()->all())->toBe(['Alukarabiner', 'SALE'])
         ->and(DB::table('category_product')->where('product_id', $paddle->id)->pluck('assignment_type', 'category_id')->sort()->values()->all())->toBe(['auto', 'import'])
         ->and($rope->online_sellable)->toBeFalse()
@@ -315,6 +328,11 @@ it('applies the petzl list: newton is a fall-arrest harness, eol leaves the shop
         ->and($avao->categories()->pluck('name')->sort()->values()->all())->toBe(['Arbeitsgurt', 'PSAgA'])
         ->and($foam->categories()->pluck('name')->sort()->values()->all())->toBe(['Ersatzteil', 'Zubehör Schutzhelme'])
         ->and($foam->fresh()->online_sellable)->toBeFalse()
+        ->and(ProductVariation::where('sku', 'C073AA00')->value('list_price_cents'))->toBe(12050)
+        ->and(ProductVariation::where('sku', 'C073AA00')->value('purchase_price_cents'))->toBe(7441)
+        ->and($avao->fresh()->list_price_cents)->toBe(21000)
+        ->and($avao->fresh()->purchase_price_cents)->toBe(12968)
+        ->and($avao->fresh()->purchase_price_source)->toBe('calculated')
         ->and(DB::table('product_meta')->where('product_id', $newton->id)->where('key', 'pricelist_petzl_availability')->value('value'))
         ->toBe('Neu – lieferbar ab 01.03.2027');
 
@@ -324,4 +342,26 @@ it('applies the petzl list: newton is a fall-arrest harness, eol leaves the shop
     app(PriceListApplier::class)->apply(new PetzlPriceListParser, $sheets);
 
     expect(DB::table('product_meta')->where('product_id', $newton->id)->where('key', 'pricelist_petzl_availability')->exists())->toBeFalse();
+});
+
+it('calculates the purchase price with two consecutive discounts', function () {
+    expect(PurchasePriceCalculator::calculate(7350, 35, 5))->toBe(4539)      // 73,50 × 0,65 × 0,95 = 45,38625
+        ->and(PurchasePriceCalculator::calculate(10000, '35,00', '5'))->toBe(6175)
+        ->and(PurchasePriceCalculator::calculate(10000, null, null))->toBe(10000)
+        ->and(PurchasePriceCalculator::calculate(null, 35, 5))->toBeNull()
+        ->and(PurchasePriceCalculator::describeDiscounts(Manufacturer::find(3)))->toBe('35 % + 5 %')
+        ->and(PurchasePriceCalculator::describeDiscounts(Manufacturer::find(1)))->toBeNull();
+});
+
+it('recalculates purchase prices when the discounts of a manufacturer change, but keeps prices from the list', function () {
+    $calculated = Product::create(['manufacturer_id' => 3, 'product_name' => 'VERTEX VENT', 'list_price_cents' => 7350]);
+    $variation = ProductVariation::create(['product_id' => $calculated->id, 'sku' => 'A010CA00', 'list_price_cents' => 7350, 'purchase_price_cents' => 1, 'purchase_price_source' => 'calculated']);
+    $fromList = Product::create(['manufacturer_id' => 3, 'product_name' => 'Sonderpreis', 'list_price_cents' => 7350, 'purchase_price_cents' => 3000, 'purchase_price_source' => 'pricelist']);
+
+    $petzl = Manufacturer::find(3);
+    $petzl->update(['purchase_discount_1' => 40, 'purchase_discount_2' => 0]);
+
+    expect($calculated->fresh()->purchase_price_cents)->toBe(4410)
+        ->and($variation->fresh()->purchase_price_cents)->toBe(4410)
+        ->and($fromList->fresh()->purchase_price_cents)->toBe(3000);
 });

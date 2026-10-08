@@ -60,7 +60,8 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
   - `AUSVERKAUFT` (Aliens) bzw. `EOL` (Petzl), jeweils alle Zeilen eines Produkts → `online_sellable = false`; `ABVERKAUF` → Kategorie „SALE“ (Zuordnungsart `import`, verschwindet beim nächsten Einlesen ohne Markierung)
   - Petzl `NEW` → normal, plus Hinweis „Neu – lieferbar ab TT.MM.JJJJ“ (Meta `pricelist_petzl_availability`); **offen:** beim späteren Shop-Import als Lieferzeit „ab …“ in WooCommerce setzen
   - Listendaten (Artikelnr., Kurztext, HEK/UVP bzw. Listenpreis, Gewicht, Einheit, Zolltarif, Ursprungsland, Markierung, „verfügbar ab“) als Produkt-Meta `pricelist_<liste>`; leere EAN und leeres Variantengewicht werden ergänzt
-  - Namen, Beschreibungen und Preise werden **nicht** überschrieben; kein Shop-Sync
+  - **Einkaufspreise:** Listenpreis (`list_price_cents`; Petzl „Unit Price“, Aliens „UVP netto“) und EK (`purchase_price_cents`) an Produkt bzw. Variante. Steht der EK in der Liste (Aliens „HEK netto“), wird er übernommen (`purchase_price_source = pricelist`); sonst EK = Listenpreis abzüglich der **zwei Rabattstufen des Herstellers, nacheinander** (`calculated`). Petzl: Rabatt 1 = 35 %, Rabatt 2 = 5 % → Listenpreis × 0,65 × 0,95 (= × 0,6175, nicht − 40 %); gerundet erst am Ende. Rabatte im Backend beim Hersteller unter „Einkaufskonditionen“; beim Speichern werden die EK neu berechnet, sonst `php artisan prices:recalculate-purchase [--manufacturer=Petzl]`. Nur im Backend sichtbar, geht nicht in den Shop.
+  - Namen, Beschreibungen und Shop-Preise werden **nicht** überschrieben; kein Shop-Sync
   - nicht gefundene Zeilen: CSV unter `storage/app/exports/`
 
 ---
