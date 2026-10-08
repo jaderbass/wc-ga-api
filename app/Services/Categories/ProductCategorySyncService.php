@@ -50,8 +50,9 @@ class ProductCategorySyncService
         $existingAssignments = $product->categories()
             ->pluck('category_product.assignment_type', 'categories.id');
 
+        // manuell und beim Import gesetzte (z. B. SALE aus der Preisliste) bleiben unangetastet
         $manualCategoryIds = $existingAssignments
-            ->filter(fn(string $type): bool => $type === 'manual')
+            ->filter(fn(string $type): bool => $type !== 'auto')
             ->keys()
             ->map(fn($id): int => (int) $id)
             ->all();
@@ -83,6 +84,14 @@ class ProductCategorySyncService
         if ($autoAssignmentsToAttach !== []) {
             $product->categories()->syncWithoutDetaching($autoAssignmentsToAttach);
         }
+    }
+
+    /**
+     * Zwischengespeicherte Zuordnungsregeln verwerfen (nach Änderungen im selben Prozess).
+     */
+    public function flushRules(): void
+    {
+        $this->manufacturerResolver->flush();
     }
 
     /**

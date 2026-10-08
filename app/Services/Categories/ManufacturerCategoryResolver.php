@@ -17,6 +17,8 @@ use Illuminate\Support\Collection;
  * Greift nichts, liefert resolve() null und der Aufrufer fällt auf die
  * allgemeinen Stichwort-Regeln ({@see CategoryResolver}) zurück.
  *
+ * Stichwörter werden in "Herstellerkategorie + Produktname" gesucht.
+ *
  * Stichwort-Syntax: mehrere Stichwörter mit "|" trennen. Ein Stichwort trifft
  * am Wortanfang ("ring" trifft "Ring", nicht "Spring"); mit "*" davor auch
  * mitten im Wort ("*rolle" trifft "Umlenkrolle").
@@ -33,7 +35,8 @@ class ManufacturerCategoryResolver
     {
         $manufacturerId = $product->manufacturer_id !== null ? (int) $product->manufacturer_id : null;
         $source = self::normalizeSource($product->source_category);
-        $text = self::normalizeText($product->original_product_name ?: $product->product_name);
+        // Stichwörter treffen Herstellerkategorie und Produktname
+        $text = self::normalizeText(trim($product->source_category.' '.($product->original_product_name ?: $product->product_name)));
 
         foreach ($this->keywordRules() as $rule) {
             if ($rule->manufacturer_id !== null && (int) $rule->manufacturer_id !== $manufacturerId) {
@@ -65,6 +68,12 @@ class ManufacturerCategoryResolver
         }
 
         return ManufacturerCategoryDecision::fromRule($mapping);
+    }
+
+    public function flush(): void
+    {
+        $this->keywordRules = null;
+        $this->sourceRules = null;
     }
 
     /**
