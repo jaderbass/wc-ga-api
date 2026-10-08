@@ -42,7 +42,7 @@ class ResyncProductCategoriesJob implements ShouldQueue
     {
         $run = $this->runId ? CategoryResyncRun::find($this->runId) : null;
 
-        $query = Product::query()->select(['id', 'manufacturer_id', 'product_name']);
+        $query = Product::query()->select(['id', 'manufacturer_id', 'product_name', 'original_product_name', 'source_category']);
 
         if ($this->productId !== null) {
             $query->whereKey($this->productId);

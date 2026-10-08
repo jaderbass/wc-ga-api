@@ -2,10 +2,20 @@
 
 namespace App\Services\Categories;
 
+use App\Models\Category;
+use App\Models\CategoryAssignmentRule;
 use App\Models\Product;
+use Illuminate\Support\Collection;
 
 /**
- * Synchronisiert die Kategorien eines Produkts anhand seines Namens.
+ * Synchronisiert die Kategorien eines Produkts.
+ *
+ * Quelle der automatischen Kategorien (erste, die greift):
+ * 1. Hersteller-Zuordnung ({@see ManufacturerCategoryResolver}):
+ *    Stichwort-Regeln, dann Zuordnung der Herstellerkategorie.
+ *    "Nicht importieren" → keine automatischen Kategorien.
+ * 2. allgemeine Stichwort-Regeln am Produktnamen ({@see CategoryResolver}),
+ *    sonst "Allgemein"
  *
  * Regeln:
  * - automatisch gesetzte Kategorien dürfen aktualisiert und entfernt werden
@@ -16,17 +26,21 @@ use App\Models\Product;
  */
 class ProductCategorySyncService
 {
+    public function __construct(
+        protected ManufacturerCategoryResolver $manufacturerResolver,
+    ) {}
+
     /**
      * Synchronisiert die Kategorien eines Produkts.
      */
     public function sync(Product $product): void
     {
-        $nameForCategoryMatch = $product->product_name
-            ?: $product->original_product_name
-            ?: null;
+        CategoryAssignmentRule::ensureForSource(
+            $product->manufacturer_id !== null ? (int) $product->manufacturer_id : null,
+            $product->source_category,
+        );
 
-        $resolvedCategories = app(CategoryResolver::class)
-            ->resolveFromProductName($nameForCategoryMatch);
+        $resolvedCategories = $this->resolveCategories($product);
 
         $resolvedCategoryIds = $resolvedCategories
             ->pluck('id')
@@ -69,5 +83,23 @@ class ProductCategorySyncService
         if ($autoAssignmentsToAttach !== []) {
             $product->categories()->syncWithoutDetaching($autoAssignmentsToAttach);
         }
+    }
+
+    /**
+     * @return Collection<int, Category>
+     */
+    protected function resolveCategories(Product $product): Collection
+    {
+        $decision = $this->manufacturerResolver->resolve($product);
+
+        if ($decision !== null) {
+            return $decision->exclude ? collect() : $decision->categories;
+        }
+
+        $nameForCategoryMatch = $product->product_name
+            ?: $product->original_product_name
+            ?: null;
+
+        return app(CategoryResolver::class)->resolveFromProductName($nameForCategoryMatch);
     }
 }
