@@ -24,6 +24,8 @@ final class PriceListReport
 
     public int $clearanceProducts = 0;
 
+    public int $newProducts = 0;
+
     /** @var array<string, array{manufacturer_id: int, source: string, status: string, result: string, products: int}> */
     public array $sources = [];
 
