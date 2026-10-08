@@ -6,15 +6,16 @@ use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
 use App\Importers\GenericCsvProductImporter;
 use App\Support\ImportLog;
+use App\Support\ImportMappingLoader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Hersteller-Importer für Kask (CSV).
+ * Hersteller-Importer für Skylotec (CSV).
  *
- * Verwendet das Kask-spezifische Mapping aus
- * config/import_mappings/kask.php.
+ * Verwendet das Skylotec-spezifische Mapping aus
+ * resources/import_mappings/skylotec.php.
  */
 class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
@@ -29,7 +30,7 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
             manufacturerId: $manufacturerId
         );
 
-        $this->mapping = config('import_mappings.skylotec', []);
+        $this->mapping = ImportMappingLoader::load('skylotec');
     }
 
     /**
@@ -60,7 +61,7 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
     public function import(string $filePath): void
     {
         // Skylotec-Mapping unmittelbar vor dem Import nochmals erzwingen.
-        $this->mapping = config('import_mappings.skylotec', []);
+        $this->mapping = ImportMappingLoader::load('skylotec');
 
         ImportLog::debug('ImporterForSkylotec import mapping', [
             'product_map' => $this->mapping['product'] ?? null,

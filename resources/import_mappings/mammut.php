@@ -18,7 +18,9 @@
  * Mammut-Produkte sind robust – die Rohdaten leider nicht immer.
  *
  * @mapping-source   Mammut CSV/XML
+ *
  * @mapping-target   InternalProductDTO
+ *
  * @see App\Imports\ImporterForMammut
  */
 return [

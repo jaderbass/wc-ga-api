@@ -11,6 +11,7 @@ use App\Models\ProductVariation;
 use App\Services\Categories\ProductCategorySyncService;
 use App\Services\Petzl\PetzlCsvTranslationService;
 use App\Support\ImportLog;
+use App\Support\ImportMappingLoader;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -27,7 +28,7 @@ use Illuminate\Support\Str;
  * Importiert Produktdaten und Produktvarianten aus einer CSV-Datei anhand eines konfigurierbaren Mappings.
  * Unterstützt Gruppierung nach Hauptprodukt und automatische Zuordnung von Farb- und Größenvarianten.
  *
- * Erwartet eine Mapping-Datei unter config/import_mappings/<mappingName>.php.
+ * Erwartet eine Mapping-Datei unter resources/import_mappings/<mappingName>.php.
  */
 class GenericCsvProductImporter implements CsvImporterContract
 {
@@ -36,7 +37,7 @@ class GenericCsvProductImporter implements CsvImporterContract
     /**
      * Initialisiert den Importer mit dem spezifischen Mapping und der Hersteller-ID.
      *
-     * @param  string  $mappingFile  Der Name der Mapping-Datei (ohne .php), die unter `config/import_mappings/` liegt.
+     * @param  string  $mappingFile  Der Name der Mapping-Datei (ohne .php), die unter `resources/import_mappings/` liegt.
      * @param  int|null  $manufacturerId  Die ID des Herstellers, dem die importierten Produkte zugeordnet werden.
      */
     public function __construct(
@@ -136,7 +137,7 @@ class GenericCsvProductImporter implements CsvImporterContract
         }
 
         if ((empty($this->mapping) || ! is_array($this->mapping)) && $mappingType !== null) {
-            $this->mapping = config('import_mappings.'.$mappingType);
+            $this->mapping = ImportMappingLoader::load($mappingType);
             ImportLog::debug('Auto-selected mapping', ['mapping' => $mappingType]);
         }
 
@@ -1742,29 +1743,13 @@ class GenericCsvProductImporter implements CsvImporterContract
     }
 
     /**
-     * Lädt das Mapping entweder aus config('import_mappings.<name>')
-     * oder aus config/import_mappings/<name>.php (Datei muss ein Array returnen).
+     * Lädt das Mapping aus resources/import_mappings/<name>.php.
      *
-     * @throws \RuntimeException wenn nichts gefunden.
+     * @throws \RuntimeException wenn das Mapping nicht gefunden wird oder kein Array zurückgibt.
      */
     protected function loadMapping(string $name): array
     {
-        $fromConfig = config('import_mappings.'.$name);
-        if (is_array($fromConfig)) {
-            return $fromConfig;
-        }
-
-        $path = base_path("config/import_mappings/{$name}.php");
-        if (is_file($path)) {
-            $map = require $path;
-            if (! is_array($map)) {
-                throw new \RuntimeException("Mapping file {$path} must return an array.");
-            }
-
-            return $map;
-        }
-
-        throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
+        return ImportMappingLoader::load($name);
     }
 
     /**
