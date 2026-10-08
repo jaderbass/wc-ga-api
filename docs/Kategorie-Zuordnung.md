@@ -43,7 +43,7 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
 - **Backend „Hersteller-Zuordnung“** (`category_assignment_rules`):
   - Eintrag mit Herstellerkategorie = Zuordnung dieser Kategorie zu einer oder mehreren Shop-Kategorien
   - Eintrag mit Stichwort = Ausnahme; optional nur innerhalb einer Herstellerkategorie; ohne Hersteller = gilt für alle
-  - „Nicht importieren“ = keine automatische Kategorie, nicht in den Shop
+  - „Ausschließen“ = keine automatische Kategorie; manuell gesetzte bleiben. **Noch offen:** Der spätere Shop-Import muss ausgeschlossene Produkte überspringen – heute gibt es dafür keinen Filter. Wo diese Doku „nicht importieren“ sagt, ist das das Ziel; technisch ist es vorerst „Ausschließen“.
   - Stichwörter mit `|` trennen; Treffer am Wortanfang (`ring` trifft „Ring“, nicht „Spring“); `*` davor = auch mitten im Wort (`*rolle` trifft „Umlenkrolle“)
   - unbekannte Herstellerkategorien erscheinen beim Import automatisch als „offen“
 - **Neu zuordnen:** Button „Kategorien neu zuordnen“ auf der Seite oder `php artisan categories:resync`. Manuell gesetzte Kategorien bleiben immer erhalten. Es wird nichts in den Shop übertragen.
@@ -90,7 +90,7 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
 
 Aliens ist **Großhändler** – die Liste enthält viele Marken: Tendon, Singing Rock, KONG, Teufelberger, Aliens (Eigenmarke), Alp Design, Peguet, Lanex, Rockhelmets, Edelweiss, Skedco, ISC, Hellberg, Protekt u. a. **Alle Marken werden importiert.**
 
-> Hinweis: Der vorhandene `ImporterForAliens` / `config/import_mappings/aliens.php` erwartet einen PrestaShop-Export (`Produkt-ID`, `Kombination-ID`) bzw. eine CSV mit `Artikelbezeichnung`. Die Preisliste hat ein anderes Format (Excel, Spalten unten) → eigenes Mapping oder eigener Importer nötig.
+> Hinweis: Der vorhandene `ImporterForAliens` / `resources/import_mappings/aliens.php` erwartet einen PrestaShop-Export (`Produkt-ID`, `Kombination-ID`) bzw. eine CSV mit `Artikelbezeichnung`. Die Preisliste hat ein anderes Format (Excel, Spalten unten) → eigenes Mapping oder eigener Importer nötig.
 
 - **Spalten:** Artikelnr., Kurztext, HEK netto, UVP netto, Gewicht, Einheit, Warentarifnr., Ursprungsland, EAN Barcode – **keine Kategorie, keine Bilder**
 - **Aufbau Kurztext:** `[Markierung] MARKE - Produktart MODELL - Eigenschaft`
@@ -168,7 +168,7 @@ Die Regeln sind ein Startpunkt – Feinschliff beim Umsetzen (z. B. „NFC Chip 
 - **Quelle:** Zwischenüberschrift-Zeilen der Preisliste (`DEUTSCH | ENGLISCH`, z. B. `STATIKSEILE | STATIC ROPES`). Produktzeilen: Spalte 1 Artikelnummer (Zahl), Spalte 2 Bezeichnung. Verknüpfung mit den Produkten in der Datenbank über die Artikelnummer.
 - Die Überschrift gibt die Grundkategorie vor, Stichwörter im Namen korrigieren einzelne Produkte.
 
-> Hinweis: Das vorhandene Edelrid-Mapping (`config/import_mappings/edelrid.php`) liest eine CSV mit der Spalte `Einsatzbereich` (→ `pa_einsatzbereich`). Ob diese Spalte zusätzlich für Einsatzgebiete taugt, ist noch zu prüfen.
+> Hinweis: Das vorhandene Edelrid-Mapping (`resources/import_mappings/edelrid.php`) liest eine CSV mit der Spalte `Einsatzbereich` (→ `pa_einsatzbereich`). Ob diese Spalte zusätzlich für Einsatzgebiete taugt, ist noch zu prüfen.
 
 | Edelrid-Überschrift | Produkte | → Shop-Kategorie | Ausnahmen per Stichwort |
 |---|---|---|---|
@@ -229,3 +229,4 @@ Bestehend: Baumpflege, Bergsteigen, Feuerwehr, Klettern, PSAgA, Spezialkräfte, 
 - Zuordnung Singing Rock (eigene Liste)
 - Edelrid: Spalte `Einsatzbereich` für Einsatzgebiete nutzen?
 - Bildquelle für Produkte, die nicht im Live-Shop sind
+- Shop-Import muss „Ausschließen“ (und später `online_sellable = false`) beachten

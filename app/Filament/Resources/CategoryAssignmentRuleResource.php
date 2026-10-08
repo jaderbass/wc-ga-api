@@ -77,8 +77,8 @@ class CategoryAssignmentRuleResource extends Resource
                         ->helperText('Produktkategorie und ggf. Einsatzgebiete, z. B. "Segel-Zubehör" und "Segeln".'),
 
                     Forms\Components\Toggle::make('exclude')
-                        ->label('Nicht importieren')
-                        ->helperText('Produkte bekommen keine Kategorie und werden nicht in den Shop übernommen.'),
+                        ->label('Ausschließen (keine Kategorie)')
+                        ->helperText('Produkte bekommen keine automatische Kategorie; manuell gesetzte bleiben. Dass sie auch nicht in den Shop kommen, muss der spätere Shop-Import beachten – das ist noch nicht umgesetzt.'),
 
                     Forms\Components\Toggle::make('is_reviewed')
                         ->label('Geprüft'),
@@ -125,7 +125,7 @@ class CategoryAssignmentRuleResource extends Resource
                 Tables\Columns\TextColumn::make('categories')
                     ->label('→ Shop-Kategorien')
                     ->state(fn (CategoryAssignmentRule $record): array => $record->exclude
-                        ? ['nicht importieren']
+                        ? ['ausgeschlossen']
                         : $record->categories->map(fn (Category $category): string => self::categoryPath($category))->all())
                     ->badge()
                     ->color(fn (CategoryAssignmentRule $record): string => $record->exclude ? 'danger' : 'primary')
