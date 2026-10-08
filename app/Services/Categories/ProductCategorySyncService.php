@@ -13,7 +13,8 @@ use Illuminate\Support\Collection;
  * Quelle der automatischen Kategorien (erste, die greift):
  * 1. Hersteller-Zuordnung ({@see ManufacturerCategoryResolver}):
  *    Stichwort-Regeln, dann Zuordnung der Herstellerkategorie.
- *    "Nicht importieren" → keine automatischen Kategorien.
+ *    "Ausschließen" → keine automatischen Kategorien (manuelle bleiben;
+ *    den Shop-Export beeinflusst das noch nicht).
  * 2. allgemeine Stichwort-Regeln am Produktnamen ({@see CategoryResolver}),
  *    sonst "Allgemein"
  *
