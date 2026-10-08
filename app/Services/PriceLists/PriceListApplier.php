@@ -194,7 +194,7 @@ class PriceListApplier
                 );
 
                 if ($variationId !== null) {
-                    $this->fillVariation($variationId, $row, $product->manufacturer);
+                    $this->fillVariation($variationId, $row);
 
                     continue;
                 }
@@ -203,7 +203,7 @@ class PriceListApplier
                     $updates['ean'] = $row->ean;
                 }
 
-                $updates += $this->purchasePricing($row, $product->manufacturer);
+                $updates += $this->purchasePricing($row, $product);
             }
 
             if ($updates !== []) {
@@ -265,37 +265,36 @@ class PriceListApplier
     }
 
     /**
-     * Listenpreis und EK aus einer Zeile:
+     * Listenpreis und EK aus einer Zeile (Listenpreis: Petzl "Unit Price", Aliens "UVP netto"):
+     * - EK von Hand gesetzt (Sonderpreis) → nur den Listenpreis aktualisieren
      * - EK steht in der Liste (Aliens "HEK netto") → direkt übernehmen
-     * - sonst EK = Listenpreis abzüglich der Rabattstufen des Herstellers
-     * Listenpreis: Petzl "Unit Price", Aliens "UVP netto".
+     * - sonst EK = Listenpreis abzüglich der (geerbten) Rabatte; gerechnet wird
+     *   beim Speichern ({@see PurchasePriceCalculator::applyOnSaving()})
      *
      * @return array<string, int|string|null>
      */
-    protected function purchasePricing(PriceListRow $row, ?Manufacturer $manufacturer): array
+    protected function purchasePricing(PriceListRow $row, Product|ProductVariation $record): array
     {
         $list = $row->listPriceCents ?? $row->retailPriceCents;
+        $listUpdate = $list !== null ? ['list_price_cents' => $list] : [];
+
+        if ($record->purchase_price_source === PurchasePriceCalculator::SOURCE_MANUAL) {
+            return $listUpdate;
+        }
 
         if ($row->purchasePriceCents !== null) {
-            return array_filter([
-                'list_price_cents' => $list,
+            return $listUpdate + [
                 'purchase_price_cents' => $row->purchasePriceCents,
                 'purchase_price_source' => PurchasePriceCalculator::SOURCE_PRICELIST,
-            ], fn ($value) => $value !== null);
+            ];
         }
 
-        if ($list === null) {
-            return [];
-        }
-
-        return [
-            'list_price_cents' => $list,
-            'purchase_price_cents' => PurchasePriceCalculator::calculate($list, $manufacturer?->purchase_discount_1, $manufacturer?->purchase_discount_2),
-            'purchase_price_source' => PurchasePriceCalculator::SOURCE_CALCULATED,
-        ];
+        return $list !== null
+            ? $listUpdate + ['purchase_price_source' => PurchasePriceCalculator::SOURCE_CALCULATED]
+            : [];
     }
 
-    protected function fillVariation(int $variationId, PriceListRow $row, ?Manufacturer $manufacturer): void
+    protected function fillVariation(int $variationId, PriceListRow $row): void
     {
         $variation = ProductVariation::query()->find($variationId);
 
@@ -303,7 +302,7 @@ class PriceListApplier
             return;
         }
 
-        $fill = $this->purchasePricing($row, $manufacturer);
+        $fill = $this->purchasePricing($row, $variation);
 
         if (blank($variation->ean) && $row->ean !== null) {
             $fill['ean'] = $row->ean;

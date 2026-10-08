@@ -120,6 +120,10 @@ class ProductVariantRelationManager extends RelationManager
                                     : null
                             ),
 
+                        Forms\Components\Fieldset::make('Einkauf')
+                            ->schema(\App\Filament\Resources\ProductResource::purchaseFields('variation'))
+                            ->columns(12),
+
                         Forms\Components\TextInput::make('slug')
                             ->label('Slug')
                             ->maxLength(255)

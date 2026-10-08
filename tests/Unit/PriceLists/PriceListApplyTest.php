@@ -56,6 +56,8 @@ beforeEach(function () {
             $t->string('source_category')->nullable();
             $t->boolean('online_sellable')->nullable();
             $t->unsignedInteger('list_price_cents')->nullable();
+            $t->decimal('purchase_discount_1', 5, 2)->nullable();
+            $t->decimal('purchase_discount_2', 5, 2)->nullable();
             $t->unsignedInteger('purchase_price_cents')->nullable();
             $t->string('purchase_price_source', 20)->nullable();
             $t->timestamps();
@@ -68,6 +70,8 @@ beforeEach(function () {
             $t->string('ean')->nullable();
             $t->integer('weight')->nullable();
             $t->unsignedInteger('list_price_cents')->nullable();
+            $t->decimal('purchase_discount_1', 5, 2)->nullable();
+            $t->decimal('purchase_discount_2', 5, 2)->nullable();
             $t->unsignedInteger('purchase_price_cents')->nullable();
             $t->string('purchase_price_source', 20)->nullable();
             $t->timestamps();
@@ -364,4 +368,48 @@ it('recalculates purchase prices when the discounts of a manufacturer change, bu
     expect($calculated->fresh()->purchase_price_cents)->toBe(4410)
         ->and($variation->fresh()->purchase_price_cents)->toBe(4410)
         ->and($fromList->fresh()->purchase_price_cents)->toBe(3000);
+});
+
+it('calculates the purchase price when a list price is set and inherits discounts variation → product → manufacturer', function () {
+    $product = Product::create(['manufacturer_id' => 3, 'product_name' => 'VERTEX VENT', 'list_price_cents' => 7350]);
+    $variation = ProductVariation::create(['product_id' => $product->id, 'sku' => 'A010CA00', 'list_price_cents' => 10000]);
+
+    expect($product->purchase_price_cents)->toBe(4539)
+        ->and($product->purchase_price_source)->toBe('calculated')
+        ->and($variation->purchase_price_cents)->toBe(6175);
+
+    // Sonderkondition am Produkt: 40 % + 0 % → gilt auch für die Variante
+    $product->update(['purchase_discount_1' => 40, 'purchase_discount_2' => 0]);
+
+    expect($product->fresh()->purchase_price_cents)->toBe(4410)
+        ->and($variation->fresh()->purchase_price_cents)->toBe(6000);
+
+    // eigene Sonderkondition an der Variante
+    $variation->update(['purchase_discount_1' => 50]);
+
+    expect($variation->fresh()->purchase_price_cents)->toBe(5000);
+
+    expect(PurchasePriceCalculator::effectiveDiscounts($variation->fresh()->load('product.manufacturer')))
+        ->toBe([50.0, 0.0, ['Variante', 'Produkt']]);
+});
+
+it('keeps a manually entered purchase price and only updates the list price on import', function () {
+    $product = Product::create(['manufacturer_id' => 3, 'product_name' => 'AVAO® European Version', 'product_number' => 'C071AA00', 'list_price_cents' => 20000]);
+
+    // EK von Hand (Sonderpreis)
+    $product->update(['purchase_price_cents' => 9999]);
+    expect($product->fresh()->purchase_price_source)->toBe('manual');
+
+    // EK von Hand, der genau der Berechnung entspricht, gilt als berechnet
+    $other = Product::create(['manufacturer_id' => 3, 'product_name' => 'Andere', 'list_price_cents' => 10000]);
+    $other->update(['purchase_price_cents' => 6175]);
+    expect($other->fresh()->purchase_price_source)->toBe('calculated');
+
+    // Import und Rabattänderung lassen den Sonderpreis stehen
+    app(PriceListApplier::class)->apply(new PetzlPriceListParser, petzlSheets());
+    Manufacturer::find(3)->update(['purchase_discount_1' => 30]);
+
+    expect($product->fresh()->list_price_cents)->toBe(21000)
+        ->and($product->fresh()->purchase_price_cents)->toBe(9999)
+        ->and($product->fresh()->purchase_price_source)->toBe('manual');
 });
