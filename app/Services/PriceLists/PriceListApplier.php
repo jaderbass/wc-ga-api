@@ -387,12 +387,12 @@ class PriceListApplier
             return '—';
         }
 
-        return $suggestion['exclude'] ? 'nicht importieren' : $suggestion['categories']->pluck('name')->implode(', ');
+        return $suggestion['exclude'] ? 'ausgeschlossen' : $suggestion['categories']->pluck('name')->implode(', ');
     }
 
     protected function describeRule(CategoryAssignmentRule $rule): string
     {
-        return $rule->exclude ? 'nicht importieren' : ($rule->categories->pluck('name')->implode(', ') ?: '—');
+        return $rule->exclude ? 'ausgeschlossen' : ($rule->categories->pluck('name')->implode(', ') ?: '—');
     }
 
     /**

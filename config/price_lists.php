@@ -11,7 +11,7 @@
  * - keywords:   Stichwörter in der Herstellerkategorie, mit | getrennt;
  *               Treffer am Wortanfang, * davor = auch mitten im Wort
  * - categories: Kategorienamen (wie im Backend, Namen sind eindeutig)
- * - exclude:    true = "Nicht importieren"
+ * - exclude:    true = "Ausschließen" (keine Kategorie; Shop-Export beachtet das noch nicht)
  *
  * Entscheidungen: Maik (PS Alpin), 08.10.2026 – siehe docs/Kategorie-Zuordnung.md
  */
