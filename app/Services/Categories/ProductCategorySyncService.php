@@ -45,22 +45,22 @@ class ProductCategorySyncService
 
         $resolvedCategoryIds = $resolvedCategories
             ->pluck('id')
-            ->map(fn($id): int => (int) $id)
+            ->map(fn ($id): int => (int) $id)
             ->all();
 
         $existingAssignments = $product->categories()
             ->pluck('category_product.assignment_type', 'categories.id');
 
         $manualCategoryIds = $existingAssignments
-            ->filter(fn(string $type): bool => $type === 'manual')
+            ->filter(fn (string $type): bool => $type === 'manual')
             ->keys()
-            ->map(fn($id): int => (int) $id)
+            ->map(fn ($id): int => (int) $id)
             ->all();
 
         $autoCategoryIds = $existingAssignments
-            ->filter(fn(string $type): bool => $type === 'auto')
+            ->filter(fn (string $type): bool => $type === 'auto')
             ->keys()
-            ->map(fn($id): int => (int) $id)
+            ->map(fn ($id): int => (int) $id)
             ->all();
 
         $autoCategoryIdsToDetach = array_diff($autoCategoryIds, $resolvedCategoryIds);

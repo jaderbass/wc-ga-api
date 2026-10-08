@@ -23,10 +23,10 @@ class ResyncProductCategoriesJob implements ShouldQueue
     use SerializesModels;
 
     /**
-     * @param int|null $productId Nur ein bestimmtes Produkt synchronisieren
-     * @param int|null $manufacturerId Nur Produkte eines Herstellers synchronisieren
-     * @param int $chunkSize Chunk-Größe für die Verarbeitung
-     * @param int|null $runId Zugehöriger Resync-Lauf
+     * @param  int|null  $productId  Nur ein bestimmtes Produkt synchronisieren
+     * @param  int|null  $manufacturerId  Nur Produkte eines Herstellers synchronisieren
+     * @param  int  $chunkSize  Chunk-Größe für die Verarbeitung
+     * @param  int|null  $runId  Zugehöriger Resync-Lauf
      */
     public function __construct(
         protected ?int $productId = null,
@@ -75,11 +75,11 @@ class ResyncProductCategoriesJob implements ShouldQueue
                         $syncService->sync($product);
                         $processed++;
 
-                    if ($run) {
-                        $run->update([
-                            'processed' => $processed,
-                        ]);
-                    }
+                        if ($run) {
+                            $run->update([
+                                'processed' => $processed,
+                            ]);
+                        }
                     }
                 });
 
