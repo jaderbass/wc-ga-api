@@ -35,6 +35,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Placeholder;
+use App\Services\Pricing\PurchasePriceCalculator;
 use Filament\Forms\Components\Checkbox;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\Section;
@@ -405,6 +406,13 @@ HTML;
 
                         ]) //Grid
                     ]) //schema
+                    ->collapsible(),
+
+                FormSection::make('Einkauf')
+                    ->description('EK = Listenpreis − Rabatt 1, davon nochmal − Rabatt 2. Leere Rabattfelder übernehmen den Wert des Herstellers; ein eigener Wert ist eine Sonderkondition. Der EK kann auch direkt eingetragen werden (z. B. wenn nur der EK bekannt ist).')
+                    ->schema([
+                        Grid::make(12)->schema(self::purchaseFields('product')),
+                    ])
                     ->collapsible(),
 
                 FormSection::make('Produktname (Vorschau)')
@@ -1562,6 +1570,122 @@ HTML;
             'create' => Pages\CreateProduct::route('/create'),
             'edit' => Pages\EditProduct::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Felder Listenpreis, Rabatt 1, Rabatt 2, EK – für Produkt und Variante gleich.
+     *
+     * Rabatte erben: Variante → Produkt → Hersteller. Ändert sich Listenpreis
+     * oder Rabatt, wird der EK im Formular sofort neu berechnet; beim Speichern
+     * legt {@see PurchasePriceCalculator::applyOnSaving()} die Herkunft fest.
+     *
+     * @param  'product'|'variation'  $level
+     * @return array<int, \Filament\Forms\Components\Component>
+     */
+    public static function purchaseFields(string $level): array
+    {
+        $inherited = function (int $index, Get $get, ?\Illuminate\Database\Eloquent\Model $record, $livewire) use ($level): array {
+            if ($level === 'variation') {
+                $product = $record?->product ?? (method_exists($livewire, 'getOwnerRecord') ? $livewire->getOwnerRecord() : null);
+                $own = $product?->{'purchase_discount_'.$index};
+
+                if ($own !== null && $own !== '') {
+                    return [(float) $own, 'Produkt'];
+                }
+
+                $manufacturer = $product?->manufacturer;
+            } else {
+                $manufacturer = $record?->manufacturer ?? \App\Models\Manufacturer::find($get('manufacturer_id'));
+            }
+
+            $value = $manufacturer?->{'purchase_discount_'.$index};
+
+            return ($value !== null && $value !== '') ? [(float) $value, 'Hersteller'] : [null, null];
+        };
+
+        $recalculate = function (Get $get, Set $set, ?\Illuminate\Database\Eloquent\Model $record, $livewire) use ($inherited): void {
+            $discounts = [];
+
+            foreach ([1, 2] as $index) {
+                $own = self::parseDecimal($get('purchase_discount_'.$index));
+                $discounts[$index] = $own ?? $inherited($index, $get, $record, $livewire)[0];
+            }
+
+            $purchase = PurchasePriceCalculator::calculate(self::parseCents($get('list_price_cents')), $discounts[1], $discounts[2]);
+
+            if ($purchase !== null) {
+                $set('purchase_price_cents', number_format($purchase / 100, 2, ',', ''));
+            }
+        };
+
+        $money = fn (string $name, string $label) => TextInput::make($name)
+            ->label($label)
+            ->suffix('€')
+            ->placeholder('—')
+            ->formatStateUsing(fn ($state) => filled($state) ? number_format(((int) $state) / 100, 2, ',', '') : null)
+            ->dehydrateStateUsing(fn ($state) => self::parseCents($state))
+            ->rule('nullable')
+            ->regex('/^\s*\d+([.,]\d{1,2})?\s*$/')
+            ->columnSpan(3);
+
+        $discount = fn (int $index) => TextInput::make('purchase_discount_'.$index)
+            ->label($index === 1 ? 'Rabatt 1' : 'Rabatt 2 (vom rabattierten Preis)')
+            ->suffix('%')
+            ->placeholder(function (Get $get, ?\Illuminate\Database\Eloquent\Model $record, $livewire) use ($inherited, $index): string {
+                [$value, $from] = $inherited($index, $get, $record, $livewire);
+
+                return $value !== null ? PurchasePriceCalculator::formatPercent($value).' ('.$from.')' : 'kein Rabatt';
+            })
+            ->helperText('Leer = Wert von Produkt/Hersteller; eigener Wert = Sonderkondition')
+            ->formatStateUsing(fn ($state) => $state !== null && $state !== '' ? rtrim(rtrim(number_format((float) $state, 2, ',', ''), '0'), ',') : null)
+            ->dehydrateStateUsing(fn ($state) => self::parseDecimal($state))
+            ->regex('/^\s*\d{1,3}([.,]\d{1,2})?\s*$/')
+            ->live(onBlur: true)
+            ->afterStateUpdated($recalculate)
+            ->columnSpan(3);
+
+        return [
+            $money('list_price_cents', 'Listenpreis (netto)')
+                ->live(onBlur: true)
+                ->afterStateUpdated($recalculate),
+            $discount(1),
+            $discount(2),
+            $money('purchase_price_cents', 'EK (netto)')
+                ->helperText(fn (?\Illuminate\Database\Eloquent\Model $record) => 'Herkunft: '.PurchasePriceCalculator::sourceLabel($record?->purchase_price_source)),
+        ];
+    }
+
+    /**
+     * "45,39" / "45.39" / "45" → 4539 Cent; leer → null
+     */
+    public static function parseCents(mixed $value): ?int
+    {
+        $value = trim(str_replace(['€', ' '], '', (string) $value));
+
+        if ($value === '') {
+            return null;
+        }
+
+        $value = str_replace(',', '.', $value);
+
+        return is_numeric($value) ? (int) round((float) $value * 100) : null;
+    }
+
+    public static function parseDecimal(mixed $value): ?float
+    {
+        $value = str_replace(',', '.', trim(str_replace('%', '', (string) $value)));
+
+        return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * Cent-Betrag als "45,39 €", leer/0 als "—".
+     */
+    public static function formatCents(?int $cents): string
+    {
+        return filled($cents) && $cents > 0
+            ? number_format($cents / 100, 2, ',', '.').' €'
+            : '—';
     }
 
     /**

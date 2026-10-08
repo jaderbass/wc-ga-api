@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Services\Pricing\PurchasePriceCalculator;
 use Illuminate\Support\Str;
 
 /**
@@ -68,6 +69,11 @@ class Product extends Model
         'petzl_source_category',
         'petzl_source_subcategory',
         'source_category',
+        'list_price_cents',
+        'purchase_discount_1',
+        'purchase_discount_2',
+        'purchase_price_cents',
+        'purchase_price_source',
         'online_sellable',
     ];
 
@@ -84,6 +90,10 @@ class Product extends Model
         'box_height' => 'integer',
         'assembly_group' => 'integer',
         'manufacturer_price_cents' => 'integer',
+        'list_price_cents' => 'integer',
+        'purchase_discount_1' => 'decimal:2',
+        'purchase_discount_2' => 'decimal:2',
+        'purchase_price_cents' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'petzl_description_fetched_at' => 'datetime',
@@ -139,6 +149,13 @@ class Product extends Model
      */
     protected static function booted(): void
     {
+        // Rabatte am Produkt geändert → Varianten, die erben, neu berechnen
+        static::saved(function (Product $p) {
+            if ($p->wasChanged(['purchase_discount_1', 'purchase_discount_2'])) {
+                app(PurchasePriceCalculator::class)->recalculateVariations($p);
+            }
+        });
+
         static::creating(function (Product $p) {
             if (blank($p->slug)) {
                 $p->slug = static::makeUniqueSlug($p);
@@ -153,6 +170,9 @@ class Product extends Model
         });
 
         static::saving(function ($p) {
+            // EK aus Listenpreis und Rabatten (Herkunft: berechnet / Liste / von Hand)
+            PurchasePriceCalculator::applyOnSaving($p);
+
             if ($p->isDirty('sku') && $p->sku === '') {
                 $p->sku = null; // gegen '' in DB (UNIQUE-Index & MySQL-NULL-Handling)
             }

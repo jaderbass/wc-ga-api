@@ -24,8 +24,9 @@ class EdelridPriceListParser implements PriceListParser
         return 'Edelrid';
     }
 
-    public function parse(array $rows): array
+    public function parse(array $sheets): array
     {
+        $rows = reset($sheets) ?: [];
         $heading = null;
         $result = [];
 
