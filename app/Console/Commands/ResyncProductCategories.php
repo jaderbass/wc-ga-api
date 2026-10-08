@@ -42,7 +42,7 @@ class ResyncProductCategories extends Command
         $dryRun = (bool) $this->option('dry-run');
         $queue = (bool) $this->option('queue');
 
-        $query = Product::query()->select(['id', 'manufacturer_id', 'product_name']);
+        $query = Product::query()->select(['id', 'manufacturer_id', 'product_name', 'original_product_name', 'source_category']);
 
         if ($productId !== null && $productId !== '') {
             $query->whereKey((int) $productId);

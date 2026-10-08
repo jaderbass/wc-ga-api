@@ -67,6 +67,7 @@ class Product extends Model
         'petzl_description_fetched_at',
         'petzl_source_category',
         'petzl_source_subcategory',
+        'source_category',
         'online_sellable',
     ];
 

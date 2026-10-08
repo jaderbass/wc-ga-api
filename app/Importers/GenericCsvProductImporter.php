@@ -809,9 +809,11 @@ class GenericCsvProductImporter implements CsvImporterContract
             }
         }
 
-        app(ProductCategorySyncService::class)->sync($product);
-
+        // Hook zuerst: Kind-Importer setzen dort u. a. die Herstellerkategorie
+        // (source_category), die die Kategorie-Zuordnung braucht.
         $this->afterProductUpserted($product, $rows, $productPayload);
+
+        app(ProductCategorySyncService::class)->sync($product);
 
         Log::info('Product upserted', [
             'id' => $product->id,
