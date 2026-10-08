@@ -68,6 +68,9 @@ class Product extends Model
         'petzl_source_category',
         'petzl_source_subcategory',
         'source_category',
+        'list_price_cents',
+        'purchase_price_cents',
+        'purchase_price_source',
         'online_sellable',
     ];
 
@@ -84,6 +87,8 @@ class Product extends Model
         'box_height' => 'integer',
         'assembly_group' => 'integer',
         'manufacturer_price_cents' => 'integer',
+        'list_price_cents' => 'integer',
+        'purchase_price_cents' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'petzl_description_fetched_at' => 'datetime',

@@ -11,6 +11,7 @@ use App\Models\ProductVariation;
 use App\Services\Categories\ManufacturerCategoryResolver;
 use App\Services\Categories\ProductCategorySyncService;
 use App\Services\PriceLists\Parsers\PriceListParser;
+use App\Services\Pricing\PurchasePriceCalculator;
 use App\Services\ShopComparison\ComparisonKey;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,8 +35,11 @@ use RuntimeException;
  * - leere EAN / leeres Variantengewicht
  * - danach Kategorien neu zuordnen
  *
+ * - Listenpreis und EK (eigene Felder; EK aus der Liste oder Listenpreis
+ *   abzüglich der Rabattstufen des Herstellers)
+ *
  * Es werden keine Produkte angelegt oder gelöscht und keine Namen,
- * Beschreibungen oder Preise überschrieben. Kein Shop-Sync.
+ * Beschreibungen oder Shop-Preise überschrieben. Kein Shop-Sync.
  */
 class PriceListApplier
 {
@@ -190,10 +194,16 @@ class PriceListApplier
                 );
 
                 if ($variationId !== null) {
-                    $this->fillVariation($variationId, $row);
-                } elseif (blank($product->ean) && $row->ean !== null) {
+                    $this->fillVariation($variationId, $row, $product->manufacturer);
+
+                    continue;
+                }
+
+                if (blank($product->ean) && $row->ean !== null) {
                     $updates['ean'] = $row->ean;
                 }
+
+                $updates += $this->purchasePricing($row, $product->manufacturer);
             }
 
             if ($updates !== []) {
@@ -254,7 +264,38 @@ class PriceListApplier
         );
     }
 
-    protected function fillVariation(int $variationId, PriceListRow $row): void
+    /**
+     * Listenpreis und EK aus einer Zeile:
+     * - EK steht in der Liste (Aliens "HEK netto") → direkt übernehmen
+     * - sonst EK = Listenpreis abzüglich der Rabattstufen des Herstellers
+     * Listenpreis: Petzl "Unit Price", Aliens "UVP netto".
+     *
+     * @return array<string, int|string|null>
+     */
+    protected function purchasePricing(PriceListRow $row, ?Manufacturer $manufacturer): array
+    {
+        $list = $row->listPriceCents ?? $row->retailPriceCents;
+
+        if ($row->purchasePriceCents !== null) {
+            return array_filter([
+                'list_price_cents' => $list,
+                'purchase_price_cents' => $row->purchasePriceCents,
+                'purchase_price_source' => PurchasePriceCalculator::SOURCE_PRICELIST,
+            ], fn ($value) => $value !== null);
+        }
+
+        if ($list === null) {
+            return [];
+        }
+
+        return [
+            'list_price_cents' => $list,
+            'purchase_price_cents' => PurchasePriceCalculator::calculate($list, $manufacturer?->purchase_discount_1, $manufacturer?->purchase_discount_2),
+            'purchase_price_source' => PurchasePriceCalculator::SOURCE_CALCULATED,
+        ];
+    }
+
+    protected function fillVariation(int $variationId, PriceListRow $row, ?Manufacturer $manufacturer): void
     {
         $variation = ProductVariation::query()->find($variationId);
 
@@ -262,7 +303,7 @@ class PriceListApplier
             return;
         }
 
-        $fill = [];
+        $fill = $this->purchasePricing($row, $manufacturer);
 
         if (blank($variation->ean) && $row->ean !== null) {
             $fill['ean'] = $row->ean;

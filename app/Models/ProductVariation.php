@@ -16,6 +16,9 @@ class ProductVariation extends Model
         'woo_variation_id',
         'sku',
         'manufacturer_price_cents',
+        'list_price_cents',
+        'purchase_price_cents',
+        'purchase_price_source',
         'regular_price',
         'sale_price',
         'stock_quantity',
@@ -40,6 +43,8 @@ class ProductVariation extends Model
         'width_mm' => 'integer',
         'height_mm' => 'integer',
         'manufacturer_price_cents' => 'integer',
+        'list_price_cents' => 'integer',
+        'purchase_price_cents' => 'integer',
     ];
 
     // Anzeige-Name für Filament

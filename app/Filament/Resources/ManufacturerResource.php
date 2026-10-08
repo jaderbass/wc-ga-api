@@ -89,6 +89,28 @@ class ManufacturerResource extends Resource
                 Forms\Components\Textarea::make('notes')
                     ->label('Notizen'),
 
+                Forms\Components\Section::make('Einkaufskonditionen')
+                    ->description('EK = Listenpreis − Rabatt 1, davon nochmal − Rabatt 2 (nacheinander, nicht addiert). Beispiel Petzl: 35 % und 5 % → 73,50 € × 0,65 × 0,95 = 45,39 €. Beim Speichern werden die EK aller Produkte dieses Herstellers neu berechnet.')
+                    ->schema([
+                        Forms\Components\TextInput::make('purchase_discount_1')
+                            ->label('Rabatt 1')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->step(0.01)
+                            ->suffix('%'),
+
+                        Forms\Components\TextInput::make('purchase_discount_2')
+                            ->label('Rabatt 2 (vom bereits rabattierten Preis)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->step(0.01)
+                            ->suffix('%'),
+                    ])
+                    ->columns(2)
+                    ->columnSpanFull(),
+
             ]);
     }
 
