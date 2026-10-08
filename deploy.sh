@@ -34,6 +34,21 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Benötigtes Kommando nicht gefunden: $1"
 }
 
+MAINTENANCE_MODE=0
+
+cleanup() {
+  local exit_code=$?
+
+  if [[ "$MAINTENANCE_MODE" -eq 1 ]]; then
+    say "Deployment abgebrochen – App wieder online nehmen"
+    $PHP_BIN artisan up || true
+  fi
+
+  exit "$exit_code"
+}
+
+trap cleanup EXIT
+
 ## ──────────────────────────────────────────────────────────────────────────────
 ## Vorab-Checks
 ## ──────────────────────────────────────────────────────────────────────────────
@@ -54,7 +69,8 @@ $PHP_BIN -m | grep -E 'pdo_mysql|intl|fileinfo|zip' || true
 ## App in Maintenance (minimal)
 ## ──────────────────────────────────────────────────────────────────────────────
 say "App in Maintenance-Mode versetzen"
-$PHP_BIN artisan down || true
+$PHP_BIN artisan down
+MAINTENANCE_MODE=1
 
 ## ──────────────────────────────────────────────────────────────────────────────
 ## Git aktualisieren
@@ -67,7 +83,7 @@ if [[ -n "$GIT_REMOTE" && -n "$GIT_REF" ]]; then
 else
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
   say "Git: pull aktuellen Branch ($CURRENT_BRANCH)"
-  git pull --ff-only || true
+  git pull --ff-only
 fi
 
 ## ──────────────────────────────────────────────────────────────────────────────
@@ -120,7 +136,9 @@ $PHP_BIN artisan view:cache || true
 ## App wieder hochfahren
 ## ──────────────────────────────────────────────────────────────────────────────
 say "App wieder online nehmen"
-$PHP_BIN artisan up || true
+$PHP_BIN artisan up
+MAINTENANCE_MODE=0
+trap - EXIT
 
 ## ──────────────────────────────────────────────────────────────────────────────
 ## Kurzer Gesundheitscheck
