@@ -2,7 +2,7 @@
 
 Diese Regeln gelten für alle Produkte, die in der PS-Alpin-Produktdatenbank aus Herstellerlisten eingelesen, vereinheitlicht und später in den Shop übertragen werden. Sie wurden von Maik Reinke und Jörg Aderhold festgelegt.
 
-Stand: 2026-10-09. Abschnitt 6 beschreibt, wo der Code heute noch von den Regeln abweicht.
+Stand: 2026-10-08. Abschnitt 6 beschreibt, wo der Code heute noch von den Regeln abweicht.
 
 ## 1. Format
 
@@ -74,18 +74,20 @@ Farben im Namen kommen aus dem Menü **„Farben“** (Farb-Übersetzungen):
 
 Im Namen steht die **Shop-Kategorie**, also die einfache Verkaufsbezeichnung (zum Beispiel `Karabiner`, nicht `Verbindungselemente`).
 
-**Ziel-Regel** (vereinbart, noch nicht vollständig umgesetzt), Reihenfolge:
+**Regel** (vereinbart), Reihenfolge:
 
 1. Kategorie, die von Hand am Produkt gesetzt wurde
-2. Kategorie aus der Herstellerliste, über die Zuordnung „Herstellerkategorie → Shop-Kategorie“
+2. Kategorie aus der Herstellerliste, über die Zuordnung „Herstellerkategorie → Shop-Kategorie“ (Menü „Hersteller-Zuordnung“, Details in [Kategorie-Zuordnung](Kategorie-Zuordnung.md))
 3. Stichwort-Regeln aus dem Menü „Kategorien“ (Begriffe im Produktnamen)
 4. `Allgemein`, als Kennzeichen für „noch nicht zugeordnet, bitte prüfen“
+
+Mit #13 vergibt die Datenbank die **Kategorien der Produkte** in dieser Reihenfolge. Für den **Namen** wird sie noch nicht genutzt (siehe Abschnitt 6).
 
 ## 6. Abweichungen im heutigen Code (offen)
 
 | Thema | Heute | Soll |
 |---|---|---|
-| Kategorie | nur Stichwort-Regeln (Schritt 3), sonst `Allgemein`. Die Herstellerkategorie wird nur bei Petzl gespeichert (`petzl_source_category`), aber nicht für den Namen genutzt. | Reihenfolge aus Abschnitt 5 |
+| Kategorie im Namen | Seit #13 wird die Herstellerkategorie für alle Hersteller gespeichert (`products.source_category`) und die **Produktkategorien** werden nach Abschnitt 5 vergeben. Der **Name** holt die Kategorie aber weiterhin nur über die Stichwort-Regeln (`ProductNameContext` → `CategoryResolver::resolveFromProductName`), sonst `Allgemein`. | Name nutzt die nach Abschnitt 5 vergebene Kategorie des Produkts |
 | Trenner | Code: ` - `; im Live-Shop oft ` – ` (langer Strich) | einheitlich ` - ` |
 | Abkürzungen | `HMS` wird zu `Hms` (fehlt in der Liste); die Listen `manufacturer_overrides.preserve` (z. B. `GRIGRI`, `MEGA JUL`) sind angelegt, werden aber nirgends verwendet | Abkürzungen und Herstellernamen bleiben in Originalschreibweise |
 | Bestehende Namen | wurden vor den Farb-Übersetzungen erzeugt (`… - night`) | nach Änderungen neu erzeugen (Abschnitt 7) |
@@ -110,6 +112,8 @@ Befehle:
 - `php artisan products:rebuild-names` erzeugt die Namen in der Datenbank neu
 - `php artisan products:names:backfill --dry-run` füllt fehlende Namen (mit `--dry-run` nur zur Ansicht)
 
-## 8. Verbindliche Regel für die Übertragung in den Shop
+## 8. Regel für die Übertragung in den Shop (Soll-Regel, noch nicht umgesetzt)
 
 Nur Produkte **mit Titelbild** werden in den Shop übertragen. Das Stammprodukt bzw. Einzelprodukt braucht immer ein Titelbild, sonst wird es nicht übertragen. Varianten brauchen kein eigenes Bild (zum Beispiel ein Seil in zehn Farben, mit oder ohne Bild je Farbe).
+
+**Offener Punkt:** Die heutige Exportlogik (WooCommerce-Sync) prüft das noch nicht. Die Prüfung kommt mit dem Shop-Import, zusammen mit den anderen Filtern (ausgeschlossene Produkte, `online_sellable = false`).
