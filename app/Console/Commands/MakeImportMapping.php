@@ -19,7 +19,7 @@ class MakeImportMapping extends Command
      *
      * @var string
      */
-    protected $description = 'Erzeugt eine Import-Mapping-Datei unter config/import_mappings mit DocBlock-Vorlage.';
+    protected $description = 'Erzeugt eine Import-Mapping-Datei unter resources/import_mappings mit DocBlock-Vorlage.';
 
     /**
      * Execute the console command.
@@ -37,47 +37,50 @@ class MakeImportMapping extends Command
             ->toString();
 
         $prettyName = Str::of($name)->trim()->replace('_', ' ')->replace('-', ' ')->title();
-        $importerClass = Str::studly($slug) . 'Importer';
+        $importerClass = Str::studly($slug).'Importer';
 
-        $directory = config_path('import_mappings');
-        $filePath = $directory . DIRECTORY_SEPARATOR . $slug . '.php';
+        $directory = resource_path('import_mappings');
+        $filePath = $directory.DIRECTORY_SEPARATOR.$slug.'.php';
 
         if (! is_dir($directory)) {
             if (! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-                $this->error('Konnte das Verzeichnis config/import_mappings nicht erstellen.');
+                $this->error('Konnte das Verzeichnis resources/import_mappings nicht erstellen.');
+
                 return self::FAILURE;
             }
         }
 
         if (file_exists($filePath)) {
-            $this->error('Die Datei existiert bereits: ' . $filePath);
+            $this->error('Die Datei existiert bereits: '.$filePath);
+
             return self::FAILURE;
         }
 
         $content = $this->buildTemplate($slug, $prettyName, $importerClass);
 
         if (file_put_contents($filePath, $content) === false) {
-            $this->error('Konnte die Datei nicht schreiben: ' . $filePath);
+            $this->error('Konnte die Datei nicht schreiben: '.$filePath);
+
             return self::FAILURE;
         }
 
-        $this->info('Import-Mapping angelegt: ' . $filePath);
+        $this->info('Import-Mapping angelegt: '.$filePath);
 
         return self::SUCCESS;
     }
 
     /**
- * Erzeugt den Inhalt der Mapping-Datei inkl. DocBlock.
- */
-protected function buildTemplate(string $slug, string $prettyName, string $importerClassBase): string
-{
-    $path = "config/import_mappings/{$slug}.php";
+     * Erzeugt den Inhalt der Mapping-Datei inkl. DocBlock.
+     */
+    protected function buildTemplate(string $slug, string $prettyName, string $importerClassBase): string
+    {
+        $path = "resources/import_mappings/{$slug}.php";
 
-    // Importer-Klasse nach realer Struktur:
-    // App\Imports\ImporterForAliens, ImporterForEdelrid, etc.
-    $importerClass = 'App\\Imports\\ImporterFor' . $importerClassBase;
+        // Importer-Klasse nach realer Struktur:
+        // App\Imports\ImporterForAliens, ImporterForEdelrid, etc.
+        $importerClass = 'App\\Imports\\ImporterFor'.$importerClassBase;
 
-    return <<<PHP
+        return <<<PHP
 <?php
 
 /**
