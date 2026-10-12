@@ -6,6 +6,7 @@ use App\Importers\Contracts\CsvImporterContract;
 use App\Importers\Contracts\HandlesUploadedFile;
 use App\Importers\GenericCsvProductImporter;
 use App\Support\ImportLog;
+use App\Support\ImportMappingLoader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -14,7 +15,7 @@ use Illuminate\Support\Facades\Storage;
  * Hersteller-Importer für Kask (CSV).
  *
  * Verwendet das Kask-spezifische Mapping aus
- * config/import_mappings/kask.php.
+ * resources/import_mappings/kask.php.
  */
 class ImporterForKask extends GenericCsvProductImporter implements CsvImporterContract, HandlesUploadedFile
 {
@@ -29,7 +30,7 @@ class ImporterForKask extends GenericCsvProductImporter implements CsvImporterCo
             manufacturerId: $manufacturerId
         );
 
-        $this->mapping = config('import_mappings.kask', []);
+        $this->mapping = ImportMappingLoader::load('kask');
     }
 
     /**
@@ -41,14 +42,14 @@ class ImporterForKask extends GenericCsvProductImporter implements CsvImporterCo
             'mapping_keys' => array_keys($this->mapping),
         ]);
 
-        $filename = uniqid('kask_', true) . '.csv';
+        $filename = uniqid('kask_', true).'.csv';
         $stored = $file->storeAs('imports', $filename);
 
         Log::info('Import gestartet', [
-            'class'           => static::class,
+            'class' => static::class,
             'manufacturer_id' => (string) $this->manufacturerId,
-            'sourceType'      => 'csv',
-            'source'          => $stored,
+            'sourceType' => 'csv',
+            'source' => $stored,
         ]);
 
         $this->import(Storage::path($stored));
@@ -60,11 +61,11 @@ class ImporterForKask extends GenericCsvProductImporter implements CsvImporterCo
     public function import(string $filePath): void
     {
         // Kask-Mapping unmittelbar vor dem Import nochmals erzwingen.
-        $this->mapping = config('import_mappings.kask', []);
+        $this->mapping = ImportMappingLoader::load('kask');
 
         ImportLog::debug('ImporterForKask import mapping', [
-            'product_map'    => $this->mapping['product'] ?? null,
-            'variation_map'  => $this->mapping['variation'] ?? null,
+            'product_map' => $this->mapping['product'] ?? null,
+            'variation_map' => $this->mapping['variation'] ?? null,
             'var_fields_map' => $this->mapping['variation_fields'] ?? null,
         ]);
 
@@ -91,12 +92,12 @@ class ImporterForKask extends GenericCsvProductImporter implements CsvImporterCo
             * Produktname, 240-Black/White, 00
             */
             $colorPart = $parts[1] ?? null;
-            $sizePart  = $parts[2] ?? null;
+            $sizePart = $parts[2] ?? null;
 
             if ($colorPart !== null && $colorPart !== '') {
                 if (preg_match('/^(\d+)-(.*)$/', $colorPart, $matches)) {
                     $row['KASK_COLOR_CODE'] = trim($matches[1]);
-                    $row['KASK_COLOR']      = trim($matches[2]);
+                    $row['KASK_COLOR'] = trim($matches[2]);
                 } else {
                     $row['KASK_COLOR'] = $colorPart;
                 }
@@ -160,7 +161,7 @@ class ImporterForKask extends GenericCsvProductImporter implements CsvImporterCo
         * Keine Basiszeile vorhanden:
         * Parent aus Gruppenschlüssel und erster Variantenzeile ableiten.
         */
-        $productPayload['product_number'] = $groupKey . '-';
+        $productPayload['product_number'] = $groupKey.'-';
 
         $firstRow = $rows->first();
 
