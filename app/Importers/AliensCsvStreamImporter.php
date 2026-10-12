@@ -28,7 +28,7 @@ use League\Csv\Reader;
  * Konzept:
  * - Parent-Produkt wird über "Produkt-ID" identifiziert und upserted.
  * - Varianten werden über "Kombination-ID" identifiziert und upserted.
- * - Optionales Mapping (product / variation_fields) wird aus config/import_mappings/aliens.php geladen.
+ * - Optionales Mapping (product / variation_fields) wird aus resources/import_mappings/aliens.php geladen.
  *
  * Wichtig:
  * - Keine globale Gruppierung / kein iterator_to_array() / keine Collections.
@@ -920,35 +920,16 @@ class AliensCsvStreamImporter
     }
 
     /**
-     * Lädt ein Import-Mapping (product / variation_fields) für den Importer.
-     *
-     * Reihenfolge:
-     * 1) config("import_mappings.{name}")
-     * 2) Fallback auf Datei: config/import_mappings/{name}.php
+     * Lädt ein Import-Mapping (product / variation_fields) aus resources/import_mappings.
      *
      * @param  string  $name  Mapping-Slug (z. B. "aliens")
      * @return array Mapping-Array
      *
-     * @throws \RuntimeException Wenn kein Mapping gefunden wird oder kein Array zurückgibt
+     * @throws \RuntimeException Wenn kein Mapping gefunden wird oder die Datei kein Array zurückgibt
      */
     protected function loadMapping(string $name): array
     {
-        $fromConfig = config('import_mappings.'.$name);
-        if (is_array($fromConfig)) {
-            return $fromConfig;
-        }
-
-        $path = base_path("config/import_mappings/{$name}.php");
-        if (is_file($path)) {
-            $map = require $path;
-            if (! is_array($map)) {
-                throw new \RuntimeException("Mapping file {$path} must return an array.");
-            }
-
-            return $map;
-        }
-
-        throw new \RuntimeException("Mapping '{$name}' not found via config() or file {$path}");
+        return ImportMappingLoader::load($name);
     }
 
     /**
