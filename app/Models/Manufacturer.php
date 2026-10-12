@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\Pricing\PurchasePriceCalculator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
-use App\Models\ManufacturerAudit;
-use App\Services\Pricing\PurchasePriceCalculator;
 
 /**
  * Modell für Hersteller.
@@ -66,7 +65,6 @@ class Manufacturer extends Model
     {
         return $query->where('active', true);
     }
-
 
     /**
      * Die Attribut-Casts.

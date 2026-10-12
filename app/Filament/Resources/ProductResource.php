@@ -17,47 +17,47 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ProductResource\Actions\SyncProductsBulkAction;
 use App\Filament\Resources\ProductResource\Actions\SyncVariationsBulkAction;
 use App\Filament\Resources\ProductResource\Pages;
-use App\Models\Product;
+use App\Jobs\RunPetzlDescriptionSyncJob;
 use App\Models\ImportRun;
+use App\Models\PetzlDescriptionSyncRun;
+use App\Models\Product;
+use App\Services\Pricing\PurchasePriceCalculator;
 use App\Services\Product\ProductDuplicator;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\ProductNameContext;
 use App\Support\TextNormalizer;
 use Filament\Forms;
+use Filament\Forms\Components\Checkbox;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Group;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Radio;
+use Filament\Forms\Components\Section as FormSection;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
-use Filament\Forms\Components\Section as FormSection;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Group;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Hidden;
-use Filament\Forms\Components\Placeholder;
-use App\Services\Pricing\PurchasePriceCalculator;
-use Filament\Forms\Components\Checkbox;
-use Filament\Infolists\Infolist;
+use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\ImageEntry;
+use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Table;
 use Filament\Tables\Actions\Action as TableAction;
+use Filament\Tables\Actions\BulkAction;
 use Filament\Tables\Actions\BulkActionGroup;
 use Filament\Tables\Actions\DeleteBulkAction;
-use Filament\Tables\Actions\BulkAction;
-use Filament\Notifications\Notification;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Str;
-use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use App\Jobs\RunPetzlDescriptionSyncJob;
-use App\Models\PetzlDescriptionSyncRun;
-use Filament\Forms\Components\Radio;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 /**
  * Class ProductResource
@@ -80,20 +80,18 @@ class ProductResource extends Resource
     protected static ?string $model = Product::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
     protected static ?string $navigationLabel = 'Produkte';
 
     protected static ?string $modelLabel = 'Produkt';
-    protected static ?string $pluralModelLabel = 'Produkte';
 
+    protected static ?string $pluralModelLabel = 'Produkte';
 
     /**
      * Formularschema für Create/Edit.
      *
      * Ergänzt explizit die Felder `name`, `product_number` und `ean`,
      * damit diese in der Detailansicht sichtbar und bearbeitbar sind.
-     *
-     * @param \Filament\Forms\Form $form
-     * @return \Filament\Forms\Form
      */
     public static function form(Form $form): Form
     {
@@ -106,7 +104,7 @@ class ProductResource extends Resource
                             TextInput::make('product_name')
                                 ->label('Produktname')
                                 ->required()
-                                ->afterStateUpdated(fn($state, callable $set) => $set('slug', Str::slug((string)$state)))
+                                ->afterStateUpdated(fn ($state, callable $set) => $set('slug', Str::slug((string) $state)))
                                 ->maxLength(255)
                                 ->columnSpan(7),
 
@@ -117,14 +115,14 @@ class ProductResource extends Resource
                                 ->minValue(1)
                                 ->required()
                                 ->live()
-                                ->afterStateUpdated(fn($state, callable $set) => $set('assembly_group_source', 'manual'))
+                                ->afterStateUpdated(fn ($state, callable $set) => $set('assembly_group_source', 'manual'))
                                 ->helperText('Kann manuell angepasst werden. Standard ist 1.')
                                 ->suffixAction(
                                     Forms\Components\Actions\Action::make('resetAssemblyGroupToAuto')
                                         ->label('Auto')
                                         ->icon('heroicon-m-arrow-path')
                                         ->tooltip('Automatische Berechnung wieder aktivieren')
-                                        ->visible(fn(?Product $record) => $record?->assembly_group_source === 'manual')
+                                        ->visible(fn (?Product $record) => $record?->assembly_group_source === 'manual')
                                         ->action(function (?Product $record, callable $set) {
                                             if (! $record) {
                                                 return;
@@ -188,7 +186,7 @@ class ProductResource extends Resource
                                     // optionale Properties nur bei echtem Inhalt
                                     foreach ([$ctx->properties[0] ?? null, $ctx->properties[1] ?? null, $ctx->properties[2] ?? null] as $idx => $prop) {
                                         if (filled($prop)) {
-                                            $items[] = ['p' . ($idx + 1), $prop];
+                                            $items[] = ['p'.($idx + 1), $prop];
                                         }
                                     }
 
@@ -224,14 +222,13 @@ HTML;
                                     }
 
                                     $html = '<div style="display:flex;flex-wrap:wrap;gap:6px 10px;">'
-                                        . implode(' - ', $parts)
-                                        . '</div>';
+                                        .implode(' - ', $parts)
+                                        .'</div>';
 
                                     return new \Illuminate\Support\HtmlString($html);
                                 })
                                 ->helperText('Live Vorschau basierend auf den aktuellen Daten')
                                 ->columnSpanFull(),
-
 
                             TextInput::make('slug')
                                 ->label('Slug')
@@ -251,7 +248,7 @@ HTML;
                                 ->label('Hersteller')
                                 ->disabled()
                                 ->dehydrated(false)
-                                ->formatStateUsing(fn($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
+                                ->formatStateUsing(fn ($state, ?Product $record) => $record?->manufacturer?->manufacturer ?? '—')
                                 ->columnSpan(4),
 
                             Group::make()
@@ -259,7 +256,7 @@ HTML;
                                     Select::make('categories')
                                         ->label('Kategorien')
                                         ->multiple()
-                                        ->options(fn() => \App\Models\Category::query()
+                                        ->options(fn () => \App\Models\Category::query()
                                             ->orderBy('name')
                                             ->pluck('name', 'id')
                                             ->all())
@@ -273,12 +270,12 @@ HTML;
                                             return $record->categories()
                                                 ->orderBy('name')
                                                 ->pluck('categories.id')
-                                                ->map(fn($id): string => (string) $id)
+                                                ->map(fn ($id): string => (string) $id)
                                                 ->all();
                                         })
                                         ->saveRelationshipsUsing(function (Product $record, ?array $state): void {
                                             $selectedCategoryIds = collect($state ?? [])
-                                                ->map(fn($id): int => (int) $id)
+                                                ->map(fn ($id): int => (int) $id)
                                                 ->unique()
                                                 ->values()
                                                 ->all();
@@ -287,9 +284,9 @@ HTML;
                                                 ->pluck('category_product.assignment_type', 'categories.id');
 
                                             $manualCategoryIds = $existingAssignments
-                                                ->filter(fn(string $type): bool => $type === 'manual')
+                                                ->filter(fn (string $type): bool => $type === 'manual')
                                                 ->keys()
-                                                ->map(fn($id): int => (int) $id)
+                                                ->map(fn ($id): int => (int) $id)
                                                 ->all();
 
                                             $manualCategoryIdsToDetach = array_diff($manualCategoryIds, $selectedCategoryIds);
@@ -361,7 +358,7 @@ HTML;
                                             })->implode('');
 
                                             return new HtmlString(
-                                                '<div style="display:flex;flex-wrap:wrap;">' . $items . '</div>'
+                                                '<div style="display:flex;flex-wrap:wrap;">'.$items.'</div>'
                                             );
                                         }),
                                 ])
@@ -383,29 +380,29 @@ HTML;
                             TextInput::make('sku')
                                 ->label('SKU')
                                 // Beim Editieren feldweise „password-like“: leer anzeigen
-                                ->formatStateUsing(fn($state, $record, string $context) => $context === 'edit' ? '' : $state)
+                                ->formatStateUsing(fn ($state, $record, string $context) => $context === 'edit' ? '' : $state)
                                 // Alte SKU als Platzhalter, damit man sie sieht ohne sie zu übernehmen
-                                ->placeholder(fn($record) => $record?->sku)
+                                ->placeholder(fn ($record) => $record?->sku)
                                 // Nur beim Erstellen Pflicht
-                                ->required(fn(string $context) => $context === 'create')
+                                ->required(fn (string $context) => $context === 'create')
                                 // Unique, aber aktuellen Datensatz ignorieren
                                 ->unique(ignoreRecord: true)
                                 // Beim Editieren nur speichern, wenn etwas eingegeben wurde (leer = unverändert)
-                                ->dehydrated(fn($state) => filled($state))
+                                ->dehydrated(fn ($state) => filled($state))
                                 ->maxLength(255)
                                 ->helperText('Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
                                 ->columnSpan(3),
 
                             Placeholder::make('manufacturer_price_cents_display')
                                 ->label('Herstellerpreis')
-                                ->content(fn(?Product $record) => filled($record?->manufacturer_price_cents) && $record->manufacturer_price_cents > 0
-                                    ? number_format($record->manufacturer_price_cents / 100, 2, ',', '.') . ' €'
+                                ->content(fn (?Product $record) => filled($record?->manufacturer_price_cents) && $record->manufacturer_price_cents > 0
+                                    ? number_format($record->manufacturer_price_cents / 100, 2, ',', '.').' €'
                                     : '—')
                                 ->helperText('Importierter Hersteller-/Einkaufspreis')
                                 ->columnSpan(3),
 
-                        ]) //Grid
-                    ]) //schema
+                        ]), // Grid
+                    ]) // schema
                     ->collapsible(),
 
                 FormSection::make('Einkauf')
@@ -444,12 +441,12 @@ HTML;
                                 $ctx = ProductNameContext::fromProduct($record);
 
                                 return implode(' | ', array_filter([
-                                    'Manufacturer: ' . $ctx->manufacturerName,
-                                    'Original: ' . $ctx->designation,
-                                    'Category: ' . ($ctx->categoryName !== '' ? $ctx->categoryName : '—'),
-                                    'p1: ' . ($ctx->properties[0] ?? '—'),
-                                    'p2: ' . ($ctx->properties[1] ?? '—'),
-                                    'p3: ' . ($ctx->properties[2] ?? '—'),
+                                    'Manufacturer: '.$ctx->manufacturerName,
+                                    'Original: '.$ctx->designation,
+                                    'Category: '.($ctx->categoryName !== '' ? $ctx->categoryName : '—'),
+                                    'p1: '.($ctx->properties[0] ?? '—'),
+                                    'p2: '.($ctx->properties[1] ?? '—'),
+                                    'p3: '.($ctx->properties[2] ?? '—'),
                                 ]));
                             }),
                     ])
@@ -464,14 +461,13 @@ HTML;
                                     Placeholder::make('short_description_html')
                                         ->label('')
                                         ->content(
-                                            fn($record) =>
-                                            new HtmlString(
+                                            fn ($record) => new HtmlString(
                                                 '<h3 class="text-base font-semibold mb-2">Kurzbeschreibung</h3>'
-                                                    . '<div class="petzl-short-description-html">'
-                                                    . ($record?->petzl_short_description_html
+                                                    .'<div class="petzl-short-description-html">'
+                                                    .($record?->petzl_short_description_html
                                                         ?: $record?->short_description
                                                         ?: '<div class="text-gray-500">—</div>')
-                                                    . '</div>'
+                                                    .'</div>'
                                             )
                                         )
                                         ->columnSpanFull(),
@@ -479,14 +475,13 @@ HTML;
                                     Placeholder::make('description_html')
                                         ->label('')
                                         ->content(
-                                            fn($record) =>
-                                            new HtmlString(
+                                            fn ($record) => new HtmlString(
                                                 '<h3 class="text-base font-semibold mt-4 mb-2">Beschreibung</h3>'
-                                                    . '<div class="petzl-description-html">'
-                                                    . ($record?->petzl_description_html
+                                                    .'<div class="petzl-description-html">'
+                                                    .($record?->petzl_description_html
                                                         ?: $record?->description
                                                         ?: '<div class="text-gray-500">—</div>')
-                                                    . '</div>'
+                                                    .'</div>'
                                             )
                                         )
                                         ->columnSpanFull(),
@@ -497,7 +492,7 @@ HTML;
                                         ->maxLength(2048)
                                         ->dehydrated(false)
                                         ->helperText('Manuelle Petzl-Produktseite. Die URL wird erst übernommen, wenn die Beschreibung erfolgreich geladen wurde.')
-                                        ->visible(fn(?Product $record): bool => $record?->manufacturer_id === 3)
+                                        ->visible(fn (?Product $record): bool => $record?->manufacturer_id === 3)
                                         ->suffixActions([
                                             Forms\Components\Actions\Action::make('loadManualPetzlDescription')
                                                 ->label('Beschreibung laden')
@@ -554,8 +549,7 @@ HTML;
                                                 ->icon('heroicon-m-arrow-path')
                                                 ->tooltip('Manuelle Zuordnung entfernen und Automatik wieder aktivieren')
                                                 ->visible(
-                                                    fn(?Product $record): bool =>
-                                                    $record?->description_source === 'manual'
+                                                    fn (?Product $record): bool => $record?->description_source === 'manual'
                                                 )
                                                 ->requiresConfirmation()
                                                 ->modalHeading('Automatische Petzl-Zuordnung aktivieren?')
@@ -612,20 +606,19 @@ HTML;
 
                                             return new HtmlString(
                                                 '<div class="mt-3 text-xs text-gray-500">'
-                                                    . 'Quelle: <a href="' . $sourceUrl . '" target="_blank" class="underline">Petzl.com</a>'
-                                                    . ' · abgerufen am ' . e($fetchedAt)
-                                                    . ' · Typ: ' . e($descriptionSource)
-                                                    . '</div>'
+                                                    .'Quelle: <a href="'.$sourceUrl.'" target="_blank" class="underline">Petzl.com</a>'
+                                                    .' · abgerufen am '.e($fetchedAt)
+                                                    .' · Typ: '.e($descriptionSource)
+                                                    .'</div>'
                                             );
                                         })
                                         ->columnSpanFull(),
                                 ])
                                 ->columnSpanFull(),
 
-                        ]) // Grid
-                    ]) //schema
+                        ]), // Grid
+                    ]) // schema
                     ->collapsible(),
-
 
                 /* FormSection::make('Maße')
           ->description('Produkt- und Verpackungsmaße')
@@ -705,7 +698,6 @@ HTML;
                                 ->maxLength(2048)
                                 ->columnSpan(3),
 
-
                             TextInput::make('certification')
                                 ->label('Zertifizierung')
                                 ->maxLength(255)
@@ -737,12 +729,11 @@ HTML;
                                             $label
                                         );
 
-
                                         $value = is_string($m->value) ? trim($m->value) : (string) $m->value;
 
                                         return [$label, $value];
                                     })
-                                    ->filter(fn($pair) => ($pair[1] ?? '') !== '')
+                                    ->filter(fn ($pair) => ($pair[1] ?? '') !== '')
                                     ->values()
                                     ->all();
 
@@ -753,27 +744,26 @@ HTML;
                                 $rows = '';
                                 foreach ($items as [$label, $value]) {
                                     $rows .= '<tr>'
-                                        . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;white-space:nowrap;"><strong>' . e($label) . '</strong></td>'
-                                        . '<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;">' . e($value) . '</td>'
-                                        . '</tr>';
+                                        .'<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;white-space:nowrap;"><strong>'.e($label).'</strong></td>'
+                                        .'<td style="padding:6px 10px;border-bottom:1px solid #e5e7eb45;">'.e($value).'</td>'
+                                        .'</tr>';
                                 }
 
                                 return new HtmlString(
                                     '<div style="overflow:auto;">'
-                                        . '<table style="width:100%;border-collapse:collapse;">'
-                                        . '<thead><tr>'
-                                        . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Attribut</th>'
-                                        . '<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Wert</th>'
-                                        . '</tr></thead>'
-                                        . '<tbody>' . $rows . '</tbody>'
-                                        . '</table>'
-                                        . '</div>'
+                                        .'<table style="width:100%;border-collapse:collapse;">'
+                                        .'<thead><tr>'
+                                        .'<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Attribut</th>'
+                                        .'<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb9d;">Wert</th>'
+                                        .'</tr></thead>'
+                                        .'<tbody>'.$rows.'</tbody>'
+                                        .'</table>'
+                                        .'</div>'
                                 );
-                            })
+                            }),
 
-                    ]) //schema
+                    ]) // schema
                     ->collapsible(),
-
 
                 FormSection::make('Author')
                     ->description('Benutzerdaten von WooCommerce')
@@ -787,12 +777,12 @@ HTML;
                                         return '–';
                                     }
 
-                                    $user  = $record->author;
-                                    $name  = trim((string) ($user->name ?? ''));
+                                    $user = $record->author;
+                                    $name = trim((string) ($user->name ?? ''));
                                     $email = (string) ($user->email ?? '');
 
                                     if ($name !== '' && $email !== '') {
-                                        return $name . ' (' . $email . ')';
+                                        return $name.' ('.$email.')';
                                     }
 
                                     if ($name !== '') {
@@ -823,8 +813,8 @@ HTML;
                                 ->content('Der Autor wird beim ersten Import automatisch aus dem aktuell angemeldeten Benutzer gesetzt und bei späteren Aktualisierungen nicht überschrieben.')
                                 ->columnSpan(12),
 
-                        ]) // Grid
-                    ]) //schema
+                        ]), // Grid
+                    ]) // schema
                     ->collapsible(),
 
                 FormSection::make('Hersteller-Produktdetails (readonly)')
@@ -833,42 +823,42 @@ HTML;
                         Grid::make(12)->schema([
                             Placeholder::make('designation')
                                 ->label('Bezeichnung')
-                                ->content(fn($record) => $record?->designation ?: '–')
+                                ->content(fn ($record) => $record?->designation ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('type')
                                 ->label('Typ')
-                                ->content(fn($record) => $record?->type ?: '–')
+                                ->content(fn ($record) => $record?->type ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('category')
                                 ->label('Kategorie')
-                                ->content(fn($record) => $record?->category ?: '–')
+                                ->content(fn ($record) => $record?->category ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('subcategory')
                                 ->label('Unterkategorie')
-                                ->content(fn($record) => $record?->subcategory ?: '–')
+                                ->content(fn ($record) => $record?->subcategory ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('market')
                                 ->label('Markt')
-                                ->content(fn($record) => $record?->market ?: '–')
+                                ->content(fn ($record) => $record?->market ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('customs')
                                 ->label('Zolltarifnummer')
-                                ->content(fn($record) => $record?->customs ?: '–')
+                                ->content(fn ($record) => $record?->customs ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('made_in')
                                 ->label('Herkunft (Made in)')
-                                ->content(fn($record) => $record?->made_in ?: '–')
+                                ->content(fn ($record) => $record?->made_in ?: '–')
                                 ->columnSpan(6),
 
                             Placeholder::make('materials')
                                 ->label('Materialien')
-                                ->content(fn($record) => $record?->materials ?: '–')
+                                ->content(fn ($record) => $record?->materials ?: '–')
                                 ->columnSpan(12),
                         ]),
                     ])
@@ -912,21 +902,21 @@ HTML;
 
                                     // Feldnamen bei Bedarf anpassen
                                     $lengthMm = $variation->length_mm ?? null;
-                                    $widthMm  = $variation->width_mm ?? null;
+                                    $widthMm = $variation->width_mm ?? null;
                                     $heightMm = $variation->height_mm ?? null;
 
                                     $parts = [];
 
                                     if ($lengthMm) {
-                                        $parts[] = number_format($lengthMm / 1000, 2, ',', '') . ' m';
+                                        $parts[] = number_format($lengthMm / 1000, 2, ',', '').' m';
                                     }
 
                                     if ($widthMm) {
-                                        $parts[] = number_format($widthMm / 1000, 2, ',', '') . ' m';
+                                        $parts[] = number_format($widthMm / 1000, 2, ',', '').' m';
                                     }
 
                                     if ($heightMm) {
-                                        $parts[] = number_format($heightMm / 1000, 2, ',', '') . ' m';
+                                        $parts[] = number_format($heightMm / 1000, 2, ',', '').' m';
                                     }
 
                                     if ($parts === []) {
@@ -959,7 +949,7 @@ HTML;
 
                                     $kg = $weightGr / 1000;
 
-                                    return number_format($kg, 2, ',', '') . ' kg';
+                                    return number_format($kg, 2, ',', '').' kg';
                                 })
                                 ->columnSpan(6),
                         ]),
@@ -993,7 +983,9 @@ HTML;
 
                                         if (is_array($paths)) {
                                             foreach ($paths as $path) {
-                                                if (!is_string($path) || trim($path) === '') continue;
+                                                if (! is_string($path) || trim($path) === '') {
+                                                    continue;
+                                                }
 
                                                 $path = ltrim(trim($path), '/'); // products/aliens/m1/p6/5191.jpg
 
@@ -1016,14 +1008,15 @@ HTML;
                                             $decoded = json_decode($urlsMeta->value, true);
                                             if (is_array($decoded)) {
                                                 foreach ($decoded as $u) {
-                                                    if (is_string($u) && trim($u) !== '') $urls[] = trim($u);
+                                                    if (is_string($u) && trim($u) !== '') {
+                                                        $urls[] = trim($u);
+                                                    }
                                                 }
                                             }
                                         }
                                     }
 
                                     $urls = array_values(array_unique($urls));
-
 
                                     // $urls = $localUrls !== [] ? $localUrls : ($record->display_image_urls ?? []);
 
@@ -1069,9 +1062,6 @@ HTML;
     /**
      * Tabellen-Konfiguration (unverändert – nur Platzhalter,
      * belasse hier deinen bestehenden Inhalt).
-     *
-     * @param \Filament\Tables\Table $table
-     * @return \Filament\Tables\Table
      */
     public static function table(Table $table): Table
     {
@@ -1079,8 +1069,8 @@ HTML;
             ->columns([
                 Tables\Columns\TextColumn::make('product_name')
                     ->label('Produktname')
-                    ->formatStateUsing(fn($state) => $state ? \Illuminate\Support\Str::limit((string)$state, 20) : '—')
-                    ->tooltip(fn($state) => $state ?: null)
+                    ->formatStateUsing(fn ($state) => $state ? \Illuminate\Support\Str::limit((string) $state, 20) : '—')
+                    ->tooltip(fn ($state) => $state ?: null)
                     ->searchable(['product_name', 'product_number'])
                     ->sortable()
                     ->wrap()
@@ -1098,7 +1088,7 @@ HTML;
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                    /* Tables\Columns\TextColumn::make('ean')
+                /* Tables\Columns\TextColumn::make('ean')
                     ->label('EAN')
                     ->searchable()
                     ->sortable()
@@ -1108,15 +1098,14 @@ HTML;
                 Tables\Columns\TextColumn::make('short_description')
                     ->label('Kurzbeschreibung')
                     // 1) State aus Record ableiten: short_description ODER Fallback auf description
-                    ->state(fn($record) => $record->short_description ?: $record->description)
+                    ->state(fn ($record) => $record->short_description ?: $record->description)
                     // 2) Anzeige: HTML entfernen + kürzen
                     ->formatStateUsing(
-                        fn($state) =>
-                        $state ? Str::limit(TextNormalizer::plain((string) $state), 40) : '—'
+                        fn ($state) => $state ? Str::limit(TextNormalizer::plain((string) $state), 40) : '—'
                     )
                     // 3) Tooltip: voller Text, ebenfalls ohne HTML
                     ->tooltip(
-                        fn($record) => ($text = ($record->short_description ?: $record->description))
+                        fn ($record) => ($text = ($record->short_description ?: $record->description))
                             ? TextNormalizer::plain((string) $text)
                             : null
                     )
@@ -1145,7 +1134,7 @@ HTML;
             ->filters([
                 Tables\Filters\SelectFilter::make('manufacturer_id')
                     ->label('Hersteller')
-                    ->relationship('manufacturer', 'manufacturer', fn($query) => $query->where('active', true)) // Relation + anzuzeigendes Feld
+                    ->relationship('manufacturer', 'manufacturer', fn ($query) => $query->where('active', true)) // Relation + anzuzeigendes Feld
                     ->multiple()                                   // ⬅️ Mehrfachauswahl aktivieren
                     ->searchable()
                     ->preload()
@@ -1204,7 +1193,7 @@ HTML;
                         Select::make('manufacturer_id')
                             ->label('Hersteller')
                             ->placeholder('Bitte Hersteller wählen …')
-                            ->relationship('manufacturer', 'manufacturer', fn($query) => $query->where('active', true))
+                            ->relationship('manufacturer', 'manufacturer', fn ($query) => $query->where('active', true))
                             ->native(false)        // Tom Select statt nativer <select>
                             ->searchable()         // Typeahead-Suche aktivieren
                             ->preload()            // Optionen vorladen (besseres UX im Modal)
@@ -1243,12 +1232,11 @@ HTML;
                         Placeholder::make('api_info')
                             ->label('')
                             ->content(
-                                fn($get) =>
-                                $get('sourceType') === 'api'
+                                fn ($get) => $get('sourceType') === 'api'
                                     ? 'Die Daten werden automatisch über die API dieses Herstellers abgerufen. Kein Datei-Upload erforderlich.'
                                     : ''
                             )
-                            ->visible(fn($get) => $get('sourceType') === 'api'),
+                            ->visible(fn ($get) => $get('sourceType') === 'api'),
 
                         FileUpload::make('csv')
                             ->label('CSV-Datei')
@@ -1260,18 +1248,18 @@ HTML;
                                 'text/x-csv',
                             ])
                             ->maxSize(25000) // KB => 25 MB
-                            ->visible(fn($get) => $get('sourceType') === 'csv')
+                            ->visible(fn ($get) => $get('sourceType') === 'csv')
                             ->storeFiles(false),
 
                         FileUpload::make('xml')
                             ->label('XML-Datei')
                             ->acceptedFileTypes(['text/xml', 'application/xml'])
-                            ->visible(fn($get) => $get('sourceType') === 'xml')
+                            ->visible(fn ($get) => $get('sourceType') === 'xml')
                             ->storeFiles(false),
                     ])
                     ->action(function (array $data, Tables\Actions\Action $action, \Livewire\Component $livewire) {
                         $manufacturerId = (int) $data['manufacturer_id'];
-                        $manufacturer   = \App\Models\Manufacturer::findOrFail($manufacturerId);
+                        $manufacturer = \App\Models\Manufacturer::findOrFail($manufacturerId);
 
                         $sourceType = $data['sourceType'] ?? $manufacturer->import_type ?? 'csv';
 
@@ -1283,14 +1271,15 @@ HTML;
                                 ->send();
 
                             $action->halt();
+
                             return;
                         }
 
                         // Quelle bestimmen
                         $source = match ($sourceType) {
                             'csv', 'xml' => Storage::disk('local')->putFile('imports', $data[$sourceType]),
-                            'api'        => (string) $manufacturer->api_url,
-                            default      => null,
+                            'api' => (string) $manufacturer->api_url,
+                            default => null,
                         };
 
                         if (! $source) {
@@ -1300,6 +1289,7 @@ HTML;
                                 ->send();
 
                             $action->halt();
+
                             return;
                         }
 
@@ -1309,32 +1299,32 @@ HTML;
 
                         Log::info('Import dispatch', [
                             'manufacturerId' => $manufacturerId,
-                            'sourceType'     => $sourceType,
-                            'source'         => $source,
-                            'payloadSource'  => $payloadSource,
-                            'connection'     => config('queue.default'),
-                            'queue_name'     => 'imports',
+                            'sourceType' => $sourceType,
+                            'source' => $source,
+                            'payloadSource' => $payloadSource,
+                            'connection' => config('queue.default'),
+                            'queue_name' => 'imports',
                         ]);
 
                         $exists = ($sourceType !== 'api') ? file_exists($payloadSource) : null;
 
                         Log::info('Import source prepared', [
                             'manufacturer_id' => $manufacturerId,
-                            'source_type'     => $sourceType,
-                            'source'          => $source,
-                            'payloadSource'   => $payloadSource,
-                            'exists'          => $exists,
+                            'source_type' => $sourceType,
+                            'source' => $source,
+                            'payloadSource' => $payloadSource,
+                            'exists' => $exists,
                         ]);
 
                         $authorId = Auth::id();
 
                         $run = ImportRun::create([
-                            'id'              => (string) Str::uuid(),
+                            'id' => (string) Str::uuid(),
                             'manufacturer_id' => $manufacturerId,
-                            'source_type'     => $sourceType,
-                            'source'          => $payloadSource,
-                            'author_id'       => Auth::id(),
-                            'status'          => 'queued',
+                            'source_type' => $sourceType,
+                            'source' => $payloadSource,
+                            'author_id' => Auth::id(),
+                            'status' => 'queued',
                         ]);
 
                         $syncPetzlDescriptions = (bool) ($data['sync_petzl_descriptions'] ?? false);
@@ -1482,8 +1472,7 @@ HTML;
                                 ->value('id');
 
                             $nonPetzlProducts = $records->filter(
-                                fn (Product $product): bool =>
-                                    $product->manufacturer_id !== $petzlManufacturerId
+                                fn (Product $product): bool => $product->manufacturer_id !== $petzlManufacturerId
                             );
 
                             if ($nonPetzlProducts->isNotEmpty()) {
@@ -1534,7 +1523,7 @@ HTML;
                                 ->body(
                                     count($productIds) === 1
                                         ? '1 ausgewähltes Produkt wird synchronisiert.'
-                                        : count($productIds) . ' ausgewählte Produkte werden synchronisiert.'
+                                        : count($productIds).' ausgewählte Produkte werden synchronisiert.'
                                 )
                                 ->success()
                                 ->send();
@@ -1704,9 +1693,6 @@ HTML;
      * Hinweis:
      *  Die Methode kann erweitert werden, um weitere Hersteller-spezifische
      *  Felder, Medien oder technische Produktparameter auszugeben.
-     *
-     * @param  \Filament\Infolists\Infolist  $infolist
-     * @return \Filament\Infolists\Infolist
      */
     public static function infolist(Infolist $infolist): Infolist
     {
@@ -1728,8 +1714,7 @@ HTML;
                             ->placeholder('-'),
                     ])
                     ->visible(
-                        fn($record) =>
-                        $record->dimensions_raw
+                        fn ($record) => $record->dimensions_raw
                             || $record->dimension_length_mm
                             || $record->dimension_width_mm
                             || $record->dimension_height_mm
@@ -1742,11 +1727,11 @@ HTML;
                             ->height(160)
                             ->stacked(), // Bilder untereinander statt nebeneinander
                     ])
-                    ->visible(fn($record) => ! empty($record->display_image_urls)),
+                    ->visible(fn ($record) => ! empty($record->display_image_urls)),
 
                 Section::make('Petzl-Produktdetails')
                     // nur anzeigen, wenn Hersteller Petzl ist
-                    ->visible(fn(Product $record) => $record->manufacturer?->name === 'Petzl')
+                    ->visible(fn (Product $record) => $record->manufacturer?->name === 'Petzl')
                     ->columns(2)
                     ->schema([
                         TextEntry::make('designation')
