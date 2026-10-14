@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\ProductNaming\ProductNameCategory;
 use App\Models\Manufacturer;
 use App\Models\Product;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
@@ -93,7 +94,7 @@ final class RebuildProductNamesCommand extends Command
                         continue;
                     }
 
-                    $categoryName = ProductNameContext::resolveCategoryName($designation);
+                    $categoryName = ProductNameCategory::nameFor($product, $designation);
 
                     $properties = $extractor->extract($product);
 

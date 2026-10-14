@@ -38,7 +38,8 @@ final class ProductPropertyExtractor
         if ($product->product_type === 'variable') {
             $analysis = $this->analyzeVariablePropertyGroups($product);
             $designation = $this->resolveDesignation($product);
-            $categoryName = ProductNameContext::resolveCategoryName($designation);
+            // Produktgruppe (Seile, Karabiner, Handschuhe …) für die Leit-Eigenschaft
+            $categoryName = ProductNameCategory::leadGroupFor($product, $designation);
 
             $value = $this->parentLeadPropertyResolver->resolve(
                 $categoryName,

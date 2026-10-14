@@ -67,6 +67,13 @@ class CategoryResource extends Resource
                                 ->native(false)
                                 ->placeholder('Keine Oberkategorie')
                                 ->columnSpan(6),
+
+                            TextInput::make('name_label')
+                                ->label('Bezeichnung im Produktnamen')
+                                ->maxLength(255)
+                                ->placeholder(fn (callable $get) => $get('name') ?: 'wie Name')
+                                ->helperText('Leer = Kategoriename. Beispiel: Kategorie „Statisch“ → im Namen „Statikseil“.')
+                                ->columnSpan(6),
                         ]),
                     ])
                     ->collapsible(),
@@ -148,6 +155,12 @@ class CategoryResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->copyable(),
+
+                Tables\Columns\TextColumn::make('name_label')
+                    ->label('Im Produktnamen')
+                    ->placeholder('wie Name')
+                    ->searchable()
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('parent.name')
                     ->label('Oberkategorie')

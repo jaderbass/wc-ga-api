@@ -17,7 +17,7 @@ use App\Services\Categories\CategoryResolver;
  *
  * Your importer/sync layer prepares:
  * - manufacturerName (for CAPS)
- * - categoryName (resolved from designation via CategoryResolver)
+ * - categoryName (assigned product category, see ProductNameCategory; fallback CategoryResolver)
  * - designation (CSV original name)
  * - properties[] in the correct order (property1..propertyN)
  */
@@ -62,7 +62,8 @@ final class ProductNameContext
             ? trim($product->original_product_name)
             : (string) $product->slug;
 
-        $categoryName = self::resolveCategoryName($designation);
+        // zugeordnete Kategorie des Produkts, sonst Stichwort-Regeln am Namen
+        $categoryName = ProductNameCategory::nameFor($product, $designation);
 
         $kind = self::resolveKind($product);
 
