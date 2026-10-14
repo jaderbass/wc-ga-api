@@ -33,7 +33,7 @@ return [
             ['keywords' => 'reepschnur', 'categories' => ['Reepschnur']],
             ['keywords' => 'gummileine|hobbyschnur|yachting rope|outdoorseil|segelleine|polyester seil|vectran seil|lanyard elastisch', 'categories' => ['Segel-Zubehör', 'Segeln']],
             ['keywords' => 'bronze|marinebronze|bronze bolzenkarabiner', 'categories' => ['Zubehör']],
-            ['keywords' => 'felshaken|klemmgerät|klemmkeil|chalk|magnesia|magnesium|unterarmtrainer|trekkingstöcke|steigeisen|armtrainer|antistollplatte|beta stick|seilbürste|klettergriff|eispickel|eisgerät|finger tape|sicherungsbrille|klettersteigset|aluklettersteigkarabiner|bohrhakenlasche|verzinkte bohrhakenlasche|flüssigchalk|magnesiumball|rißkletterhandschutz', 'categories' => ['Kletter-Zubehör']],
+            ['keywords' => 'felshaken|klemmgerät|klemmkeil|chalk|magnesia|magnesium|unterarmtrainer|trekkingstöcke|steigeisen|armtrainer|antistollplatte|beta stick|seilbürste|klettergriff|eispickel|eisgerät|finger tape|sicherungsbrille|klettersteigset|aluklettersteigkarabiner|bohrhakenlasche|verzinkte bohrhakenlasche|flüssigchalk|magnesiumball|rißkletterhandschutz', 'categories' => ['Bergsport & Klettern']],
             ['keywords' => 'express set|expressset|indoor expressset|quick draw', 'categories' => ['Express-Set']],
             ['keywords' => 'expressschlinge', 'categories' => ['Schlingen & Lanyard']],
             ['keywords' => 'karabinerfixierung', 'categories' => ['Zubehör Karabiner']],
