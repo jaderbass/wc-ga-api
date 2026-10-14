@@ -36,7 +36,7 @@ class ShopCategoryTreeSeeder extends Seeder
                 'Rettung' => [], // neu
                 'Segeln' => [], // neu
                 'Spezialkräfte' => [],
-                'Sport' => [],
+                'Sport' => ['Fahrradhelm' => ['Fahrradhelm-Zubehör' => []]],
             ],
             'Produkte' => [
                 'Abseilgeräte' => ['Rettungsachter' => [], 'Zubehör Abseilgerät' => []],
@@ -87,7 +87,7 @@ class ShopCategoryTreeSeeder extends Seeder
                 'Werkzeugsicherung' => [], // neu
                 'Zubehör' => [],
             ],
-            'Sets' => ['Feuerwehr-Sets' => [], 'PSAgA-Sets' => []],
+            'Sets' => ['Baumpflege-Sets' => [], 'Feuerwehr-Sets' => [], 'PSAgA-Sets' => []],
         ],
         'RFID Tec' => [],
         'SALE' => [],
