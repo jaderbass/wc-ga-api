@@ -25,7 +25,7 @@ Dieses Dokument hält fest, **woher** die Kategorie eines Produkts in jeder Hers
 | Werkzeugsicherung | Produkte | Kratos, Aliens (Spiralkabel, Tool Frog, Tool Leash, Zubehör-/Materialkarabiner), Edelrid |
 | Lastensicherung | Produkte | Kratos |
 | Segel-Zubehör | Produkte | Aliens (Lanex) |
-| Kletter-Zubehör | Produkte | Aliens (Sportkletterbedarf) |
+| Bergsport & Klettern | Produkte | Aliens (Sportkletterbedarf) und Einzelstücke; ersetzt seit 14.10.2026 „Kletter-Zubehör“ |
 | Baumpflege-Zubehör | Produkte | Aliens, Edelrid (Cambiumschoner, Wurfbeutel, Wurfleine, Steighilfe) |
 | Rettung | Einsatzgebiet | Skylotec |
 | Segeln | Einsatzgebiet | Aliens (Lanex) |
@@ -152,7 +152,7 @@ Aliens ist **Großhändler** – die Liste enthält viele Marken: Tendon, Singin
 | 10 | Reepschnur | Reepschnur | 135 |
 | 11 | Gummileine, GumFix, Hobbyschnur, Yachting rope, Outdoorseil, Segelleine, Polyester-/Vectran-Seil, Lanyard elastisch | **Segel-Zubehör (neu)** + Einsatzgebiet **Segeln (neu)** | 66 |
 | 12 | bronze, marinebronze, Swivel, Snap, Buckle, D Shape (KONG-Beschläge, VE 50–500) | Zubehör | 175 |
-| 13 | Felshaken, Klemmgerät, Klemmkeil, Chalk, Magnesia, Steigeisen, Armtrainer, Beta Stick, Seilbürste, Klettergriff, Eispickel, Finger Tape, Sicherungsbrille, Klettersteig…, Bohrhakenlasche | **Kletter-Zubehör (neu)** | 103 |
+| 13 | Felshaken, Klemmgerät, Klemmkeil, Chalk, Magnesia, Steigeisen, Armtrainer, Beta Stick, Seilbürste, Klettergriff, Eispickel, Finger Tape, Sicherungsbrille, Klettersteig…, Bohrhakenlasche | **Bergsport & Klettern (neu)** | 103 |
 | 14 | Express-Set, Expressset, Quick Draw | Karabiner > Express-Set | 51 |
 | 15 | Expressschlinge | Schlingen & Lanyard | 13 |
 | 16 | Edelstahlkarabiner | Karabiner > Edelstahlkarabiner | 28 |
