@@ -464,7 +464,7 @@ it('applies skylotec: mapping, carabiner keywords, exclusion and Einsatzgebiete 
     $sheet = skylotecSheet([
         ['Original Skylotec Artikelnummer' => 'R-1', 'Produktname' => 'SUPER STATIC 11.0', 'Seilart' => 'Statikseil', 'Nettopreis EU Aktuell' => '100.00', 'Anwendungsgebiete' => 'Rettung'],
         ['Original Skylotec Artikelnummer' => 'K-1', 'Produktname' => 'OVALSTEEL TRI', 'Karabiner Kategorie' => 'Verschlusskarabiner'],
-        ['Original Skylotec Artikelnummer' => 'W-1', 'Produktname' => 'WINDBREAKER WOMEN', 'E-Class-Nummer' => '40-01-01-90'],
+        ['Original Skylotec Artikelnummer' => 'W-1', 'Produktname' => 'WINDBREAKER WOMEN', 'E-Class-Nummer' => '40-01-01-90', 'Anwendungsgebiete' => 'Rettung'],
         ['Original Skylotec Artikelnummer' => 'W-2', 'Produktname' => 'HELMET CAP', 'E-Class-Nummer' => '40-01-01-90'],
     ]);
 
