@@ -21,6 +21,7 @@ class Category extends Model
         'name',
         'slug',
         'parent_id',
+        'name_label',
     ];
 
     /**
