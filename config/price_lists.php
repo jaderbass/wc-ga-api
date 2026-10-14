@@ -213,10 +213,6 @@ return [
     'skylotec' => [
         // Herstellerkategorie wird aus dem Datenfeed abgeleitet (SkylotecPriceListParser).
         // Entscheidungen Maik, 14.10.2026. 'exclude' = Ausschließen.
-        // OFFEN (noch ohne Vorschlag): Stationärer/Mobiler Anschlagpunkt,
-        // Horizontales/Vertikales Seil-/Schienensystem, eCl@ss 40-02-01-90,
-        // 40-02-92-90, 40-02-90-01, 40-21-07-12, 40-21-04-02, 40-02-92-01,
-        // 40-02-90-06, 40-02-01-02
         'sources' => [
             'Seil: Statikseil' => ['Statisch'],
             'Seil: Dynamikseil' => ['Dynamisch'],
@@ -246,11 +242,27 @@ return [
             'Seilklemme' => ['Seilklemmen'],
             'Verbindungsmittel' => ['Verbindungsmittel'],
             '(ohne eCl@ss)' => ['Ersatzteil'],
+            'Stationärer Anschlagpunkt' => ['Anschlageinrichtung'],
+            'Mobiler Anschlagpunkt' => ['Anschlageinrichtung'],
+            'Horizontales Seilsystem' => ['Anschlageinrichtung'],
+            'Vertikales Seilsystem' => ['Anschlageinrichtung'],
+            'Horizontales Schienensystem' => ['Anschlageinrichtung'],
+            'Vertikales Schienensystem' => ['Anschlageinrichtung'],
+            'eCl@ss 40-02-01-90' => ['Absturzsicherung'],
+            'eCl@ss 40-02-92-90' => ['Taschen & Rucksäcke'],
+            'eCl@ss 40-02-90-01' => ['Ersatzteil'],
+            'eCl@ss 40-21-07-12' => ['Verbindungselemente'],
+            'eCl@ss 40-21-04-02' => ['Arbeitsgurt', 'Rettung'],
+            'eCl@ss 40-02-92-01' => ['PSAgA-Sets'],
+            'eCl@ss 40-02-90-06' => ['Rettung & Transport', 'Rettung'],
+            'eCl@ss 40-02-01-02' => ['Absturzsicherung'],
         ],
 
         'keyword_rules' => [
             ['source' => 'eCl@ss 40-01-01-90', 'keywords' => 'storm hood|helmet cap|neck tube', 'categories' => ['Zubehör Schutzhelme']],
             ['source' => 'eCl@ss 40-21-90-90', 'keywords' => 'resealing|*kleinteile', 'categories' => ['Ersatzteil']],
+            ['source' => 'eCl@ss 40-02-92-90', 'keywords' => '*battery|*charger|rdd|akku|ladegerät', 'categories' => ['Ersatzteil']],
+            ['source' => 'eCl@ss 40-02-92-90', 'keywords' => 'telescope', 'categories' => ['Zubehör']],
             ['source' => 'Karabiner: Karabiner', 'keywords' => 'q link', 'categories' => ['Schraubglieder']],
             ['source' => 'Karabiner: Karabiner', 'keywords' => 'va|s steel|inox|stainless|edelstahl', 'categories' => ['Edelstahlkarabiner']],
             ['source' => 'Karabiner: Karabiner', 'keywords' => '*steel|st|stahl', 'categories' => ['Stahlkarabiner']],
