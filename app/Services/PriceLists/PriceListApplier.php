@@ -51,6 +51,9 @@ class PriceListApplier
     /** @var array<string, ?Category> */
     protected array $categoryCache = [];
 
+    /** Prüft im 2. Durchgang, ob ein Produkt ausgeschlossen ist */
+    protected ?ManufacturerCategoryResolver $exclusionResolver = null;
+
     public function __construct(
         protected ProductCategorySyncService $categorySync,
     ) {}
@@ -108,6 +111,7 @@ class PriceListApplier
 
         // 2. Durchgang: Produkte ergänzen und Kategorien neu zuordnen
         $this->categorySync->flushRules();
+        $this->exclusionResolver = new ManufacturerCategoryResolver;
 
         foreach ($byProduct as $productId => $entries) {
             if (($product = $products->get($productId)) !== null) {
@@ -338,6 +342,11 @@ class PriceListApplier
             foreach ($row->applicationAreas as $area) {
                 $desired = array_merge($desired, $areaMap[mb_strtolower(trim($area))] ?? []);
             }
+        }
+
+        // ausgeschlossene Produkte bekommen auch keine Import-Kategorien
+        if (($this->exclusionResolver ??= new ManufacturerCategoryResolver)->resolve($product)?->exclude) {
+            $desired = [];
         }
 
         $desired = array_unique($desired);
