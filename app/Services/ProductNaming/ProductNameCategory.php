@@ -4,6 +4,7 @@ namespace App\Services\ProductNaming;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Services\Categories\CategoryResolver;
 use Illuminate\Support\Collection;
 
 /**
@@ -11,7 +12,9 @@ use Illuminate\Support\Collection;
  *
  * Grundlage sind die Kategorien, die dem Produkt zugeordnet sind (manuell,
  * Hersteller-Zuordnung, Stichwort-Regeln – siehe ProductCategorySyncService).
- * Nicht in Frage kommen "Allgemein", "SALE" und Einsatzgebiete.
+ * Nicht in Frage kommen "Allgemein", "SALE", Einsatzgebiete und Kategorien
+ * außerhalb der Shop-Struktur (alte Test-/Vorgänger-Kategorien ohne
+ * Oberkategorie wie "Kategorie TEST" oder "Schutzhelm").
  *
  * Auswahl: manuell gesetzte vor automatischen, dann die speziellste
  * (tiefste) Kategorie, dann die kleinste ID.
@@ -25,6 +28,9 @@ class ProductNameCategory
     protected const IGNORED = ['allgemein', 'sale'];
 
     protected const IGNORED_BRANCHES = ['einsatzgebiet'];
+
+    /** Oberste Ebenen der Shop-Struktur; alles andere zählt nicht für den Namen */
+    protected const SHOP_ROOTS = ['produkte übersicht', 'rfid tec'];
 
     /** Oberkategorie der Produktkategorien ("Produkte Übersicht > Produkte") */
     protected const PRODUCT_ROOT = 'produkte';
@@ -59,7 +65,19 @@ class ProductNameCategory
             return trim((string) ($category->name_label ?: $category->name));
         }
 
-        return ProductNameContext::resolveCategoryName($designation);
+        return self::fallbackName($designation);
+    }
+
+    /**
+     * Stichwort-Regeln am Namen, ohne ignorierte Kategorien; sonst "Allgemein".
+     */
+    protected static function fallbackName(string $designation): string
+    {
+        $match = app(CategoryResolver::class)
+            ->resolveFromProductName($designation)
+            ->first(fn (Category $category): bool => ! self::isIgnored($category));
+
+        return $match !== null ? trim((string) ($match->name_label ?: $match->name)) : 'Allgemein';
     }
 
     /**
@@ -71,7 +89,7 @@ class ProductNameCategory
         $category = self::primary($product);
 
         if ($category === null) {
-            return ProductNameContext::resolveCategoryName($designation);
+            return self::fallbackName($designation);
         }
 
         $path = self::path($category);
@@ -90,13 +108,15 @@ class ProductNameCategory
             return true;
         }
 
-        foreach (self::path($category) as $level) {
+        $path = self::path($category);
+
+        foreach ($path as $level) {
             if (in_array(mb_strtolower($level->name), self::IGNORED_BRANCHES, true)) {
                 return true;
             }
         }
 
-        return false;
+        return ! in_array(mb_strtolower($path[0]->name), self::SHOP_ROOTS, true);
     }
 
     /**
