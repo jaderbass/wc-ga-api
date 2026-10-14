@@ -210,7 +210,7 @@ class PriceListApplier
                 $product->forceFill($updates)->save();
             }
 
-            $this->syncSaleCategory($product, $clearance);
+            $this->syncImportCategories($parser, $product, $entries, $clearance);
             $this->syncAvailabilityNote($parser, $product, $entries);
         });
 
@@ -317,25 +317,52 @@ class PriceListApplier
         }
     }
 
-    protected function syncSaleCategory(Product $product, bool $clearance): void
+    /**
+     * Kategorien, die die Liste selbst vorgibt, mit Zuordnungsart "import":
+     * - "SALE" bei ABVERKAUF
+     * - Einsatzgebiete aus den Anwendungsgebieten der Liste
+     *   (config price_lists.<liste>.application_areas)
+     * Fällt der Grund beim nächsten Einlesen weg, wird die Kategorie wieder
+     * entfernt. Manuell gesetzte Kategorien bleiben unangetastet.
+     *
+     * @param  Collection<int, array{row: PriceListRow, variation_id: ?int}>  $entries
+     */
+    protected function syncImportCategories(PriceListParser $parser, Product $product, Collection $entries, bool $clearance): void
     {
-        $sale = $this->category('SALE');
+        $areaMap = array_change_key_case(config('price_lists.'.$parser->key().'.application_areas', []));
 
-        if ($sale === null) {
-            return;
+        $managed = array_unique(array_merge(['SALE'], ...array_values(array_map('array_values', $areaMap ?: [[]]))));
+        $desired = $clearance ? ['SALE'] : [];
+
+        foreach ($entries->pluck('row') as $row) {
+            foreach ($row->applicationAreas as $area) {
+                $desired = array_merge($desired, $areaMap[mb_strtolower(trim($area))] ?? []);
+            }
         }
 
-        $current = DB::table('category_product')
-            ->where('product_id', $product->id)
-            ->where('category_id', $sale->id)
-            ->value('assignment_type');
+        $desired = array_unique($desired);
 
-        if ($clearance && $current === null) {
-            $product->categories()->attach($sale->id, ['assignment_type' => self::ASSIGNMENT_IMPORT]);
-        }
+        foreach ($managed as $name) {
+            $category = $this->category($name);
 
-        if (! $clearance && $current === self::ASSIGNMENT_IMPORT) {
-            $product->categories()->detach($sale->id);
+            if ($category === null) {
+                continue;
+            }
+
+            $current = DB::table('category_product')
+                ->where('product_id', $product->id)
+                ->where('category_id', $category->id)
+                ->value('assignment_type');
+
+            $wanted = in_array($name, $desired, true);
+
+            if ($wanted && $current === null) {
+                $product->categories()->attach($category->id, ['assignment_type' => self::ASSIGNMENT_IMPORT]);
+            }
+
+            if (! $wanted && $current === self::ASSIGNMENT_IMPORT) {
+                $product->categories()->detach($category->id);
+            }
         }
     }
 
@@ -399,7 +426,10 @@ class PriceListApplier
         // 1. exakte Zuordnung je Herstellerkategorie (z. B. Petzl "HELMETS > Face Shields")
         foreach (config('price_lists.'.$parser->key().'.sources', []) as $configured => $categories) {
             if (ManufacturerCategoryResolver::normalizeSource($configured) === ManufacturerCategoryResolver::normalizeSource($source)) {
-                return ['categories' => $this->categories($categories, $report), 'exclude' => false];
+                // 'exclude' = Ausschließen, sonst Liste von Kategorienamen
+                return $categories === 'exclude'
+                    ? ['categories' => collect(), 'exclude' => true]
+                    : ['categories' => $this->categories((array) $categories, $report), 'exclude' => false];
             }
         }
 

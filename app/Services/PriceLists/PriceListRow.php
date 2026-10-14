@@ -23,6 +23,8 @@ final class PriceListRow
         public readonly ?string $countryOfOrigin = null,
         public readonly ?int $listPriceCents = null,
         public readonly ?string $availableFrom = null,
+        /** @var list<string> Anwendungsgebiete laut Liste (z. B. Skylotec), siehe config price_lists.<liste>.application_areas */
+        public readonly array $applicationAreas = [],
     ) {}
 
     /**
@@ -65,6 +67,7 @@ final class PriceListRow
             'retail_price_cents' => $this->retailPriceCents,
             'list_price_cents' => $this->listPriceCents,
             'available_from' => $this->availableFrom,
+            'application_areas' => $this->applicationAreas !== [] ? implode(' | ', $this->applicationAreas) : null,
             'weight_g' => $this->weightGrams,
             'unit' => $this->unit,
             'customs_tariff' => $this->customsTariff,
