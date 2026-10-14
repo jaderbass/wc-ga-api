@@ -5,12 +5,12 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
 use App\Services\Categories\CategoryRuleKeywordNormalizer;
-use Filament\Forms\Form;
-use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Section as FormSection;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -21,9 +21,11 @@ class CategoryResource extends Resource
     protected static ?string $model = Category::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-tag';
+
     protected static ?string $navigationLabel = 'Kategorien';
 
     protected static ?string $modelLabel = 'Kategorie';
+
     protected static ?string $pluralModelLabel = 'Kategorien';
 
     public static function form(Form $form): Form
@@ -58,8 +60,8 @@ class CategoryResource extends Resource
                                 ->relationship(
                                     'parent',
                                     'name',
-                                    fn($query, ?Category $record) => $query
-                                        ->when($record, fn($q) => $q->whereKeyNot($record->getKey()))
+                                    fn ($query, ?Category $record) => $query
+                                        ->when($record, fn ($q) => $q->whereKeyNot($record->getKey()))
                                         ->orderBy('name')
                                 )
                                 ->searchable()
@@ -202,7 +204,6 @@ class CategoryResource extends Resource
 
                         return ! $record->products()->exists();
                     }),
-
 
                 Tables\Actions\EditAction::make(),
             ])
