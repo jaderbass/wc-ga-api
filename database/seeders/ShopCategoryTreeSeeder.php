@@ -44,6 +44,7 @@ class ShopCategoryTreeSeeder extends Seeder
                 'Accessoires' => [],
                 'Anschlageinrichtung' => [],
                 'Auffanggerät' => ['Auffanggerät mit Bandfalldämpfer' => [], 'Mitlaufende Auffanggeräte' => []],
+                'Baumpflege-Zubehör' => [], // neu
                 'Bergsport & Klettern' => [], // neu (ersetzt Kletter-Zubehör, 14.10.2026)
                 'Baumsteigeisen' => ['Baumsteigeisen-Zubehör' => []],
                 'Beleuchtung' => [],
