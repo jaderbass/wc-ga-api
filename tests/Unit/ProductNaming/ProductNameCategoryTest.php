@@ -104,3 +104,14 @@ it('falls back to the keyword rules when the product has no usable category', fu
     expect(ProductNameCategory::nameFor($product, 'Irgendwas'))->toBe('Allgemein')
         ->and(ProductNameCategory::nameFor(new Product, 'Irgendwas'))->toBe('Allgemein');
 });
+
+it('ignores old categories outside the shop structure, also in the keyword fallback', function () {
+    $old = Category::create(['name' => 'Kategorie TEST', 'slug' => 'kategorie-test']);
+    App\Models\CategoryRule::create(['category_id' => $old->id, 'keyword' => 'test']);
+
+    $onlyOld = productWith(['Kategorie TEST']);
+    $mixed = productWith(['Kategorie TEST', 'Sitzgurt']);
+
+    expect(ProductNameCategory::nameFor($onlyOld, 'Test Produkt'))->toBe('Allgemein')
+        ->and(ProductNameCategory::nameFor($mixed, 'Test Produkt'))->toBe('Sitzgurt');
+});
