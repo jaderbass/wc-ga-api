@@ -38,7 +38,8 @@ final class ProductPropertyExtractor
         if ($product->product_type === 'variable') {
             $analysis = $this->analyzeVariablePropertyGroups($product);
             $designation = $this->resolveDesignation($product);
-            $categoryName = ProductNameContext::resolveCategoryName($designation);
+            // Produktgruppe (Seile, Karabiner, Handschuhe …) für die Leit-Eigenschaft
+            $categoryName = ProductNameCategory::leadGroupFor($product, $designation);
 
             $value = $this->parentLeadPropertyResolver->resolve(
                 $categoryName,
@@ -324,7 +325,7 @@ final class ProductPropertyExtractor
     /**
      * Turns a map of priority => value into p1..p3 slots.
      *
-     * @param array<int, string> $byPriority
+     * @param  array<int, string>  $byPriority
      * @return array<string, string>
      */
     private function toSlots(array $byPriority): array
@@ -340,7 +341,7 @@ final class ProductPropertyExtractor
 
         $slots = [];
         foreach ($values as $i => $v) {
-            $slots['p' . ($i + 1)] = $v;
+            $slots['p'.($i + 1)] = $v;
         }
 
         return $slots;
@@ -349,7 +350,7 @@ final class ProductPropertyExtractor
     /**
      * Adds a candidate if the given priority is still free.
      *
-     * @param array<int, string> $byPriority
+     * @param  array<int, string>  $byPriority
      */
     private function pushCandidate(array &$byPriority, int $priority, string $value): void
     {
@@ -420,9 +421,6 @@ final class ProductPropertyExtractor
 
     /**
      * Normalisiert einen Attributwert für das Product Naming.
-     *
-     * @param mixed $value
-     * @return string
      */
     private function normalizeNamingValue(mixed $value): string
     {
