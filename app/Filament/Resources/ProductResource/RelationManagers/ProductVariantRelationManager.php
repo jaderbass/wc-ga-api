@@ -14,8 +14,8 @@ namespace App\Filament\Resources\ProductResource\RelationManagers;
 use App\Models\ColorTranslation;
 use App\Models\ProductVariation;
 use App\Services\ProductNaming\VariationDisplayNameResolver;
-use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Forms;
+use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,15 +25,11 @@ class ProductVariantRelationManager extends RelationManager
 {
     /**
      * Name der Eloquent-Beziehung im Product-Model.
-     *
-     * @var string
      */
     protected static string $relationship = 'variations';
 
     /**
      * Statischer Titel des Relation-Managers (Tab-Titel + Tabellenüberschrift).
-     *
-     * @var string|null
      */
     protected static ?string $title = 'Varianten';
 
@@ -42,9 +38,6 @@ class ProductVariantRelationManager extends RelationManager
      *
      * - Lädt Attributwerte + zugehörige Attribute eager.
      * - Zeigt SKU, Variantenname und bis zu 5 Attribut-Spalten.
-     *
-     * @param \Filament\Tables\Table $table
-     * @return \Filament\Tables\Table
      */
     public function table(Table $table): Table
     {
@@ -65,15 +58,28 @@ class ProductVariantRelationManager extends RelationManager
                     })
                     ->wrap(),
 
-
                 ...$this->buildVariantAttributeColumns(),
 
                 Tables\Columns\TextColumn::make('manufacturer_price_cents')
                     ->label('Herstellerpreis')
-                    ->state(fn($record) => $record->manufacturer_price_cents ?? 'TEST-NULL')
-                    ->formatStateUsing(fn($state) => filled($state) && (int) $state > 0
-                        ? number_format(((int) $state) / 100, 2, ',', '.') . ' €'
+                    ->state(fn ($record) => $record->manufacturer_price_cents ?? 'TEST-NULL')
+                    ->formatStateUsing(fn ($state) => filled($state) && (int) $state > 0
+                        ? number_format(((int) $state) / 100, 2, ',', '.').' €'
                         : '—')
+                    ->alignEnd()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('list_price_cents')
+                    ->label('Listenpreis')
+                    ->formatStateUsing(fn ($state) => \App\Filament\Resources\ProductResource::formatCents($state !== null ? (int) $state : null))
+                    ->placeholder('—')
+                    ->alignEnd()
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('purchase_price_cents')
+                    ->label('EK')
+                    ->formatStateUsing(fn ($state) => \App\Filament\Resources\ProductResource::formatCents($state !== null ? (int) $state : null))
+                    ->placeholder('—')
                     ->alignEnd()
                     ->sortable(),
             ])
@@ -94,17 +100,19 @@ class ProductVariantRelationManager extends RelationManager
                             ->label('Herstellerpreis')
                             ->suffix('€')
                             ->formatStateUsing(
-                                fn($state) =>
-                                filled($state)
+                                fn ($state) => filled($state)
                                     ? number_format(((int) $state) / 100, 2, ',', '')
                                     : null
                             )
                             ->dehydrateStateUsing(
-                                fn($state) =>
-                                filled($state)
+                                fn ($state) => filled($state)
                                     ? (int) round((float) str_replace(',', '.', $state) * 100)
                                     : null
                             ),
+
+                        Forms\Components\Fieldset::make('Einkauf')
+                            ->schema(\App\Filament\Resources\ProductResource::purchaseFields('variation'))
+                            ->columns(12),
 
                         Forms\Components\TextInput::make('slug')
                             ->label('Slug')
@@ -124,8 +132,7 @@ class ProductVariantRelationManager extends RelationManager
                     ->tooltip('Details bearbeiten')
                     ->icon('heroicon-m-cog-6-tooth')
                     ->url(
-                        fn(ProductVariation $record) =>
-                        \App\Filament\Resources\ProductVariationResource::getUrl('edit', [
+                        fn (ProductVariation $record) => \App\Filament\Resources\ProductVariationResource::getUrl('edit', [
                             'record' => $record,
                         ])
                     ),
@@ -145,14 +152,14 @@ class ProductVariantRelationManager extends RelationManager
         $definitions = $this->getVariantAttributeDefinitions();
 
         return array_map(function (array $definition): Tables\Columns\TextColumn {
-            return Tables\Columns\TextColumn::make('attribute_' . md5($definition['key']))
+            return Tables\Columns\TextColumn::make('attribute_'.md5($definition['key']))
                 ->label($definition['label'])
                 ->state(function (ProductVariation $record) use ($definition): string {
                     if ($definition['source'] === 'relation') {
                         $attributeId = (int) str_replace('attr_', '', $definition['key']);
 
                         $value = $record->attributeValues
-                            ->first(fn($attributeValue) => (int) $attributeValue->attribute_id === $attributeId);
+                            ->first(fn ($attributeValue) => (int) $attributeValue->attribute_id === $attributeId);
 
                         $displayValue = trim((string) ($value->value ?? ''));
 
@@ -217,8 +224,8 @@ class ProductVariantRelationManager extends RelationManager
                         continue;
                     }
 
-                    $attributes['attr_' . $attributeId] = [
-                        'key' => 'attr_' . $attributeId,
+                    $attributes['attr_'.$attributeId] = [
+                        'key' => 'attr_'.$attributeId,
                         'label' => $attributeName,
                         'source' => 'relation',
                     ];
@@ -267,8 +274,6 @@ class ProductVariantRelationManager extends RelationManager
      * VariationDisplayNameResolver berechnet. Nach einer Action auf der
      * Edit-Seite muss der Relation Manager daher neu gerendert werden,
      * damit die aktualisierten Attributwerte sofort sichtbar sind.
-     *
-     * @return void
      */
     #[On('refresh-product-variations')]
     public function refreshProductVariations(): void

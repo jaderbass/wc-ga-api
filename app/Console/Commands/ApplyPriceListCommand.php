@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Manufacturer;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
+use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\Parsers\PriceListParser;
 use App\Services\PriceLists\PriceListApplier;
 use App\Services\PriceLists\PriceListReport;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 class ApplyPriceListCommand extends Command
 {
     protected $signature = 'pricelist:apply
-                        {list : Art der Liste: aliens oder edelrid}
+                        {list : Art der Liste: aliens, edelrid oder petzl}
                         {file : Pfad zur .xlsx- oder .csv-Datei}
                         {--dry-run : Nur prüfen und berichten, nichts speichern}';
 
@@ -33,7 +34,7 @@ class ApplyPriceListCommand extends Command
         $parser = $this->parser((string) $this->argument('list'));
 
         if ($parser === null) {
-            $this->error('Unbekannte Liste. Erlaubt: aliens, edelrid');
+            $this->error('Unbekannte Liste. Erlaubt: aliens, edelrid, petzl');
 
             return self::INVALID;
         }
@@ -45,7 +46,7 @@ class ApplyPriceListCommand extends Command
 
         $this->info(($dryRun ? '[Probelauf – es wird nichts gespeichert] ' : '').'Lese '.basename($path).' …');
 
-        $report = $applier->apply($parser, SpreadsheetRowReader::read($path), $dryRun);
+        $report = $applier->apply($parser, SpreadsheetRowReader::readSheets($path), $dryRun);
 
         $this->printReport($report);
         $this->writeUnmatchedCsv($report, $path);
@@ -58,6 +59,7 @@ class ApplyPriceListCommand extends Command
         return match (strtolower($list)) {
             'aliens' => new AliensPriceListParser,
             'edelrid' => new EdelridPriceListParser,
+            'petzl' => new PetzlPriceListParser,
             default => null,
         };
     }
@@ -80,8 +82,9 @@ class ApplyPriceListCommand extends Command
         }
 
         $this->newLine();
-        $this->line("Produkte komplett ausverkauft (→ nicht in den Shop): {$report->soldOutProducts}");
-        $this->line("Produkte im Abverkauf (→ Kategorie SALE):            {$report->clearanceProducts}");
+        $this->line("Produkte komplett ausverkauft/EOL (→ nicht in den Shop): {$report->soldOutProducts}");
+        $this->line("Produkte im Abverkauf (→ Kategorie SALE):                {$report->clearanceProducts}");
+        $this->line("Neue Produkte (→ Hinweis \"lieferbar ab …\"):              {$report->newProducts}");
 
         $this->newLine();
         $statusLabels = ['vorschlag' => 'mit Vorschlag', 'offen' => 'ohne Vorschlag (offen)', 'vorhanden' => 'schon zugeordnet'];

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Pricing\PurchasePriceCalculator;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,11 @@ class ProductVariation extends Model
         'woo_variation_id',
         'sku',
         'manufacturer_price_cents',
+        'list_price_cents',
+        'purchase_discount_1',
+        'purchase_discount_2',
+        'purchase_price_cents',
+        'purchase_price_source',
         'regular_price',
         'sale_price',
         'stock_quantity',
@@ -40,6 +46,10 @@ class ProductVariation extends Model
         'width_mm' => 'integer',
         'height_mm' => 'integer',
         'manufacturer_price_cents' => 'integer',
+        'list_price_cents' => 'integer',
+        'purchase_discount_1' => 'decimal:2',
+        'purchase_discount_2' => 'decimal:2',
+        'purchase_price_cents' => 'integer',
     ];
 
     // Anzeige-Name für Filament
@@ -90,6 +100,12 @@ class ProductVariation extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    protected static function booted(): void
+    {
+        // EK aus Listenpreis und Rabatten (Rabatte geerbt: Variante → Produkt → Hersteller)
+        static::saving(fn (ProductVariation $variation) => PurchasePriceCalculator::applyOnSaving($variation));
     }
 
     /**

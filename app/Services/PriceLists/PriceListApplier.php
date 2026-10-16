@@ -11,6 +11,7 @@ use App\Models\ProductVariation;
 use App\Services\Categories\ManufacturerCategoryResolver;
 use App\Services\Categories\ProductCategorySyncService;
 use App\Services\PriceLists\Parsers\PriceListParser;
+use App\Services\Pricing\PurchasePriceCalculator;
 use App\Services\ShopComparison\ComparisonKey;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -26,15 +27,19 @@ use RuntimeException;
  * Ergänzt werden (nur ohne --dry-run):
  * - Herstellerkategorie (products.source_category) + Eintrag in der
  *   Hersteller-Zuordnung, leere Einträge mit Vorschlag aus config/price_lists.php
- * - "AUSVERKAUFT" (alle Zeilen eines Produkts) → online_sellable = false
+ * - "AUSVERKAUFT" / Petzl "EOL" (alle Zeilen eines Produkts) → online_sellable = false
+ * - Petzl "NEW" → Hinweis "Neu – lieferbar ab …" (Meta pricelist_<liste>_availability)
  * - "ABVERKAUF" → Kategorie "SALE" (Zuordnungsart "import", wird beim
  *   nächsten Einlesen wieder entfernt, wenn die Markierung weg ist)
  * - Listendaten (Preise, Gewicht, Zolltarif, Herkunft …) als Produkt-Meta
  * - leere EAN / leeres Variantengewicht
  * - danach Kategorien neu zuordnen
  *
+ * - Listenpreis und EK (eigene Felder; EK aus der Liste oder Listenpreis
+ *   abzüglich der Rabattstufen des Herstellers)
+ *
  * Es werden keine Produkte angelegt oder gelöscht und keine Namen,
- * Beschreibungen oder Preise überschrieben. Kein Shop-Sync.
+ * Beschreibungen oder Shop-Preise überschrieben. Kein Shop-Sync.
  */
 class PriceListApplier
 {
@@ -51,13 +56,13 @@ class PriceListApplier
     ) {}
 
     /**
-     * @param  list<list<string|null>>  $sheetRows
+     * @param  array<string, list<list<string|null>>>  $sheets  Blattname => Zeilen
      */
-    public function apply(PriceListParser $parser, array $sheetRows, bool $dryRun = false): PriceListReport
+    public function apply(PriceListParser $parser, array $sheets, bool $dryRun = false): PriceListReport
     {
         $report = new PriceListReport($parser->key(), $dryRun);
         $manufacturerId = $this->manufacturerId($parser);
-        $rows = $parser->parse($sheetRows);
+        $rows = $parser->parse($sheets);
         $report->rows = count($rows);
 
         $this->buildIndex($manufacturerId);
@@ -128,6 +133,10 @@ class PriceListApplier
             $report->clearanceProducts++;
         }
 
+        if ($this->availabilityNote($entries) !== null) {
+            $report->newProducts++;
+        }
+
         if ($source !== null && $product->manufacturer_id !== null) {
             $this->suggestMapping($parser, (int) $product->manufacturer_id, $source, $report, $dryRun);
         }
@@ -146,7 +155,7 @@ class PriceListApplier
 
         return [
             $source !== null ? (string) $source : null,
-            $rows->every(fn (PriceListRow $row): bool => $row->isSoldOut()),
+            $rows->every(fn (PriceListRow $row): bool => $row->isUnavailable()),
             $rows->contains(fn (PriceListRow $row): bool => $row->isClearance()),
         ];
     }
@@ -186,9 +195,15 @@ class PriceListApplier
 
                 if ($variationId !== null) {
                     $this->fillVariation($variationId, $row);
-                } elseif (blank($product->ean) && $row->ean !== null) {
+
+                    continue;
+                }
+
+                if (blank($product->ean) && $row->ean !== null) {
                     $updates['ean'] = $row->ean;
                 }
+
+                $updates += $this->purchasePricing($row, $product);
             }
 
             if ($updates !== []) {
@@ -196,9 +211,87 @@ class PriceListApplier
             }
 
             $this->syncSaleCategory($product, $clearance);
+            $this->syncAvailabilityNote($parser, $product, $entries);
         });
 
         $this->categorySync->sync($product->fresh());
+    }
+
+    /**
+     * Hinweis für neue Artikel ("NEW"), z. B. "Neu – lieferbar ab 01.03.2027".
+     * Für die spätere Lieferzeit im Shop; wird entfernt, wenn die Markierung wegfällt.
+     *
+     * @param  Collection<int, array{row: PriceListRow, variation_id: ?int}>  $entries
+     */
+    protected function availabilityNote(Collection $entries): ?string
+    {
+        $newRows = $entries->pluck('row')->filter(fn (PriceListRow $row): bool => $row->isNew());
+
+        if ($newRows->isEmpty()) {
+            return null;
+        }
+
+        $from = $newRows->pluck('availableFrom')->filter()->sort()->first();
+
+        return $from !== null
+            ? 'Neu – lieferbar ab '.date('d.m.Y', (int) strtotime((string) $from))
+            : 'Neu im Sortiment';
+    }
+
+    /**
+     * @param  Collection<int, array{row: PriceListRow, variation_id: ?int}>  $entries
+     */
+    protected function syncAvailabilityNote(PriceListParser $parser, Product $product, Collection $entries): void
+    {
+        $key = 'pricelist_'.$parser->key().'_availability';
+        $note = $this->availabilityNote($entries);
+
+        $query = ProductMeta::query()
+            ->where('product_id', $product->id)
+            ->whereNull('variation_id')
+            ->where('scope', 'product')
+            ->where('key', $key);
+
+        if ($note === null) {
+            $query->delete();
+
+            return;
+        }
+
+        ProductMeta::query()->updateOrCreate(
+            ['product_id' => $product->id, 'variation_id' => null, 'scope' => 'product', 'key' => $key],
+            ['value' => $note],
+        );
+    }
+
+    /**
+     * Listenpreis und EK aus einer Zeile (Listenpreis: Petzl "Unit Price", Aliens "UVP netto"):
+     * - EK von Hand gesetzt (Sonderpreis) → nur den Listenpreis aktualisieren
+     * - EK steht in der Liste (Aliens "HEK netto") → direkt übernehmen
+     * - sonst EK = Listenpreis abzüglich der (geerbten) Rabatte; gerechnet wird
+     *   beim Speichern ({@see PurchasePriceCalculator::applyOnSaving()})
+     *
+     * @return array<string, int|string|null>
+     */
+    protected function purchasePricing(PriceListRow $row, Product|ProductVariation $record): array
+    {
+        $list = $row->listPriceCents ?? $row->retailPriceCents;
+        $listUpdate = $list !== null ? ['list_price_cents' => $list] : [];
+
+        if ($record->purchase_price_source === PurchasePriceCalculator::SOURCE_MANUAL) {
+            return $listUpdate;
+        }
+
+        if ($row->purchasePriceCents !== null) {
+            return $listUpdate + [
+                'purchase_price_cents' => $row->purchasePriceCents,
+                'purchase_price_source' => PurchasePriceCalculator::SOURCE_PRICELIST,
+            ];
+        }
+
+        return $list !== null
+            ? $listUpdate + ['purchase_price_source' => PurchasePriceCalculator::SOURCE_CALCULATED]
+            : [];
     }
 
     protected function fillVariation(int $variationId, PriceListRow $row): void
@@ -209,7 +302,7 @@ class PriceListApplier
             return;
         }
 
-        $fill = [];
+        $fill = $this->purchasePricing($row, $variation);
 
         if (blank($variation->ean) && $row->ean !== null) {
             $fill['ean'] = $row->ean;
@@ -303,6 +396,14 @@ class PriceListApplier
      */
     protected function suggestionFor(PriceListParser $parser, string $source, PriceListReport $report): ?array
     {
+        // 1. exakte Zuordnung je Herstellerkategorie (z. B. Petzl "HELMETS > Face Shields")
+        foreach (config('price_lists.'.$parser->key().'.sources', []) as $configured => $categories) {
+            if (ManufacturerCategoryResolver::normalizeSource($configured) === ManufacturerCategoryResolver::normalizeSource($source)) {
+                return ['categories' => $this->categories($categories, $report), 'exclude' => false];
+            }
+        }
+
+        // 2. Stichwörter in der Herstellerkategorie
         $text = ManufacturerCategoryResolver::normalizeText($source);
 
         foreach (config('price_lists.'.$parser->key().'.suggestions', []) as $suggestion) {
