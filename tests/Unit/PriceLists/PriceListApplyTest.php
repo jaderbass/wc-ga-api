@@ -413,3 +413,73 @@ it('keeps a manually entered purchase price and only updates the list price on i
         ->and($product->fresh()->purchase_price_cents)->toBe(9999)
         ->and($product->fresh()->purchase_price_source)->toBe('manual');
 });
+
+function skylotecSheet(array $rows): array
+{
+    $header = ['Original Skylotec Artikelnummer', 'Produktname', 'Nettopreis EU Aktuell', 'Nettopreis EU Aktuell', 'E-Class-Nummer', 'GTIN', 'Anwendungsgebiete', 'Seilart', 'Karabiner Kategorie', 'Karabinertyp', 'Anschlagpunkt Typ'];
+
+    // Spalte für Spalte, weil "Nettopreis EU Aktuell" doppelt vorkommt (zweite = Währung)
+    $toRow = function (array $values) use ($header): array {
+        $seen = [];
+
+        return array_map(function (string $name) use ($values, &$seen) {
+            $first = ! isset($seen[$name]);
+            $seen[$name] = true;
+
+            return $first ? ($values[$name] ?? null) : 'Euro';
+        }, $header);
+    };
+
+    return ['Sheet0' => array_merge([$header], array_map($toRow, $rows))];
+}
+
+it('derives skylotec source categories from rope, carabiner and eCl@ss columns', function () {
+    $rows = (new App\Services\PriceLists\Parsers\SkylotecPriceListParser)->parse(skylotecSheet([
+        ['Original Skylotec Artikelnummer' => 'R-1', 'Produktname' => 'SUPER STATIC 11.0', 'Seilart' => 'Statikseil', 'E-Class-Nummer' => '40-21-01-91', 'Nettopreis EU Aktuell' => '2.50', 'Anwendungsgebiete' => 'Rettung | Baumpflege'],
+        ['Original Skylotec Artikelnummer' => 'K-1', 'Produktname' => 'OVALSTEEL TRI', 'Karabiner Kategorie' => 'Verschlusskarabiner'],
+        ['Original Skylotec Artikelnummer' => 'G-1', 'Produktname' => 'ARG 30', 'E-Class-Nummer' => '40-21-04-01+V2:V2871', 'Nettopreis EU Aktuell' => '0.00'],
+        ['Original Skylotec Artikelnummer' => 'AP-1', 'Produktname' => 'SEKURANT PIN', 'E-Class-Nummer' => '40-02-01-90', 'Anschlagpunkt Typ' => 'Stationärer Anschlagpunkt'],
+        ['Original Skylotec Artikelnummer' => 'X-1', 'Produktname' => 'Deckelsatz für MILAN'],
+    ]));
+
+    expect(array_map(fn ($r) => $r->sourceCategory, $rows))->toBe([
+        'Seil: Statikseil', 'Karabiner: Verschlusskarabiner', 'eCl@ss 40-21-04-01', 'Stationärer Anschlagpunkt', '(ohne eCl@ss)',
+    ])
+        ->and($rows[0]->listPriceCents)->toBe(250)
+        ->and($rows[0]->applicationAreas)->toBe(['Rettung', 'Baumpflege'])
+        ->and($rows[2]->listPriceCents)->toBeNull();
+});
+
+it('applies skylotec: mapping, carabiner keywords, exclusion and Einsatzgebiete from application areas', function () {
+    DB::table('manufacturers')->insert(['id' => 4, 'manufacturer' => 'Skylotec', 'purchase_discount_1' => 30, 'purchase_discount_2' => null]);
+    foreach (['Statisch', 'Stahlkarabiner', 'Rettung', 'Feuerwehr', 'Spezialkräfte', 'Baumpflege'] as $name) {
+        Category::firstOrCreate(['name' => $name], ['slug' => \Illuminate\Support\Str::slug($name, '-', 'de')]);
+    }
+
+    $rope = Product::create(['manufacturer_id' => 4, 'product_name' => 'SUPER STATIC 11.0', 'sku' => 'R-1']);
+    $carabiner = Product::create(['manufacturer_id' => 4, 'product_name' => 'OVALSTEEL TRI', 'sku' => 'K-1']);
+    $jacket = Product::create(['manufacturer_id' => 4, 'product_name' => 'WINDBREAKER WOMEN', 'sku' => 'W-1']);
+    $cap = Product::create(['manufacturer_id' => 4, 'product_name' => 'HELMET CAP', 'sku' => 'W-2']);
+
+    $sheet = skylotecSheet([
+        ['Original Skylotec Artikelnummer' => 'R-1', 'Produktname' => 'SUPER STATIC 11.0', 'Seilart' => 'Statikseil', 'Nettopreis EU Aktuell' => '100.00', 'Anwendungsgebiete' => 'Rettung'],
+        ['Original Skylotec Artikelnummer' => 'K-1', 'Produktname' => 'OVALSTEEL TRI', 'Karabiner Kategorie' => 'Verschlusskarabiner'],
+        ['Original Skylotec Artikelnummer' => 'W-1', 'Produktname' => 'WINDBREAKER WOMEN', 'E-Class-Nummer' => '40-01-01-90', 'Anwendungsgebiete' => 'Rettung'],
+        ['Original Skylotec Artikelnummer' => 'W-2', 'Produktname' => 'HELMET CAP', 'E-Class-Nummer' => '40-01-01-90'],
+    ]);
+
+    app(PriceListApplier::class)->apply(new App\Services\PriceLists\Parsers\SkylotecPriceListParser, $sheet);
+
+    expect($rope->categories()->pluck('name')->sort()->values()->all())->toBe(['Feuerwehr', 'PSAgA', 'Rettung', 'Spezialkräfte', 'Statisch'])
+        ->and($rope->fresh()->list_price_cents)->toBe(10000)
+        ->and($rope->fresh()->purchase_price_cents)->toBe(7000)
+        ->and($carabiner->categories()->pluck('name')->all())->toBe(['Stahlkarabiner'])
+        ->and($jacket->categories()->pluck('name')->all())->toBe([])
+        ->and($cap->categories()->pluck('name')->all())->toBe(['Zubehör Schutzhelme']);
+
+    // Anwendungsgebiet entfällt → Einsatzgebiete (import) verschwinden, Statisch (auto) bleibt
+    $sheet['Sheet0'][1][6] = null;
+    app(PriceListApplier::class)->apply(new App\Services\PriceLists\Parsers\SkylotecPriceListParser, $sheet);
+
+    expect($rope->categories()->pluck('name')->all())->toBe(['Statisch']);
+});
