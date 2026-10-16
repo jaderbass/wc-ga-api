@@ -226,13 +226,20 @@ class ImporterForPetzl extends GenericCsvProductImporter
             'subcategory' => $firstRow['Subcategory'] ?? null,
         ]);
 
-        $product->update([
-            'petzl_source_category' => filled($firstRow['Category'] ?? null)
-                ? trim((string) $firstRow['Category'])
-                : null,
+        $category = filled($firstRow['Category'] ?? null)
+            ? trim((string) $firstRow['Category'])
+            : null;
 
-            'petzl_source_subcategory' => filled($firstRow['Subcategory'] ?? null)
-                ? trim((string) $firstRow['Subcategory'])
+        $subcategory = filled($firstRow['Subcategory'] ?? null)
+            ? trim((string) $firstRow['Subcategory'])
+            : null;
+
+        $product->update([
+            'petzl_source_category' => $category,
+            'petzl_source_subcategory' => $subcategory,
+            // herstellerunabhängige Herstellerkategorie für die Hersteller-Zuordnung
+            'source_category' => $category !== null
+                ? $category.($subcategory !== null ? ' > '.$subcategory : '')
                 : null,
         ]);
     }
