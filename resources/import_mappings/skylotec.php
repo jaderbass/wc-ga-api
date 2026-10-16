@@ -19,7 +19,6 @@ return [
         'short_description' => 'Kurzbeschreibung Professional',
         'description' => 'Produktbeschreibung (HTML-Format)',
 
-        'manufacturer_price_cents' => 'Nettopreis EU Aktuell',
         'weight_g' => 'Nettogewicht',
 
         'image_urls' => 'Link Standardbild',
@@ -27,29 +26,6 @@ return [
     ],
 
     'transforms' => [
-        'manufacturer_price_cents' => function ($v) {
-            if ($v === null) {
-                return null;
-            }
-
-            $s = is_string($v) ? trim($v) : (string) $v;
-
-            if ($s === '') {
-                return null;
-            }
-
-            $s = str_replace(["\u{00A0}", ' ', '€'], '', $s);
-            $s = str_replace(',', '.', $s);
-
-            if (! is_numeric($s)) {
-                return null;
-            }
-
-            $cents = (int) round(((float) $s) * 100);
-
-            return $cents >= 0 ? $cents : null;
-        },
-
         'weight_g' => function ($v) {
             if ($v === null) {
                 return null;
@@ -103,24 +79,6 @@ return [
     'variation_fields' => [
         'sku' => 'Original Skylotec Artikelnummer',
         'ean' => 'GTIN',
-
-        'manufacturer_price_cents' => [
-            'columns' => 'Nettopreis EU Aktuell',
-            'transform' => function ($value) {
-                if ($value === null || trim((string) $value) === '') {
-                    return null;
-                }
-
-                $s = str_replace(["\u{00A0}", ' ', '€'], '', trim((string) $value));
-                $s = str_replace(',', '.', $s);
-
-                if (! is_numeric($s)) {
-                    return null;
-                }
-
-                return (int) round(((float) $s) * 100);
-            },
-        ],
 
         'weight_g' => [
             'columns' => 'Nettogewicht',
