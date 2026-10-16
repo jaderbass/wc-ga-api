@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\Pricing\PurchasePriceCalculator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Builder;
-use App\Models\ManufacturerAudit;
 
 /**
  * Modell für Hersteller.
@@ -31,6 +31,8 @@ class Manufacturer extends Model
         'api_token',
         'import_type',
         'notes',
+        'purchase_discount_1',
+        'purchase_discount_2',
     ];
 
     /**
@@ -64,7 +66,6 @@ class Manufacturer extends Model
         return $query->where('active', true);
     }
 
-
     /**
      * Die Attribut-Casts.
      *
@@ -72,5 +73,19 @@ class Manufacturer extends Model
      */
     protected $casts = [
         'api_password_changed_at' => 'datetime',
+        'purchase_discount_1' => 'decimal:2',
+        'purchase_discount_2' => 'decimal:2',
     ];
+
+    /**
+     * Ändern sich die Rabattstufen, werden die EK aller Produkte neu berechnet.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (Manufacturer $manufacturer): void {
+            if ($manufacturer->wasChanged(['purchase_discount_1', 'purchase_discount_2'])) {
+                app(PurchasePriceCalculator::class)->recalculateForManufacturer($manufacturer);
+            }
+        });
+    }
 }
