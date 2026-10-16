@@ -25,7 +25,7 @@ Dieses Dokument hält fest, **woher** die Kategorie eines Produkts in jeder Hers
 | Werkzeugsicherung | Produkte | Kratos, Aliens (Spiralkabel, Tool Frog, Tool Leash, Zubehör-/Materialkarabiner), Edelrid |
 | Lastensicherung | Produkte | Kratos |
 | Segel-Zubehör | Produkte | Aliens (Lanex) |
-| Kletter-Zubehör | Produkte | Aliens (Sportkletterbedarf) |
+| Bergsport & Klettern | Produkte | Aliens (Sportkletterbedarf) und Einzelstücke; ersetzt seit 14.10.2026 „Kletter-Zubehör“ |
 | Baumpflege-Zubehör | Produkte | Aliens, Edelrid (Cambiumschoner, Wurfbeutel, Wurfleine, Steighilfe) |
 | Rettung | Einsatzgebiet | Skylotec |
 | Segeln | Einsatzgebiet | Aliens (Lanex) |
@@ -48,13 +48,40 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
   - unbekannte Herstellerkategorien erscheinen beim Import automatisch als „offen“
 - **Neu zuordnen:** Button „Kategorien neu zuordnen“ auf der Seite oder `php artisan categories:resync`. Manuell gesetzte Kategorien bleiben immer erhalten. Es wird nichts in den Shop übertragen.
 
+- **Preislisten einlesen** (Aliens, Edelrid, Petzl): ergänzt vorhandene Produkte, legt keine neuen an.
+  ```
+  php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx --dry-run   # Probelauf, nur Bericht
+  php artisan pricelist:apply aliens storage/app/imports/<datei>.xlsx             # speichern
+  php artisan pricelist:apply edelrid storage/app/imports/<datei>.xlsx
+  php artisan pricelist:apply petzl storage/app/imports/<datei>.xlsx
+  ```
+  - Zuordnung je Zeile: Varianten-SKU = Artikelnr. → Produkt-SKU/Artikelnummer → Varianten-EAN → Produkt-EAN
+  - setzt die Herstellerkategorie (Aliens: Produktart aus dem Kurztext, Edelrid: Zwischenüberschrift, Petzl: `Category > Subcategory`) und legt die Einträge in der Hersteller-Zuordnung an; leere, ungeprüfte Einträge bekommen den Vorschlag aus `config/price_lists.php` (geprüfte werden nie überschrieben)
+  - `AUSVERKAUFT` (Aliens) bzw. `EOL` (Petzl), jeweils alle Zeilen eines Produkts → `online_sellable = false`; `ABVERKAUF` → Kategorie „SALE“ (Zuordnungsart `import`, verschwindet beim nächsten Einlesen ohne Markierung)
+  - Petzl `NEW` → normal, plus Hinweis „Neu – lieferbar ab TT.MM.JJJJ“ (Meta `pricelist_petzl_availability`); **offen:** beim späteren Shop-Import als Lieferzeit „ab …“ in WooCommerce setzen
+  - Listendaten (Artikelnr., Kurztext, HEK/UVP bzw. Listenpreis, Gewicht, Einheit, Zolltarif, Ursprungsland, Markierung, „verfügbar ab“) als Produkt-Meta `pricelist_<liste>`; leere EAN und leeres Variantengewicht werden ergänzt
+  - **Einkaufspreise** (alle Hersteller einheitlich, an jedem Produkt und jeder Variante sichtbar und von Hand änderbar): **Listenpreis**, **Rabatt 1**, **Rabatt 2**, **EK** (alle netto).
+    - EK = Listenpreis abzüglich der zwei Rabatte **nacheinander**. Petzl: 35 % und 5 % → Listenpreis × 0,65 × 0,95 (= × 0,6175, nicht − 40 %); gerundet erst am Ende.
+    - Rabatte erben: Variante → Produkt → Hersteller (Backend: Hersteller › „Einkaufskonditionen“). Leeres Rabattfeld = geerbter Wert (wird als Platzhalter angezeigt), eigener Wert = **Sonderkondition**.
+    - Herkunft des EK (`purchase_price_source`): `calculated` (wird bei Änderung von Listenpreis/Rabatten neu berechnet), `pricelist` (EK stand in der Liste, z. B. Aliens „HEK netto“), `manual` (von Hand eingetragen, z. B. wenn ein Hersteller nur den EK nennt – wird nie automatisch überschrieben; der Preislisten-Import aktualisiert dann nur den Listenpreis).
+    - Preislisten: Listenpreis = Petzl „Unit Price“ bzw. Aliens „UVP netto“. Neu berechnen: automatisch beim Speichern; sonst `php artisan prices:recalculate-purchase [--manufacturer=Petzl]`.
+    - Nur im Backend sichtbar, geht nicht in den Shop. Das ältere Feld „Herstellerpreis“ (`manufacturer_price_cents`) bleibt unverändert – Bedeutung mit Jörg klären.
+  - Namen, Beschreibungen und Shop-Preise werden **nicht** überschrieben; kein Shop-Sync
+  - nicht gefundene Zeilen: CSV unter `storage/app/exports/`
+
 ---
 
 ## 4. Je Hersteller
 
 ### 4.1 Petzl
-- **Quelle:** Spalten `Category` / `Subcategory`
-- **Zuordnung:** besteht bereits (`petzl_category_mappings`, Menü „Produktkategorien“). Wird in die herstellerunabhängige Zuordnung überführt.
+- **Quelle:** Spalten `Category` / `Subcategory` (Import-CSV und Preisliste „PRO BASIC Price List 2027“, Blatt „Logistic Info“; Preise aus Blatt „Price List“) → Herstellerkategorie `Category > Subcategory`
+- Die Übersetzungstabelle `petzl_category_mappings` bleibt für die Petzl-Produktseiten bestehen.
+- **Zuordnung** (Maik, 08.10.2026; vollständig für alle 85 Unterkategorien in `config/price_lists.php` → `petzl.sources`), u. a.:
+  - Gurte: **nur NEWTON → Auffanggurt** (Petzl-Seite „Auffanggurte“); alle anderen Gurte → **Arbeitsgurt** + Einsatzgebiet (Fall-Arrest/Energy & Networks/Rope Access → PSAgA, Rescue → Rettung, Tree Care → Baumpflege)
+  - Positioning Lanyards → Positionierung; Hats & Balaclavas → Zubehör Schutzhelme
+  - alle „Spare Parts for …“ → Ersatzteil **und** Zubehör der Gruppe, sofern vorhanden (Helme, Gurte, Abseilgeräte, Stirnlampen, Karabiner)
+  - Tree-Care- und Rescue-Unterkategorien bekommen zusätzlich das Einsatzgebiet Baumpflege bzw. Rettung
+- **Status:** `EOL` → nicht in den Shop (wie AUSVERKAUFT); `NEW` → normal + Hinweis „lieferbar ab …“
 
 ### 4.2 Skylotec
 - **Quelle:** keine Kategoriespalte. eCl@ss (Spalte 15) nur teilweise brauchbar (~1.240 Zeilen in Sammelklassen „-90“, 295 leer).
@@ -125,7 +152,7 @@ Aliens ist **Großhändler** – die Liste enthält viele Marken: Tendon, Singin
 | 10 | Reepschnur | Reepschnur | 135 |
 | 11 | Gummileine, GumFix, Hobbyschnur, Yachting rope, Outdoorseil, Segelleine, Polyester-/Vectran-Seil, Lanyard elastisch | **Segel-Zubehör (neu)** + Einsatzgebiet **Segeln (neu)** | 66 |
 | 12 | bronze, marinebronze, Swivel, Snap, Buckle, D Shape (KONG-Beschläge, VE 50–500) | Zubehör | 175 |
-| 13 | Felshaken, Klemmgerät, Klemmkeil, Chalk, Magnesia, Steigeisen, Armtrainer, Beta Stick, Seilbürste, Klettergriff, Eispickel, Finger Tape, Sicherungsbrille, Klettersteig…, Bohrhakenlasche | **Kletter-Zubehör (neu)** | 103 |
+| 13 | Felshaken, Klemmgerät, Klemmkeil, Chalk, Magnesia, Steigeisen, Armtrainer, Beta Stick, Seilbürste, Klettergriff, Eispickel, Finger Tape, Sicherungsbrille, Klettersteig…, Bohrhakenlasche | **Bergsport & Klettern (neu)** | 103 |
 | 14 | Express-Set, Expressset, Quick Draw | Karabiner > Express-Set | 51 |
 | 15 | Expressschlinge | Schlingen & Lanyard | 13 |
 | 16 | Edelstahlkarabiner | Karabiner > Edelstahlkarabiner | 28 |
@@ -229,4 +256,5 @@ Bestehend: Baumpflege, Bergsteigen, Feuerwehr, Klettern, PSAgA, Spezialkräfte, 
 - Zuordnung Singing Rock (eigene Liste)
 - Edelrid: Spalte `Einsatzbereich` für Einsatzgebiete nutzen?
 - Bildquelle für Produkte, die nicht im Live-Shop sind
-- Shop-Import muss „Ausschließen“ (und später `online_sellable = false`) beachten
+- Aliens-Zeilen ohne passendes Produkt in der Datenbank: neu anlegen oder nicht? (Entscheidung nach dem ersten Probelauf)
+- Shop-Import muss „Ausschließen“ und `online_sellable = false` (AUSVERKAUFT) beachten – heute gibt es dafür keinen Filter

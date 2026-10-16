@@ -10,20 +10,15 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Components\EncryptedPassword;
 use Illuminate\Support\Facades\Crypt;
-use Filament\Forms\Components\TextInput;
-use Nette\Utils\Html;
 
 class ManufacturerResource extends Resource
 {
     protected static ?string $model = Manufacturer::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-wrench-screwdriver';
+
     protected static ?string $navigationLabel = 'Hersteller';
 
     public static function form(Form $form): Form
@@ -57,22 +52,23 @@ class ManufacturerResource extends Resource
                     ->helperText('Um das Passwort zu ändern, hier ein neues Passwort eingeben. Wenn leer gelassen, bleibt das bestehende Passwort erhalten.')
 
                     ->hint(
-                        fn($record) => ($record?->api_password_changed_at instanceof \Illuminate\Support\Carbon
-                            ? 'Zuletzt geändert am: ' . $record->api_password_changed_at->format('d.m.Y H:i')
+                        fn ($record) => ($record?->api_password_changed_at instanceof \Illuminate\Support\Carbon
+                            ? 'Zuletzt geändert am: '.$record->api_password_changed_at->format('d.m.Y H:i')
                             : 'Noch nie geändert.')
                     )
-
 
                     ->dehydrateStateUsing(function ($state, $record) {
                         if ($state) {
                             if ($record) {
                                 $record->api_password_changed_at = now();
                             }
+
                             return Crypt::encryptString($state);
                         }
+
                         return $record->api_password; // Falls leer, behalte das alte Passwort
                     })
-                    ->afterStateHydrated(fn($state, callable $set) => $set('api_password', null)) // Immer leer anzeigen
+                    ->afterStateHydrated(fn ($state, callable $set) => $set('api_password', null)) // Immer leer anzeigen
                     ->nullable()
                     ->columnSpan(1),
 
@@ -89,6 +85,28 @@ class ManufacturerResource extends Resource
                 Forms\Components\Textarea::make('notes')
                     ->label('Notizen'),
 
+                Forms\Components\Section::make('Einkaufskonditionen')
+                    ->description('EK = Listenpreis − Rabatt 1, davon nochmal − Rabatt 2 (nacheinander, nicht addiert). Beispiel Petzl: 35 % und 5 % → 73,50 € × 0,65 × 0,95 = 45,39 €. Beim Speichern werden die EK aller Produkte dieses Herstellers neu berechnet.')
+                    ->schema([
+                        Forms\Components\TextInput::make('purchase_discount_1')
+                            ->label('Rabatt 1')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->step(0.01)
+                            ->suffix('%'),
+
+                        Forms\Components\TextInput::make('purchase_discount_2')
+                            ->label('Rabatt 2 (vom bereits rabattierten Preis)')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->step(0.01)
+                            ->suffix('%'),
+                    ])
+                    ->columns(2)
+                    ->columnSpanFull(),
+
             ]);
     }
 
@@ -100,14 +118,14 @@ class ManufacturerResource extends Resource
                     ->orderByDesc('active')   // aktive (1) zuerst, inaktive (0) nach unten
                     ->orderBy('manufacturer'); // danach sauber alphabetisch
             })
-            ->recordClasses(fn($record) => $record->active ? null : 'opacity-60')
+            ->recordClasses(fn ($record) => $record->active ? null : 'opacity-60')
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('manufacturer')
                     ->label('Hersteller')
-                    ->icon(fn($record) => $record->active ? null : 'heroicon-m-eye-slash')
-                    ->color(fn($record) => $record->active ? null : 'gray')
+                    ->icon(fn ($record) => $record->active ? null : 'heroicon-m-eye-slash')
+                    ->color(fn ($record) => $record->active ? null : 'gray')
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\ToggleColumn::make('active')
@@ -115,10 +133,10 @@ class ManufacturerResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->formatStateUsing(fn(bool $state) => $state ? 'Aktiv' : 'Inaktiv')
-                    ->getStateUsing(fn($record) => $record->active)
+                    ->formatStateUsing(fn (bool $state) => $state ? 'Aktiv' : 'Inaktiv')
+                    ->getStateUsing(fn ($record) => $record->active)
                     ->badge()
-                    ->color(fn(bool $state) => $state ? 'success' : 'gray')
+                    ->color(fn (bool $state) => $state ? 'success' : 'gray')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('manufacturercountry')
                     ->label('Ländercode')
