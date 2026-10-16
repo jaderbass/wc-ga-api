@@ -7,6 +7,7 @@ use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\Parsers\PriceListParser;
+use App\Services\PriceLists\Parsers\SkylotecPriceListParser;
 use App\Services\PriceLists\PriceListApplier;
 use App\Services\PriceLists\PriceListReport;
 use App\Support\Imports\SpreadsheetRowReader;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Storage;
 class ApplyPriceListCommand extends Command
 {
     protected $signature = 'pricelist:apply
-                        {list : Art der Liste: aliens, edelrid oder petzl}
+                        {list : Art der Liste: aliens, edelrid, petzl oder skylotec}
                         {file : Pfad zur .xlsx- oder .csv-Datei}
                         {--dry-run : Nur prüfen und berichten, nichts speichern}';
 
@@ -34,7 +35,7 @@ class ApplyPriceListCommand extends Command
         $parser = $this->parser((string) $this->argument('list'));
 
         if ($parser === null) {
-            $this->error('Unbekannte Liste. Erlaubt: aliens, edelrid, petzl');
+            $this->error('Unbekannte Liste. Erlaubt: aliens, edelrid, petzl, skylotec');
 
             return self::INVALID;
         }
@@ -60,6 +61,7 @@ class ApplyPriceListCommand extends Command
             'aliens' => new AliensPriceListParser,
             'edelrid' => new EdelridPriceListParser,
             'petzl' => new PetzlPriceListParser,
+            'skylotec' => new SkylotecPriceListParser,
             default => null,
         };
     }
