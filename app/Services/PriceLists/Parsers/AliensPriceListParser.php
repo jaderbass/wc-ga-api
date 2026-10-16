@@ -32,8 +32,9 @@ class AliensPriceListParser implements PriceListParser
         return null;
     }
 
-    public function parse(array $rows): array
+    public function parse(array $sheets): array
     {
+        $rows = reset($sheets) ?: [];
         $headerIndex = null;
         $columns = [];
 
