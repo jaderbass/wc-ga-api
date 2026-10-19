@@ -39,7 +39,8 @@ class AliensPriceListParser implements PriceListParser
         $columns = [];
 
         foreach ($rows as $index => $row) {
-            $normalized = array_map(fn ($value) => mb_strtolower(trim((string) $value)), $row);
+            // Kopfzeilen teils mit Zeilenumbruch (Liste 2026: "UVP" + Umbruch + "netto")
+            $normalized = array_map(fn ($value) => mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', (string) $value))), $row);
 
             if (in_array('artikelnr.', $normalized, true) && in_array('kurztext', $normalized, true)) {
                 $headerIndex = $index;
@@ -75,7 +76,8 @@ class AliensPriceListParser implements PriceListParser
                 sourceCategory: $sourceCategory,
                 marker: $marker,
                 ean: self::digits($value($row, 'ean barcode')),
-                purchasePriceCents: self::cents($value($row, 'hek netto')),
+                // Liste 2026: "HEK" statt "HEK netto"
+                purchasePriceCents: self::cents($value($row, 'hek netto') ?? $value($row, 'hek')),
                 retailPriceCents: self::cents($value($row, 'uvp netto')),
                 weightGrams: self::grams($value($row, 'gewicht')),
                 unit: $value($row, 'einheit'),
