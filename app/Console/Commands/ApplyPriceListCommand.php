@@ -97,8 +97,13 @@ class ApplyPriceListCommand extends Command
         }
 
         $manufacturers = Manufacturer::query()->pluck('manufacturer', 'id');
+        // Offene und vorgeschlagene zuerst, damit sie nicht hinter den 40 größten verschwinden
+        $statusOrder = ['offen' => 0, 'vorschlag' => 1, 'vorhanden' => 2];
         $rows = collect($report->sources)
-            ->sortByDesc('products')
+            ->sortBy([
+                fn (array $a, array $b): int => ($statusOrder[$a['status']] ?? 3) <=> ($statusOrder[$b['status']] ?? 3),
+                fn (array $a, array $b): int => $b['products'] <=> $a['products'],
+            ])
             ->take(40)
             ->map(fn (array $source): array => [
                 $manufacturers[$source['manufacturer_id']] ?? $source['manufacturer_id'],
