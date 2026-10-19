@@ -86,6 +86,12 @@ return [
         ],
     ],
 
+    'monkey' => [
+        // Monkey-Händlerpreisliste (über Aliens), Herstellerkategorie = Produktart
+        'sources' => [],
+        'suggestions' => [],
+    ],
+
     'edelrid' => [
         // Herstellerkategorie = Zwischenüberschrift (deutscher Teil)
         'suggestions' => [
