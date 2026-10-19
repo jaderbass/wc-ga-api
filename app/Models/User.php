@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SystemLock;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -75,8 +76,13 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->isProtectedAccount()
-            || $this->hasAnyRole(config('admin_access.panel_roles', []));
+        if ($this->isProtectedAccount()) {
+            return true;
+        }
+
+        // Datenbank abgeschaltet: nur noch geschützte Konten
+        return ! SystemLock::isLocked()
+            && $this->hasAnyRole(config('admin_access.panel_roles', []));
     }
 
     /**
