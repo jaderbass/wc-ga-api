@@ -1,0 +1,140 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Importers\AliensCsvStreamImporter;
+use App\Models\ProductMeta;
+use App\Services\Aliens\AliensB2bProductData;
+use App\Support\Imports\SpreadsheetRowReader;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
+
+/**
+ * Fehlende Produkte aus den Aliens-B2B-Produktdaten anlegen.
+ *
+ * php artisan aliens:b2b-import storage/app/imports/Aliens-Produkte.xlsx --dry-run
+ *
+ * Vorhandene Produkte (Aliens-ID, Artikelnummer oder EAN schon bei uns) werden
+ * nicht angefasst. Neue Produkte laufen durch den bisherigen Aliens-Import und
+ * bekommen die Markierung product_meta "aliens_b2b_created_at".
+ * Preise, Herstellerkategorie und SALE kommen danach über pricelist:apply.
+ */
+class ImportAliensB2bProductsCommand extends Command
+{
+    protected $signature = 'aliens:b2b-import
+                        {file : Aliens-Produkte als .xlsx oder .csv (B2B-Bereich)}
+                        {--dry-run : Nur prüfen und berichten, nichts anlegen}
+                        {--limit= : Nur die ersten N fehlenden Produkte anlegen (zum Ausprobieren)}
+                        {--only=* : Nur diese Aliens-Produkt-IDs anlegen}';
+
+    protected $description = 'Fehlende Produkte aus den Aliens-B2B-Produktdaten anlegen';
+
+    public function handle(): int
+    {
+        $file = (string) $this->argument('file');
+        $path = is_file($file) ? $file : base_path($file);
+        $dryRun = (bool) $this->option('dry-run');
+
+        $this->line(($dryRun ? '[Probelauf – es wird nichts gespeichert] ' : '').'Lese '.basename($path).' …');
+
+        $sheets = SpreadsheetRowReader::readSheets($path);
+        $groups = AliensB2bProductData::group($sheets[array_key_first($sheets)] ?? []);
+        $existing = AliensB2bProductData::existing($groups);
+        $missing = array_diff_key($groups, $existing);
+
+        $this->newLine();
+        $this->line('Produkte in der Datei (aktiv): '.count($groups).' ('.array_sum(array_map('count', $groups)).' Varianten)');
+        $this->line('schon vorhanden:               '.count($existing));
+
+        foreach (array_count_values($existing) as $reason => $count) {
+            $this->line("  über {$reason}: {$count}");
+        }
+
+        $variants = array_sum(array_map('count', $missing));
+        $this->line('fehlen bei uns:                '.count($missing)." ({$variants} Varianten)");
+
+        $byManufacturer = [];
+
+        foreach ($missing as $rows) {
+            $name = $rows[0]['Herstellername'] ?? '' ?: '(ohne Hersteller)';
+            $byManufacturer[$name] = ($byManufacturer[$name] ?? 0) + 1;
+        }
+
+        arsort($byManufacturer);
+
+        foreach ($byManufacturer as $name => $count) {
+            $this->line("  {$name}: {$count}");
+        }
+
+        $withoutImages = count(array_filter($missing, fn (array $rows): bool => ($rows[0]['Produkt Alle Bild-Links'] ?? '') === ''));
+        $this->line("davon ohne Bild-Links:         {$withoutImages}");
+
+        $listPath = $this->writeReviewList($missing);
+        $this->newLine();
+        $this->line("Liste der fehlenden Produkte: {$listPath}");
+
+        if ($this->option('only') !== []) {
+            $missing = array_intersect_key($missing, array_flip(array_map('strval', (array) $this->option('only'))));
+        }
+
+        if ($this->option('limit') !== null) {
+            $missing = array_slice($missing, 0, max(0, (int) $this->option('limit')), true);
+        }
+
+        if ($dryRun || $missing === []) {
+            return self::SUCCESS;
+        }
+
+        $this->line('Lege '.count($missing).' Produkte an …');
+
+        $csvPath = storage_path('app/imports/aliens-b2b-neu-'.now()->format('Y-m-d-His').'.csv');
+        File::ensureDirectoryExists(dirname($csvPath));
+        AliensB2bProductData::writeLegacyCsv($missing, $csvPath);
+
+        (new AliensCsvStreamImporter(mappingFile: 'aliens'))->import($csvPath);
+
+        $created = 0;
+        $stamp = now()->toDateTimeString();
+
+        foreach (ProductMeta::query()->where('key', 'aliens_product_id')->whereIn('value', array_map('strval', array_keys($missing)))->get() as $meta) {
+            ProductMeta::query()->updateOrCreate(
+                ['product_id' => $meta->product_id, 'variation_id' => null, 'scope' => 'product', 'key' => 'aliens_b2b_created_at'],
+                ['value' => $stamp],
+            );
+            $created++;
+        }
+
+        $this->info("Angelegt: {$created} Produkte. Danach Preise/Kategorien mit pricelist:apply aliens (und monkey) einlesen.");
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<string, list<array<string, string>>>  $missing
+     */
+    protected function writeReviewList(array $missing): string
+    {
+        $path = storage_path('app/exports/aliens-b2b-fehlend-'.now()->format('Y-m-d-His').'.csv');
+        File::ensureDirectoryExists(dirname($path));
+
+        $lines = ['Produkt ID;Hersteller;Produktname;Kategorie;Varianten;Artikelnummern;Bilder'];
+
+        foreach ($missing as $id => $rows) {
+            $refs = array_filter(array_map(fn (array $row): string => $row['Kombinationsreferenz'] !== '' ? $row['Kombinationsreferenz'] : $row['Produktreferenz'], $rows));
+
+            $lines[] = implode(';', array_map(fn ($value) => '"'.str_replace('"', '""', (string) $value).'"', [
+                $id,
+                $rows[0]['Herstellername'] ?? '',
+                $rows[0]['Produktname'],
+                $rows[0]['Name der Standardkategorie'] ?? '',
+                count($rows),
+                implode(', ', array_slice($refs, 0, 10)).(count($refs) > 10 ? ' …' : ''),
+                ($rows[0]['Produkt Alle Bild-Links'] ?? '') !== '' ? 'ja' : 'nein',
+            ]));
+        }
+
+        File::put($path, "\u{FEFF}".implode("\n", $lines)."\n");
+
+        return $path;
+    }
+}
