@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
+use App\Services\PriceLists\Parsers\MonkeyPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\PriceListApplier;
 use App\Services\PriceLists\PriceListRow;
@@ -185,6 +186,27 @@ it('splits several aliens markers in a row', function () {
         ->and(AliensPriceListParser::splitBrandAndType($rest))->toBe(['SINGING ROCK', 'Aufreißfalldämpfer'])
         ->and(new PriceListRow(line: 1, articleNumber: 'X', text: 'x', marker: $sale))
         ->isClearance()->toBeTrue();
+});
+
+it('parses the monkey dealer price list', function () {
+    $rows = (new MonkeyPriceListParser)->parse(['Tabelle1' => [
+        ['Artikelnummer', 'Artikelbezeichnung', 'HEK netto', 'eVK netto', 'EAN'],
+        ['310022-30', 'MONKEY HW - Einzelgriff BASIC - blau', '4.32', '6.22', '4251710801975'],
+        ['1101221-30', 'MONKEY HW - Monkey Set BASIC 2,2 m Klemmschnalle - blau     • SL •', '273.5', '405.71', '4251710800000'],
+        ['21027-40', 'MONKEY HW - SCHRAUBE M10x40 - 10.9', '0.33', '0.55000000000000004', '4251710800001'],
+    ]]);
+
+    expect($rows)->toHaveCount(3)
+        ->and($rows[0]->brand)->toBe('MONKEY HW')
+        ->and($rows[0]->sourceCategory)->toBe('Einzelgriff')
+        ->and($rows[0]->purchasePriceCents)->toBe(432)
+        ->and($rows[0]->retailPriceCents)->toBe(622)
+        ->and($rows[0]->marker)->toBeNull()
+        ->and($rows[1]->sourceCategory)->toBe('Monkey Set')
+        ->and($rows[1]->marker)->toBe('SL')
+        ->and($rows[2]->sourceCategory)->toBe('Schraube')
+        ->and($rows[2]->retailPriceCents)->toBe(55)
+        ->and((new MonkeyPriceListParser)->manufacturerName())->toBe('Monkeyhardware');
 });
 
 it('reads xlsx files with shared strings and keeps long numbers intact', function () {
