@@ -159,3 +159,11 @@ it('renders the switch page and toggles it', function () {
 
     expect(SystemLock::isLocked())->toBeFalse();
 });
+
+it('answers "not found" to everyone else who opens the switch page', function () {
+    config()->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    $this->actingAs($this->admin);
+
+    Livewire\Livewire::test(SystemSwitch::class)->assertNotFound();
+});
