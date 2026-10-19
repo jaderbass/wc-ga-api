@@ -33,6 +33,15 @@ class SystemSwitch extends Page
     }
 
     /**
+     * Für alle anderen "nicht gefunden" statt "Zugriff verweigert",
+     * damit die Seite nicht als vorhanden auffällt.
+     */
+    public function mountCanAuthorizeAccess(): void
+    {
+        abort_unless(static::canAccess(), 404);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function getViewData(): array
