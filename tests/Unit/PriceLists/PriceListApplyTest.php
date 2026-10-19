@@ -225,6 +225,29 @@ it('only reports in a dry run', function () {
         ->and($product->fresh()->source_category)->toBeNull();
 });
 
+it('keeps the price list as source when a later list changes the purchase price', function () {
+    $product = Product::create(['manufacturer_id' => 1, 'product_name' => 'KONG Paddle']);
+    $variation = ProductVariation::create(['product_id' => $product->id, 'sku' => '7040XNN']);
+    $sheet = fn (string $hek) => ['Tabelle1' => aliensSheet([
+        ['7040XNN', 'KONG - Alukarabiner PADDLE - schwarz', $hek, '54', '', 'Stk', '', '', ''],
+    ])];
+
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('35'));
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('37,10'));
+
+    $variation->refresh();
+
+    expect($variation->purchase_price_cents)->toBe(3710)
+        ->and($variation->purchase_price_source)->toBe('pricelist');
+
+    // eine Handeingabe bleibt "manual" und wird nicht mehr überschrieben
+    $variation->forceFill(['purchase_price_cents' => 3000])->save();
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('39'));
+
+    expect($variation->fresh()->purchase_price_cents)->toBe(3000)
+        ->and($variation->fresh()->purchase_price_source)->toBe('manual');
+});
+
 it('enriches matched products, suggests mappings, handles markers and re-runs cleanly', function () {
     $paddle = Product::create(['manufacturer_id' => 1, 'product_name' => 'KONG Paddle']);
     $variation = ProductVariation::create(['product_id' => $paddle->id, 'sku' => '7040XNN']);
