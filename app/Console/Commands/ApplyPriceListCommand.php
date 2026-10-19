@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Manufacturer;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
+use App\Services\PriceLists\Parsers\MonkeyPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\Parsers\PriceListParser;
 use App\Services\PriceLists\Parsers\SkylotecPriceListParser;
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\Storage;
 class ApplyPriceListCommand extends Command
 {
     protected $signature = 'pricelist:apply
-                        {list : Art der Liste: aliens, edelrid, petzl oder skylotec}
+                        {list : Art der Liste: aliens, monkey, edelrid, petzl oder skylotec}
                         {file : Pfad zur .xlsx- oder .csv-Datei}
                         {--dry-run : Nur prüfen und berichten, nichts speichern}';
 
@@ -59,6 +60,7 @@ class ApplyPriceListCommand extends Command
     {
         return match (strtolower($list)) {
             'aliens' => new AliensPriceListParser,
+            'monkey' => new MonkeyPriceListParser,
             'edelrid' => new EdelridPriceListParser,
             'petzl' => new PetzlPriceListParser,
             'skylotec' => new SkylotecPriceListParser,
