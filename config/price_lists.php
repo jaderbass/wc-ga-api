@@ -88,7 +88,22 @@ return [
 
     'monkey' => [
         // Monkey-Händlerpreisliste (über Aliens), Herstellerkategorie = Produktart
-        'sources' => [],
+        // Entscheidungen 2026-10-19
+        'sources' => [
+            'Monkey Set' => ['Freizeit'],
+            'Klettergriff-Set' => ['Freizeit'],
+            'Einzelgriff' => ['Freizeit'],
+            'Set' => ['Freizeit'],
+            'Stepper' => ['Freizeit'],
+            'Grundplatte' => ['Freizeit'],
+            'Spanngurt mit Ratsche' => ['Ersatzteil'],
+            'Spanngurt mit Klemmschnalle' => ['Ersatzteil'],
+            'Schraube' => ['Ersatzteil'],
+            'Sechskant-Schlüssel' => ['Ersatzteil'],
+            'Sechskant-Schlüssel T-Form' => ['Ersatzteil'],
+            'Treetool' => ['Ersatzteil'],
+            'Tasche' => ['Taschen & Rucksäcke'],
+        ],
         'suggestions' => [],
     ],
 
