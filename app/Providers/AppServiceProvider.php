@@ -8,7 +8,9 @@ use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\NameTemplateRegistry;
 use App\Services\ProductNaming\ProductPropertyExtractor;
 use App\Services\Woo\WooClient;
+use App\Support\SystemLock;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -77,6 +79,21 @@ class AppServiceProvider extends ServiceProvider
                 exit(1);
             }
         }
+
+        /**
+         * Betriebsschalter (siehe App\Support\SystemLock): abgeschaltet laufen
+         * nur Wartungsbefehle, Queue-Worker pausieren.
+         */
+        if (app()->runningInConsole() && basename((string) ($_SERVER['argv'][0] ?? '')) === 'artisan') {
+            $command = $_SERVER['argv'][1] ?? null;
+
+            if (SystemLock::isLocked() && ! SystemLock::allowsCommand($command)) {
+                fwrite(STDERR, PHP_EOL."Datenbank ist abgeschaltet – '{$command}' wird nicht ausgeführt.".PHP_EOL.PHP_EOL);
+                exit(1);
+            }
+        }
+
+        Queue::looping(fn () => ! SystemLock::isLocked());
 
         Gate::before(function ($user, $ability = null, $arguments = []) {
             // Geschützte Konten: hier entscheidet immer die UserPolicy

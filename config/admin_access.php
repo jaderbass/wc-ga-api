@@ -22,4 +22,7 @@ return [
         '867cf9630452f0ccbc4a0f5d691b941f278e0fff86cb5d2cb69e590217df0ffd',
     ],
 
+    // Betriebsschalter: Existiert die Datei, ist die Datenbank abgeschaltet.
+    'lock_file' => storage_path('app/system-lock.json'),
+
 ];
