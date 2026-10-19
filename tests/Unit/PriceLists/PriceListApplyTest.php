@@ -9,6 +9,7 @@ use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\PriceListApplier;
+use App\Services\PriceLists\PriceListRow;
 use App\Services\Pricing\PurchasePriceCalculator;
 use App\Support\Imports\SpreadsheetRowReader;
 use Illuminate\Support\Facades\DB;
@@ -173,6 +174,17 @@ it('reads the 2026 aliens header ("HEK", "UVP" with line break, no weight)', fun
         ->and($rows[0]->ean)->toBe('8023577011134')
         ->and($rows[0]->unit)->toBe('Stk')
         ->and($rows[0]->weightGrams)->toBeNull();
+});
+
+it('splits several aliens markers in a row', function () {
+    [$marker, $rest] = AliensPriceListParser::splitMarker('## DNV ##  ** NEU 01/26 ** SINGING ROCK - Aufreißfalldämpfer SHOCK');
+    [$sale] = AliensPriceListParser::splitMarker('** NEU 10/25 ** -- ABVERKAUF -- FUJFUJ - Magnet VOLUME 1 - blau');
+
+    expect($marker)->toBe('DNV + NEU')
+        ->and($rest)->toBe('SINGING ROCK - Aufreißfalldämpfer SHOCK')
+        ->and(AliensPriceListParser::splitBrandAndType($rest))->toBe(['SINGING ROCK', 'Aufreißfalldämpfer'])
+        ->and(new PriceListRow(line: 1, articleNumber: 'X', text: 'x', marker: $sale))
+        ->isClearance()->toBeTrue();
 });
 
 it('reads xlsx files with shared strings and keeps long numbers intact', function () {

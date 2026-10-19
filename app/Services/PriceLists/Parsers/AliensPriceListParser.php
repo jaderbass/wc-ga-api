@@ -90,18 +90,22 @@ class AliensPriceListParser implements PriceListParser
     }
 
     /**
+     * Markierungen am Anfang abtrennen; es können mehrere hintereinander stehen
+     * ("## DNV ##  ** NEU 01/26 ** SINGING ROCK - …" → "DNV + NEU").
+     *
      * @return array{0: ?string, 1: string} [Markierung, Rest]
      */
     public static function splitMarker(string $text): array
     {
-        if (preg_match(self::MARKER, $text, $match) !== 1) {
-            return [null, $text];
+        $markers = [];
+
+        while (preg_match(self::MARKER, $text, $match) === 1) {
+            $raw = strtoupper((string) preg_replace('/[^A-Za-z]/', '', $match['m']));
+            $markers[] = $raw === 'AUSVERKAUFT' && ! empty($match['date']) ? 'AUSVERKAUFT '.$match['date'] : $raw;
+            $text = trim(substr($text, strlen($match[0])));
         }
 
-        $raw = strtoupper((string) preg_replace('/[^A-Za-z]/', '', $match['m']));
-        $marker = $raw === 'AUSVERKAUFT' && ! empty($match['date']) ? 'AUSVERKAUFT '.$match['date'] : $raw;
-
-        return [$marker, trim(substr($text, strlen($match[0])))];
+        return [$markers === [] ? null : implode(PriceListRow::MARKER_SEPARATOR, $markers), $text];
     }
 
     /**
