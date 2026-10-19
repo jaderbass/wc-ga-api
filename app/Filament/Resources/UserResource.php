@@ -10,6 +10,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -131,9 +132,6 @@ class UserResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->label('Name')
-                    ->description(fn (User $record): ?string => $record->isProtectedAccount()
-                        ? 'Geschütztes Konto – nur durch das Konto selbst änderbar'
-                        : null)
                     ->sortable()
                     ->searchable(),
 
@@ -164,11 +162,20 @@ class UserResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\DeleteBulkAction::make(),
-            ])
-            // Geschützte Konten nicht für die Massenlöschung auswählbar
-            ->checkIfRecordIsSelectableUsing(
-                fn (User $record): bool => ! $record->isProtectedAccount() || $record->isCurrentUser()
-            );
+            ]);
+    }
+
+    /**
+     * Geschützte Konten sieht nur das Konto selbst (Liste und Bearbeiten).
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $hidden = User::query()->get(['id', 'email'])
+            ->filter(fn (User $user): bool => $user->isProtectedAccount() && ! $user->isCurrentUser())
+            ->modelKeys();
+
+        return parent::getEloquentQuery()
+            ->when($hidden !== [], fn (Builder $query) => $query->whereKeyNot($hidden));
     }
 
     /**

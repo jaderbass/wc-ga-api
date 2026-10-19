@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\UserResource;
 use App\Models\User;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Gate;
@@ -99,4 +100,16 @@ it('keeps normal users manageable', function () {
 
     expect(Gate::allows('delete', $other))->toBeTrue()
         ->and($other->delete())->toBeTrue();
+});
+
+it('hides protected accounts from everyone else in the user list', function () {
+    $this->actingAs($this->admin);
+    expect(UserResource::getEloquentQuery()->pluck('id')->all())
+        ->not->toContain($this->fallback->id)
+        ->toContain($this->admin->id);
+
+    $this->actingAs($this->fallback);
+    expect(UserResource::getEloquentQuery()->pluck('id')->all())
+        ->toContain($this->fallback->id)
+        ->toContain($this->admin->id);
 });
