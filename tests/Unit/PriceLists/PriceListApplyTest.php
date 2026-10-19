@@ -161,6 +161,20 @@ it('parses marker, brand, product type and numbers from the aliens short text', 
         ->and($rows[4]->sourceCategory)->toBe('Gehörschutz medium');
 });
 
+it('reads the 2026 aliens header ("HEK", "UVP" with line break, no weight)', function () {
+    $rows = (new AliensPriceListParser)->parse(['Tabelle1' => [
+        ['Artikelnr.', 'Kurztext', 'Einheit', 'HEK', "UVP\nnetto", 'EAN Barcode'],
+        ['712LE0NPNKK', 'KONG - Alukarabiner OVALONE - RISE LOCK - schwarz', 'Stk', 12.1, 18.83, '8023577011134'],
+    ]]);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]->purchasePriceCents)->toBe(1210)
+        ->and($rows[0]->retailPriceCents)->toBe(1883)
+        ->and($rows[0]->ean)->toBe('8023577011134')
+        ->and($rows[0]->unit)->toBe('Stk')
+        ->and($rows[0]->weightGrams)->toBeNull();
+});
+
 it('reads xlsx files with shared strings and keeps long numbers intact', function () {
     $path = tempnam(sys_get_temp_dir(), 'pl').'.xlsx';
     $zip = new ZipArchive;
