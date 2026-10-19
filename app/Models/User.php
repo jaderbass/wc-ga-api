@@ -3,17 +3,17 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
-use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;
 
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, HasRoles, Notifiable;
 
     /**
      * Guard-Name für Spatie Permission
@@ -54,15 +54,51 @@ class User extends Authenticatable implements FilamentUser
             'password' => 'hashed',
         ];
     }
-    
-    public function canAccessPanel(Panel $panel): bool
+
+    /**
+     * Geschützte Konten: Löschen und Ändern nur durch das Konto selbst
+     * (siehe config/admin_access.php). Greift auch bei der Massenlöschung, die
+     * keine Einzelprüfung über die Policy macht.
+     */
+    protected static function booted(): void
     {
-        // TEMPORÄR: Vollzugriff, um 403 zu beheben.
-        // Später auf Rollen/Permissions umstellen (siehe unten).
-        return true;
-        
-        // Später (sauber) umstellen auf z. B.:
-        // return $this->hasAnyRole(['admin', 'super_admin']);
+        static::deleting(function (User $user): bool {
+            return ! $user->isProtectedAccount() || $user->isCurrentUser();
+        });
+
+        static::updating(function (User $user): bool {
+            // Ohne Anmeldung (Login-Vorgang, Konsole) bleibt Ändern möglich,
+            // damit sich der Zugang notfalls auf dem Server zurücksetzen lässt.
+            return ! $user->isProtectedAccount() || ! auth()->check() || $user->isCurrentUser();
+        });
     }
 
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->isProtectedAccount()
+            || $this->hasAnyRole(config('admin_access.panel_roles', []));
+    }
+
+    /**
+     * Geschütztes Konto? Verglichen wird der SHA-256 der gespeicherten E-Mail
+     * (die Adresse selbst steht nicht im Code). Die gespeicherte statt der
+     * neuen E-Mail, damit ein Umbenennen den Schutz nicht aufhebt.
+     */
+    public function isProtectedAccount(): bool
+    {
+        $email = mb_strtolower(trim((string) ($this->getOriginal('email') ?? $this->email)));
+
+        if ($email === '') {
+            return false;
+        }
+
+        $hashes = array_map('strtolower', config('admin_access.protected_email_hashes', []));
+
+        return in_array(hash('sha256', $email), $hashes, true);
+    }
+
+    public function isCurrentUser(): bool
+    {
+        return $this->exists && auth()->id() === $this->getKey();
+    }
 }

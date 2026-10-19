@@ -4,10 +4,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
-use Filament\Forms;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Get;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -27,12 +25,10 @@ use Illuminate\Support\Facades\Hash;
  * Voraussetzungen:
  * - User-Model nutzt Spatie\Permission\Traits\HasRoles
  * - $guard_name im User-Model ist auf 'web' gesetzt (oder passend zum Panel-Guard)
- *
- * @package App\Filament\Resources
  */
 class UserResource extends Resource
 {
-    /** @var class-string<User> $model */
+    /** @var class-string<User> */
     protected static ?string $model = User::class;
 
     /** @var string|null Icon in der Navigation */
@@ -59,8 +55,8 @@ class UserResource extends Resource
      * - roles: Mehrfachauswahl über Relationship (Spatie-Rollen), nicht required,
      *          damit Entfernen durch Abwählen möglich ist; gefiltert auf guard_name='web'
      *
-     * @param  Form $form  Filament-Forminstanz
-     * @return Form        Konfiguriertes Form-Objekt
+     * @param  Form  $form  Filament-Forminstanz
+     * @return Form Konfiguriertes Form-Objekt
      */
     public static function form(Form $form): Form
     {
@@ -82,11 +78,11 @@ class UserResource extends Resource
                 ->label('Passwort')
                 ->password()
                 // Beim Erstellen Pflicht, beim Bearbeiten optional
-                ->required(fn(string $operation) => $operation === 'create')
+                ->required(fn (string $operation) => $operation === 'create')
                 // Nur hashen, wenn ein Wert übergeben wurde
-                ->dehydrateStateUsing(fn($state) => filled($state) ? Hash::make($state) : null)
+                ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
                 // Nur dehydrieren (persistieren), wenn ein Wert gesetzt ist
-                ->dehydrated(fn($state) => filled($state))
+                ->dehydrated(fn ($state) => filled($state))
                 ->helperText('Nur ausfüllen, wenn ein neues Passwort gesetzt werden soll.'),
 
             TextInput::make('passwordConfirmation')
@@ -95,7 +91,7 @@ class UserResource extends Resource
                 ->same('password')
                 // Wird nicht gespeichert
                 ->dehydrated(false)
-                ->required(fn(string $operation) => $operation === 'create'),
+                ->required(fn (string $operation) => $operation === 'create'),
 
             Select::make('roles')
                 ->label('Rollen')
@@ -107,7 +103,7 @@ class UserResource extends Resource
                 ->relationship(
                     name: 'roles',
                     titleAttribute: 'name',
-                    modifyQueryUsing: fn($query) => $query->where('guard_name', 'web')
+                    modifyQueryUsing: fn ($query) => $query->where('guard_name', 'web')
                 ),
         ]);
     }
@@ -126,8 +122,8 @@ class UserResource extends Resource
      * - Bearbeiten, Löschen
      * - Massenlöschung
      *
-     * @param  Table $table  Filament-Tabelleninstanz
-     * @return Table         Konfiguriertes Table-Objekt
+     * @param  Table  $table  Filament-Tabelleninstanz
+     * @return Table Konfiguriertes Table-Objekt
      */
     public static function table(Table $table): Table
     {
@@ -135,6 +131,9 @@ class UserResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->label('Name')
+                    ->description(fn (User $record): ?string => $record->isProtectedAccount()
+                        ? 'Geschütztes Konto – nur durch das Konto selbst änderbar'
+                        : null)
                     ->sortable()
                     ->searchable(),
 
@@ -156,7 +155,7 @@ class UserResource extends Resource
                     ->relationship(
                         name: 'roles',
                         titleAttribute: 'name',
-                        modifyQueryUsing: fn($q) => $q->where('guard_name', 'web')
+                        modifyQueryUsing: fn ($q) => $q->where('guard_name', 'web')
                     ),
             ])
             ->actions([
@@ -165,7 +164,11 @@ class UserResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\DeleteBulkAction::make(),
-            ]);
+            ])
+            // Geschützte Konten nicht für die Massenlöschung auswählbar
+            ->checkIfRecordIsSelectableUsing(
+                fn (User $record): bool => ! $record->isProtectedAccount() || $record->isCurrentUser()
+            );
     }
 
     /**
@@ -176,9 +179,9 @@ class UserResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListUsers::route('/'),
+            'index' => Pages\ListUsers::route('/'),
             'create' => Pages\CreateUser::route('/create'),
-            'edit'   => Pages\EditUser::route('/{record}/edit'),
+            'edit' => Pages\EditUser::route('/{record}/edit'),
         ];
     }
 }
