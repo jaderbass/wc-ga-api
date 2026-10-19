@@ -18,6 +18,20 @@
 return [
 
     'aliens' => [
+        // Exakte Zuordnungen (Entscheidungen zur Liste 2026, 2026-10-19), gehen den Stichwörtern vor
+        'sources' => [
+            'Schlüsselhalter' => ['Accessoires'],
+            'Schlüsselanhänger' => ['Accessoires'],
+            'Stahl' => ['Zubehör'],
+            'Ausleger' => ['Anschlageinrichtung'],
+            'Rettungsdreieck' => ['Rettung & Transport'],
+            'Stahlseillanyard mit einem Auge / längenverstellbar' => ['Verbindungsmittel'],
+            'Tandemrolle mit Haken' => ['Seilrollen'],
+            'Expressschlinge Polyester' => ['Schlingen & Lanyard'],
+            'mobiles Anschlagsystem m. Tasche (gelb)' => ['Anschlageinrichtung'],
+            'Traversenanker' => ['Anschlageinrichtung'],
+        ],
+
         // Herstellerkategorie = Produktart aus dem Kurztext, Reihenfolge = Priorität
         'suggestions' => [
             ['keywords' => 'helm mit', 'categories' => ['Schutzhelme']],
