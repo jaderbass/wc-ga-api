@@ -14,6 +14,7 @@ use App\Services\ProductNaming\ProductPropertyExtractor;
 use App\Support\Concerns\HasImportAuthor;
 use App\Support\Html\ProductDescriptionLinkCleaner;
 use App\Support\ImportLog;
+use App\Support\ImportMappingLoader;
 use App\Support\ImportValueNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
