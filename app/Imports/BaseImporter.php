@@ -16,23 +16,9 @@ abstract class BaseImporter
 {
     use HasImportAuthor;
 
-    protected ?int $authorId = null;
-
     public function __construct(
         protected ImportedDescriptionSanitizer $descriptionSanitizer
     ) {}
-
-    public function setAuthorId(?int $authorId): static
-    {
-        $this->authorId = $authorId;
-
-        return $this;
-    }
-
-    protected function resolveAuthorId(): int
-    {
-        return $this->authorId ?? 1;
-    }
 
     /**
      * Muss vom Kind-Importer implementiert werden:
