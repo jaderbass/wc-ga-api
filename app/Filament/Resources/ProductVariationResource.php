@@ -3,17 +3,13 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductVariationResource\Pages;
-use App\Filament\Resources\ProductVariationResource\RelationManagers;
 use App\Models\ProductVariation;
+use App\Services\ProductNaming\VariationDisplayNameResolver;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-
-use App\Services\ProductNaming\VariationDisplayNameResolver;
 
 /**
  * Filament-Resource für Produktvarianten.
@@ -31,6 +27,7 @@ class ProductVariationResource extends Resource
     protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $modelLabel = 'Variante';
+
     protected static ?string $pluralModelLabel = 'Varianten';
 
     /**
@@ -38,9 +35,6 @@ class ProductVariationResource extends Resource
      *
      * Der automatisch berechnete Variantenname wird nur angezeigt. Bearbeitbar sind
      * variantenspezifische Felder wie Artikelnummer, Preis und JSON-Attribute.
-     *
-     * @param \Filament\Forms\Form $form
-     * @return \Filament\Forms\Form
      */
     public static function form(Form $form): Form
     {
@@ -56,33 +50,13 @@ class ProductVariationResource extends Resource
                         Forms\Components\Placeholder::make('resolved_variant_name')
                             ->label('Automatisch berechneter Variantenname')
                             ->content(
-                                fn(ProductVariation $record): string =>
-                                app(VariationDisplayNameResolver::class)->resolve($record)
+                                fn (ProductVariation $record): string => app(VariationDisplayNameResolver::class)->resolve($record)
                             ),
 
                         Forms\Components\TextInput::make('slug')
                             ->label('Slug')
                             ->maxLength(255)
                             ->helperText('Wird bei „Namen neu berechnen“ aus dem Variantennamen neu erzeugt.'),
-
-                        Forms\Components\TextInput::make('manufacturer_price_cents')
-                            ->label('Herstellerpreis')
-                            ->suffix('€')
-                            ->formatStateUsing(
-                                fn($state) =>
-                                filled($state)
-                                    ? number_format(((int) $state) / 100, 2, ',', '')
-                                    : null
-                            )
-                            ->dehydrateStateUsing(
-                                fn($state) =>
-                                filled($state)
-                                    ? (int) round(
-                                        (float) str_replace(',', '.', $state) * 100
-                                    )
-                                    : null
-                            )
-                            ->numeric(),
 
                         Forms\Components\TextInput::make('ean')
                             ->label('EAN')
@@ -107,9 +81,6 @@ class ProductVariationResource extends Resource
      *
      * Die Seite wird nicht aktiv im UI genutzt, muss aber für Filament-Routen
      * vorhanden bleiben.
-     *
-     * @param \Filament\Tables\Table $table
-     * @return \Filament\Tables\Table
      */
     public static function table(Table $table): Table
     {
@@ -157,8 +128,6 @@ class ProductVariationResource extends Resource
 
     /**
      * Gibt den deutschen Seitentitel aus.
-     *
-     * @return string
      */
     public function getTitle(): string
     {
