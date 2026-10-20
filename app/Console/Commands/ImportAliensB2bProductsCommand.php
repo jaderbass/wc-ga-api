@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Importers\AliensCsvStreamImporter;
 use App\Models\ProductMeta;
+use App\Models\User;
 use App\Services\Aliens\AliensB2bProductData;
 use App\Support\Imports\SpreadsheetRowReader;
 use Illuminate\Console\Command;
@@ -25,7 +26,8 @@ class ImportAliensB2bProductsCommand extends Command
                         {file : Aliens-Produkte als .xlsx oder .csv (B2B-Bereich)}
                         {--dry-run : Nur prüfen und berichten, nichts anlegen}
                         {--limit= : Nur die ersten N fehlenden Produkte anlegen (zum Ausprobieren)}
-                        {--only=* : Nur diese Aliens-Produkt-IDs anlegen}';
+                        {--only=* : Nur diese Aliens-Produkt-IDs anlegen}
+                        {--author= : E-Mail des Benutzers, der als Autor eingetragen wird (Standard: erster Admin)}';
 
     protected $description = 'Fehlende Produkte aus den Aliens-B2B-Produktdaten anlegen';
 
@@ -91,7 +93,15 @@ class ImportAliensB2bProductsCommand extends Command
         File::ensureDirectoryExists(dirname($csvPath));
         AliensB2bProductData::writeLegacyCsv($missing, $csvPath);
 
-        (new AliensCsvStreamImporter(mappingFile: 'aliens'))->import($csvPath);
+        $author = $this->author();
+
+        if ($author === null) {
+            $this->error('Kein Autor gefunden – bitte --author=<E-Mail> angeben.');
+
+            return self::FAILURE;
+        }
+
+        (new AliensCsvStreamImporter(mappingFile: 'aliens'))->setAuthorId($author->id)->import($csvPath);
 
         $created = 0;
         $stamp = now()->toDateTimeString();
@@ -107,6 +117,21 @@ class ImportAliensB2bProductsCommand extends Command
         $this->info("Angelegt: {$created} Produkte. Danach Preise/Kategorien mit pricelist:apply aliens (und monkey) einlesen.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Autor der neuen Produkte: --author oder der erste Benutzer mit Rolle "Admin".
+     * (Der Importer fällt sonst auf Benutzer-ID 1 zurück, die es nicht mehr geben muss.)
+     */
+    protected function author(): ?User
+    {
+        $email = $this->option('author');
+
+        if (is_string($email) && $email !== '') {
+            return User::query()->where('email', $email)->first();
+        }
+
+        return User::role('Admin')->orderBy('id')->first();
     }
 
     /**
