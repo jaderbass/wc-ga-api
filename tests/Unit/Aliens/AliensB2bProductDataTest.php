@@ -71,6 +71,8 @@ function b2bRows(): array
         $row(['Produkt ID' => '917', 'Produktname' => 'Big 8 Edelstahl', 'Produktreferenz' => '805050000KK', 'EAN-13' => '8023577008936', 'Herstellername' => 'Kong Italy', 'Aktiv' => '1']),
         // inaktiv
         $row(['Produkt ID' => '999', 'Produktname' => 'Aus', 'Kombinationsreferenz' => 'Z1', 'Kombinations-ID' => '9', 'Aktiv' => '0']),
+        // Stellenanzeige
+        $row(['Produkt ID' => '1103', 'Produktname' => 'Initiativbewerbung', 'Name der Standardkategorie' => 'Jobs | Stellenangebote', 'Aktiv' => '1']),
     ];
 }
 
@@ -120,4 +122,12 @@ it('writes missing products in the legacy aliens export format', function () {
         ->and($records[2]['Kombination-ID'])->toBe('P917')
         ->and($records[2]['Kombinations-Referenz'])->toBe('805050000KK')
         ->and($records[2]['Kombination EAN13'])->toBe('8023577008936');
+});
+
+it('maps manufacturer names from the config', function () {
+    config()->set('aliens_b2b.manufacturers', ['fujfuj' => 'FUJFUJ', 'chalk' => 'Aliens']);
+
+    expect(AliensB2bProductData::manufacturer(['Herstellername' => 'fujfuj']))->toBe('FUJFUJ')
+        ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Chalk']))->toBe('Aliens')
+        ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Kong Italy']))->toBe('Kong Italy');
 });

@@ -56,7 +56,7 @@ class ImportAliensB2bProductsCommand extends Command
         $byManufacturer = [];
 
         foreach ($missing as $rows) {
-            $name = $rows[0]['Herstellername'] ?? '' ?: '(ohne Hersteller)';
+            $name = AliensB2bProductData::manufacturer($rows[0]) ?: '(ohne Hersteller)';
             $byManufacturer[$name] = ($byManufacturer[$name] ?? 0) + 1;
         }
 
@@ -124,7 +124,7 @@ class ImportAliensB2bProductsCommand extends Command
 
             $lines[] = implode(';', array_map(fn ($value) => '"'.str_replace('"', '""', (string) $value).'"', [
                 $id,
-                $rows[0]['Herstellername'] ?? '',
+                AliensB2bProductData::manufacturer($rows[0]),
                 $rows[0]['Produktname'],
                 $rows[0]['Name der Standardkategorie'] ?? '',
                 count($rows),
