@@ -7,6 +7,9 @@ namespace App\Services\PriceLists;
  */
 final class PriceListRow
 {
+    /** Trennzeichen, wenn eine Zeile mehrere Markierungen hat ("DNV + NEU"). */
+    public const MARKER_SEPARATOR = ' + ';
+
     public function __construct(
         public readonly int $line,
         public readonly string $articleNumber,
@@ -32,8 +35,7 @@ final class PriceListRow
      */
     public function isUnavailable(): bool
     {
-        return $this->marker !== null
-            && (str_starts_with($this->marker, 'AUSVERKAUFT') || str_starts_with($this->marker, 'EOL'));
+        return $this->hasMarker('AUSVERKAUFT') || $this->hasMarker('EOL');
     }
 
     /**
@@ -41,12 +43,30 @@ final class PriceListRow
      */
     public function isNew(): bool
     {
-        return $this->marker !== null && str_starts_with($this->marker, 'NEW');
+        return $this->hasMarker('NEW');
     }
 
     public function isClearance(): bool
     {
-        return $this->marker === 'ABVERKAUF';
+        return $this->hasMarker('ABVERKAUF');
+    }
+
+    /**
+     * Beginnt eine der Markierungen mit $prefix ("AUSVERKAUFT 25/03" → "AUSVERKAUFT")?
+     */
+    public function hasMarker(string $prefix): bool
+    {
+        if ($this->marker === null) {
+            return false;
+        }
+
+        foreach (explode(self::MARKER_SEPARATOR, $this->marker) as $marker) {
+            if (str_starts_with($marker, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
