@@ -33,9 +33,11 @@ return [
         'chalk' => 'Aliens',
     ],
 
-    // Einträge dieser Kategorien sind keine Produkte (z. B. Stellenanzeigen)
+    // Einträge dieser Kategorien sind keine Produkte (Stellenanzeigen, gedruckte Kataloge, News)
     'skip_categories' => [
         'Jobs | Stellenangebote',
+        'Kataloge',
+        'NEWS - Informationen',
     ],
 
 ];

@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Importers\AliensCsvStreamImporter;
+use App\Models\Product;
 use App\Models\ProductMeta;
 use App\Models\User;
 use App\Services\Aliens\AliensB2bProductData;
+use App\Services\Categories\ProductCategorySyncService;
 use App\Support\Imports\SpreadsheetRowReader;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -27,6 +29,7 @@ class ImportAliensB2bProductsCommand extends Command
                         {--dry-run : Nur prüfen und berichten, nichts anlegen}
                         {--limit= : Nur die ersten N fehlenden Produkte anlegen (zum Ausprobieren)}
                         {--only=* : Nur diese Aliens-Produkt-IDs anlegen}
+                        {--source-categories : Statt anzulegen: leere Herstellerkategorie mit der Aliens-Kategorie füllen (für Produkte ohne Preislisten-Treffer)}
                         {--fill-images : Statt anzulegen: fehlende Bild-Links bei vorhandenen Aliens-Produkten nachtragen}
                         {--author= : E-Mail des Benutzers, der als Autor eingetragen wird (Standard: erster Admin)}';
 
@@ -44,6 +47,10 @@ class ImportAliensB2bProductsCommand extends Command
         $groups = AliensB2bProductData::group($sheets[array_key_first($sheets)] ?? []);
         if ($this->option('fill-images')) {
             return $this->fillImages($groups, $dryRun);
+        }
+
+        if ($this->option('source-categories')) {
+            return $this->fillSourceCategories($groups, $dryRun);
         }
 
         $existing = AliensB2bProductData::existing($groups);
@@ -183,6 +190,59 @@ class ImportAliensB2bProductsCommand extends Command
         $this->line('Bild-Links schon vorhanden:   '.$alreadySet);
         $this->line(($dryRun ? 'würden nachgetragen:          ' : 'nachgetragen:                 ').$filled);
         $this->line('ohne Bild-Links in der Datei: '.$noUrls);
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Aliens-Produkte ohne Herstellerkategorie (products.source_category) bekommen die
+     * Standardkategorie aus den B2B-Daten, z. B. "Klettergriffe". Die Zuordnung zu unseren
+     * Kategorien läuft danach wie gewohnt über die Hersteller-Zuordnung; neue Einträge
+     * erscheinen dort als offen. Vorhandene Herstellerkategorien (z. B. aus Preislisten)
+     * bleiben unverändert.
+     *
+     * @param  array<string, list<array<string, string>>>  $groups
+     */
+    protected function fillSourceCategories(array $groups, bool $dryRun): int
+    {
+        $productIds = ProductMeta::query()
+            ->where('key', 'aliens_product_id')
+            ->whereNull('variation_id')
+            ->pluck('product_id', 'value');
+
+        $sync = app(ProductCategorySyncService::class);
+        $pairs = [];
+        $filled = 0;
+
+        foreach ($groups as $aliensId => $rows) {
+            $product = isset($productIds[(string) $aliensId]) ? Product::query()->find($productIds[(string) $aliensId]) : null;
+            $source = trim($rows[0]['Name der Standardkategorie'] ?? '');
+
+            if ($product === null || $source === '' || filled($product->source_category)) {
+                continue;
+            }
+
+            $pair = ($product->manufacturer?->manufacturer ?? '?').' | '.$source;
+            $pairs[$pair] = ($pairs[$pair] ?? 0) + 1;
+            $filled++;
+
+            if (! $dryRun) {
+                $product->forceFill(['source_category' => $source])->save();
+                $sync->sync($product->fresh());
+            }
+        }
+
+        $this->newLine();
+        $this->line(($dryRun ? 'würden gefüllt: ' : 'gefüllt: ').$filled.' Produkte');
+        arsort($pairs);
+
+        foreach ($pairs as $pair => $count) {
+            $this->line("  {$count} × {$pair}");
+        }
+
+        if (! $dryRun && $filled > 0) {
+            $this->line('Offene Einträge jetzt unter Hersteller-Zuordnung entscheiden.');
+        }
 
         return self::SUCCESS;
     }
