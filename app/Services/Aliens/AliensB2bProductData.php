@@ -44,7 +44,7 @@ class AliensB2bProductData
                 $assoc[$column] = trim((string) ($row[$index] ?? ''));
             }
 
-            if ($assoc['Produkt ID'] === '' || ($assoc['Aktiv'] ?? '1') === '0') {
+            if ($assoc['Produkt ID'] === '' || ($assoc['Aktiv'] ?? '1') === '0' || self::isSkipped($assoc)) {
                 continue;
             }
 
@@ -153,7 +153,7 @@ class AliensB2bProductData
                 $line = [
                     'Produkt-ID' => $id,
                     'Produktname' => $row['Produktname'],
-                    'Hersteller' => $row['Herstellername'] ?? '',
+                    'Hersteller' => self::manufacturer($rows[0]),
                     'Kombination-ID' => $simple ? 'P'.$id : $row['Kombinations-ID'],
                     'Kombinations-Referenz' => $row['Kombinationsreferenz'] !== '' ? $row['Kombinationsreferenz'] : $row['Produktreferenz'],
                     'EAN-13' => $row['EAN-13'] ?? '',
@@ -197,6 +197,34 @@ class AliensB2bProductData
         fclose($handle);
 
         return count($lines);
+    }
+
+    /**
+     * Unser Herstellername (config aliens_b2b.manufacturers), sonst der aus der Datei.
+     *
+     * @param  array<string, string>  $row
+     */
+    public static function manufacturer(array $row): string
+    {
+        $name = trim($row['Herstellername'] ?? '');
+        $map = array_change_key_case(config('aliens_b2b.manufacturers', []));
+
+        return $map[mb_strtolower($name)] ?? $name;
+    }
+
+    /**
+     * Keine Produkte, z. B. Stellenanzeigen (config aliens_b2b.skip_categories).
+     *
+     * @param  array<string, string>  $row
+     */
+    protected static function isSkipped(array $row): bool
+    {
+        $categories = array_merge(
+            [$row['Name der Standardkategorie'] ?? ''],
+            explode(',', $row['Kategorienamen'] ?? ''),
+        );
+
+        return array_intersect(array_map('trim', $categories), config('aliens_b2b.skip_categories', [])) !== [];
     }
 
     /**
