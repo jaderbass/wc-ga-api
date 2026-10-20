@@ -140,3 +140,51 @@ it('maps manufacturer names from the config', function () {
         ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Chalk']))->toBe('Aliens')
         ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Kong Italy']))->toBe('Kong Italy');
 });
+
+it('fills empty source categories from the aliens category and leaves others alone', function () {
+    Schema::dropIfExists('manufacturers');
+    Schema::create('manufacturers', function ($t) {
+        $t->id();
+        $t->string('manufacturer');
+        $t->timestamps();
+    });
+    Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+
+    $manufacturer = App\Models\Manufacturer::query()->forceCreate(['manufacturer' => 'Aliens']);
+    $empty = Product::create(['product_name' => 'Abseilachter', 'manufacturer_id' => $manufacturer->id]);
+    $priced = Product::create(['product_name' => 'Big 8', 'manufacturer_id' => $manufacturer->id]);
+    $priced->forceFill(['source_category' => 'Abseilachter'])->save();
+    ProductMeta::create(['product_id' => $empty->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+    ProductMeta::create(['product_id' => $priced->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '917']);
+
+    $synced = [];
+    $this->mock(App\Services\Categories\ProductCategorySyncService::class, function ($mock) use (&$synced) {
+        $mock->shouldReceive('sync')->andReturnUsing(function (Product $product) use (&$synced) {
+            $synced[] = $product->id;
+        });
+    });
+
+    $rows = b2bRows();
+    $rows[4][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $rows[6][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+    $handle = fopen($path, 'w');
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ';', '"', '');
+    }
+    fclose($handle);
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true, '--dry-run' => true])
+        ->expectsOutputToContain('würden gefüllt: 1 Produkte')
+        ->assertSuccessful();
+    expect($empty->fresh()->source_category)->toBeNull();
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true])
+        ->expectsOutputToContain('1 × Aliens | Sicherungsgeräte')
+        ->assertSuccessful();
+    unlink($path);
+
+    expect($empty->fresh()->source_category)->toBe('Sicherungsgeräte')
+        ->and($priced->fresh()->source_category)->toBe('Abseilachter')
+        ->and($synced)->toBe([$empty->id]);
+});
