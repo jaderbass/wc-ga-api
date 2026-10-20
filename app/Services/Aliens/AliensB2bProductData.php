@@ -139,7 +139,7 @@ class AliensB2bProductData
      */
     public static function writeLegacyCsv(array $groups, string $path): int
     {
-        $base = ['Produkt-ID', 'Produktname', 'Hersteller', 'Kombination-ID', 'Kombinations-Referenz', 'EAN-13', 'Kombination EAN13', 'Beschreibung', 'Produkt-URL', 'Produktbilder', 'Kombination Bilder', 'Kategorie'];
+        $base = ['Produkt-ID', 'Produktname', 'Hersteller', 'Kombination-ID', 'Kombinations-Referenz', 'EAN-13', 'Kombination EAN13', 'Beschreibung', 'Produkt-URL', 'Produkt Bilder', 'Kombination Bilder', 'Kategorie'];
         $attributeColumns = [];
         $featureColumns = [];
         $lines = [];
@@ -160,7 +160,8 @@ class AliensB2bProductData
                     'Kombination EAN13' => ($row['Kombination EAN-13'] ?? '') !== '' ? $row['Kombination EAN-13'] : ($simple ? ($row['EAN-13'] ?? '') : ''),
                     'Beschreibung' => $row['Lange Beschreibung'] ?? '',
                     'Produkt-URL' => $row['Produkt-Link'] ?? '',
-                    'Produktbilder' => $row['Produkt Alle Bild-Links'] ?? '',
+                    // "Produkt Bilder" mit Leerzeichen: der Importer erkennt Bild-Spalten nur am Wort "Bilder"
+                    'Produkt Bilder' => $row['Produkt Alle Bild-Links'] ?? '',
                     'Kombination Bilder' => $row['Kombinations-Bild-Links'] ?? '',
                     'Kategorie' => $row['Name der Standardkategorie'] ?? '',
                 ];
@@ -197,6 +198,29 @@ class AliensB2bProductData
         fclose($handle);
 
         return count($lines);
+    }
+
+    /**
+     * Alle Bild-URLs eines Produkts (Produkt- und Variantenbilder, ohne Doppelte).
+     *
+     * @param  list<array<string, string>>  $rows
+     * @return list<string>
+     */
+    public static function imageUrls(array $rows): array
+    {
+        $urls = [];
+
+        foreach ($rows as $row) {
+            foreach ([$row['Produkt Alle Bild-Links'] ?? '', $row['Kombinations-Bild-Links'] ?? ''] as $cell) {
+                foreach (preg_split('/[\s,;]+/u', $cell) ?: [] as $url) {
+                    if (preg_match('#^https?://.+\.(jpe?g|png|webp|gif)(\?|$)#i', $url) === 1) {
+                        $urls[$url] = true;
+                    }
+                }
+            }
+        }
+
+        return array_keys($urls);
     }
 
     /**

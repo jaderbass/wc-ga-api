@@ -27,6 +27,7 @@ class ImportAliensB2bProductsCommand extends Command
                         {--dry-run : Nur prüfen und berichten, nichts anlegen}
                         {--limit= : Nur die ersten N fehlenden Produkte anlegen (zum Ausprobieren)}
                         {--only=* : Nur diese Aliens-Produkt-IDs anlegen}
+                        {--fill-images : Statt anzulegen: fehlende Bild-Links bei vorhandenen Aliens-Produkten nachtragen}
                         {--author= : E-Mail des Benutzers, der als Autor eingetragen wird (Standard: erster Admin)}';
 
     protected $description = 'Fehlende Produkte aus den Aliens-B2B-Produktdaten anlegen';
@@ -41,6 +42,10 @@ class ImportAliensB2bProductsCommand extends Command
 
         $sheets = SpreadsheetRowReader::readSheets($path);
         $groups = AliensB2bProductData::group($sheets[array_key_first($sheets)] ?? []);
+        if ($this->option('fill-images')) {
+            return $this->fillImages($groups, $dryRun);
+        }
+
         $existing = AliensB2bProductData::existing($groups);
         $missing = array_diff_key($groups, $existing);
 
@@ -115,6 +120,69 @@ class ImportAliensB2bProductsCommand extends Command
         }
 
         $this->info("Angelegt: {$created} Produkte. Danach Preise/Kategorien mit pricelist:apply aliens (und monkey) einlesen.");
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Bild-Links (product_meta "aliens_image_urls") bei vorhandenen Aliens-Produkten
+     * nachtragen, wo sie fehlen. Vorhandene Einträge bleiben unverändert.
+     *
+     * @param  array<string, list<array<string, string>>>  $groups
+     */
+    protected function fillImages(array $groups, bool $dryRun): int
+    {
+        $productIds = ProductMeta::query()
+            ->where('key', 'aliens_product_id')
+            ->whereNull('variation_id')
+            ->pluck('product_id', 'value');
+
+        $withImages = ProductMeta::query()
+            ->where('key', 'aliens_image_urls')
+            ->whereNotNull('value')
+            ->where('value', '!=', '[]')
+            ->pluck('product_id')
+            ->flip();
+
+        $filled = 0;
+        $alreadySet = 0;
+        $noUrls = 0;
+
+        foreach ($groups as $aliensId => $rows) {
+            $productId = $productIds[(string) $aliensId] ?? null;
+
+            if ($productId === null) {
+                continue;
+            }
+
+            if (isset($withImages[$productId])) {
+                $alreadySet++;
+
+                continue;
+            }
+
+            $urls = AliensB2bProductData::imageUrls($rows);
+
+            if ($urls === []) {
+                $noUrls++;
+
+                continue;
+            }
+
+            if (! $dryRun) {
+                ProductMeta::query()->updateOrCreate(
+                    ['product_id' => $productId, 'variation_id' => null, 'scope' => 'product', 'key' => 'aliens_image_urls'],
+                    ['value' => json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)],
+                );
+            }
+
+            $filled++;
+        }
+
+        $this->newLine();
+        $this->line('Bild-Links schon vorhanden:   '.$alreadySet);
+        $this->line(($dryRun ? 'würden nachgetragen:          ' : 'nachgetragen:                 ').$filled);
+        $this->line('ohne Bild-Links in der Datei: '.$noUrls);
 
         return self::SUCCESS;
     }
