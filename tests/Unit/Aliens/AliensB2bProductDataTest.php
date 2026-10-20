@@ -114,7 +114,7 @@ it('writes missing products in the legacy aliens export format', function () {
         ->and($records[0]['Attribute Group: Farbe'])->toBe('Hellblau')
         ->and($records[0]['Feature: Durchmesser [mm]'])->toBe('Für Ø 8,1 mm bis Ø 11 mm')
         ->and($records[0]['Feature: Mindestbruchlast [kN]'])->toBe('25')
-        ->and($records[0]['Produktbilder'])->toContain('/1/a.jpg')
+        ->and($records[0]['Produkt Bilder'])->toContain('/1/a.jpg')
         ->and($records[0]['Hersteller'])->toBe('Aliens')
         ->and($records[1]['Attribute Group: Farbe'])->toBe('Rot')
         ->and($records[1]['Feature: Mindestbruchlast [kN]'])->toBe('')
@@ -122,6 +122,15 @@ it('writes missing products in the legacy aliens export format', function () {
         ->and($records[2]['Kombination-ID'])->toBe('P917')
         ->and($records[2]['Kombinations-Referenz'])->toBe('805050000KK')
         ->and($records[2]['Kombination EAN13'])->toBe('8023577008936');
+});
+
+it('collects product and variation image urls once', function () {
+    $urls = AliensB2bProductData::imageUrls([
+        ['Produkt Alle Bild-Links' => 'https://x.de/1/a.jpg, https://x.de/2/b.jpg', 'Kombinations-Bild-Links' => 'https://x.de/2/b.jpg'],
+        ['Produkt Alle Bild-Links' => 'https://x.de/1/a.jpg', 'Kombinations-Bild-Links' => 'https://x.de/3/c.png, https://x.de/seite.html'],
+    ]);
+
+    expect($urls)->toBe(['https://x.de/1/a.jpg', 'https://x.de/2/b.jpg', 'https://x.de/3/c.png']);
 });
 
 it('maps manufacturer names from the config', function () {
