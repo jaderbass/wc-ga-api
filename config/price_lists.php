@@ -30,6 +30,16 @@ return [
             'Expressschlinge Polyester' => ['Schlingen & Lanyard'],
             'mobiles Anschlagsystem m. Tasche (gelb)' => ['Anschlageinrichtung'],
             'Traversenanker' => ['Anschlageinrichtung'],
+            // neue Produkte aus dem B2B-Bereich (2026-10-20)
+            'Sonnenbrille' => ['Accessoires'],
+            'Ohrringe' => ['Accessoires'],
+            'Magnet' => ['Accessoires'],
+            'Socken' => ['Accessoires'],
+            'Socken El' => ['Accessoires'],
+            'Ersatzpolster' => ['Zubehör Gurte'],
+            'Schulterpolster für Gurt' => ['Zubehör Gurte'],
+            'Sturmhaube' => ['Zubehör Schutzhelme'],
+            'Ankerplatte' => ['Anschlageinrichtung'],
         ],
 
         // Herstellerkategorie = Produktart aus dem Kurztext, Reihenfolge = Priorität
