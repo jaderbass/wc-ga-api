@@ -47,6 +47,11 @@
 - Bei fachlich unklaren Regeln nicht raten, sondern Rückfrage stellen.
 - Vor größeren Änderungen kurz beschreiben, welcher Ansatz gewählt wird.
 - Änderungen möglichst klein und thematisch fokussiert halten.
+- Mit dem Benutzer auf Deutsch kommunizieren.
+- Statusmeldungen, Zusammenfassungen, Rückfragen und Erklärungen auf Deutsch ausgeben.
+- Technische Bezeichner, Klassen-, Methoden-, Datei- und Feldnamen unverändert lassen.
+- Commit-Messages weiterhin auf Englisch formulieren, sofern nicht ausdrücklich anders gewünscht.
+- Laufende Statusmeldungen kurz und sachlich halten; keine langen Erklärungen während der Ausführung.
 
 ## Abschluss einer Aufgabe
 
