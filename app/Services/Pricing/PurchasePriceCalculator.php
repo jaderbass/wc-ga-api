@@ -30,6 +30,25 @@ class PurchasePriceCalculator
 
     public const SOURCE_MANUAL = 'manual';
 
+    /**
+     * Herkunft, die beim nächsten Speichern ausdrücklich gilt (z. B. Preisliste),
+     * auch wenn sie sich gegenüber dem gespeicherten Wert nicht ändert.
+     *
+     * @var \WeakMap<Product|ProductVariation, string>|null
+     */
+    protected static ?\WeakMap $explicitSources = null;
+
+    /**
+     * Herkunft ausdrücklich setzen. Ohne das hält {@see applyOnSaving()} einen
+     * geänderten EK bei unveränderter Herkunft für eine Handeingabe ("manual").
+     */
+    public static function setSource(Product|ProductVariation $record, string $source): void
+    {
+        self::$explicitSources ??= new \WeakMap;
+        self::$explicitSources[$record] = $source;
+        $record->purchase_price_source = $source;
+    }
+
     public static function calculate(?int $listPriceCents, mixed $discount1, mixed $discount2): ?int
     {
         if ($listPriceCents === null || $listPriceCents <= 0) {
@@ -99,8 +118,13 @@ class PurchasePriceCalculator
         [$discount1, $discount2] = self::effectiveDiscounts($record);
         $calculated = self::calculate($record->list_price_cents, $discount1, $discount2);
 
+        $explicitSource = self::$explicitSources[$record] ?? null;
+        unset(self::$explicitSources[$record]);
+
         if ($record->isDirty('purchase_price_cents')) {
-            if (! $record->isDirty('purchase_price_source')) {
+            if ($explicitSource !== null) {
+                $record->purchase_price_source = $explicitSource;
+            } elseif (! $record->isDirty('purchase_price_source')) {
                 $record->purchase_price_source = $record->purchase_price_cents === null
                     ? null
                     : ($record->purchase_price_cents === $calculated ? self::SOURCE_CALCULATED : self::SOURCE_MANUAL);

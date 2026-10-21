@@ -2,26 +2,25 @@
 
 namespace App\Providers\Filament;
 
-use App\Livewire\CategoryResyncStatusWidget;
+use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
-use Filament\Widgets;
-use Filament\Facades\Filament;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\MaxWidth;
+use Filament\Widgets;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Vite; // <— wichtig
-use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-    /**
+
+/**
  * Registriert und konfiguriert das Filament-Admin-Panel.
  *
  * - Lässt Filament sein Standard-Theme laden (kein ->viteTheme()).
@@ -38,7 +37,7 @@ class AdminPanelProvider extends PanelProvider
      * - Branding/Colors/Widgets/Middleware wie in deiner bestehenden Konfiguration.
      *
      * @param  \Filament\Panel  $panel  Das zu konfigurierende Panel-Objekt.
-     * @return \Filament\Panel         Das konfigurierte Panel.
+     * @return \Filament\Panel Das konfigurierte Panel.
      */
     public function panel(Panel $panel): Panel
     {
@@ -47,7 +46,6 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->maxContentWidth(MaxWidth::Full)
-            ->registration()
             ->profile()
             ->login()
             ->colors([
@@ -84,8 +82,8 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogoHeight('2rem')
             ->brandName('WooCommerce-Geoalpin-API')
             ->authGuard('web');
-            // WICHTIG: kein ->viteTheme() und kein ->vite() hier – Theme bleibt unverändert,
-            // CSS-Overrides werden unten in boot() via Render-Hook eingebunden.
+        // WICHTIG: kein ->viteTheme() und kein ->vite() hier – Theme bleibt unverändert,
+        // CSS-Overrides werden unten in boot() via Render-Hook eingebunden.
     }
 
     /**
@@ -102,8 +100,6 @@ class AdminPanelProvider extends PanelProvider
      * Hinweis:
      * - Die Datei muss in `vite.config.js` als Input registriert sein.
      * - Light/Dark-Schalter erfolgt in Filament v3.2 über `.dark` auf <html>.
-     *
-     * @return void
      */
     public function boot(): void
     {
@@ -111,7 +107,7 @@ class AdminPanelProvider extends PanelProvider
             Filament::registerRenderHook('panels::head.end', function (): string {
                 $href = Vite::asset('resources/css/filament/admin-overrides.css');
 
-                return '<link rel="stylesheet" href="' . $href . '">';
+                return '<link rel="stylesheet" href="'.$href.'">';
             });
 
             Filament::registerRenderHook('panels::topbar.end', function (): string {
