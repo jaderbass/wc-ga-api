@@ -7,8 +7,10 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
+use App\Services\PriceLists\Parsers\MonkeyPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\PriceListApplier;
+use App\Services\PriceLists\PriceListRow;
 use App\Services\Pricing\PurchasePriceCalculator;
 use App\Support\Imports\SpreadsheetRowReader;
 use Illuminate\Support\Facades\DB;
@@ -161,6 +163,52 @@ it('parses marker, brand, product type and numbers from the aliens short text', 
         ->and($rows[4]->sourceCategory)->toBe('Gehörschutz medium');
 });
 
+it('reads the 2026 aliens header ("HEK", "UVP" with line break, no weight)', function () {
+    $rows = (new AliensPriceListParser)->parse(['Tabelle1' => [
+        ['Artikelnr.', 'Kurztext', 'Einheit', 'HEK', "UVP\nnetto", 'EAN Barcode'],
+        ['712LE0NPNKK', 'KONG - Alukarabiner OVALONE - RISE LOCK - schwarz', 'Stk', 12.1, 18.83, '8023577011134'],
+    ]]);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]->purchasePriceCents)->toBe(1210)
+        ->and($rows[0]->retailPriceCents)->toBe(1883)
+        ->and($rows[0]->ean)->toBe('8023577011134')
+        ->and($rows[0]->unit)->toBe('Stk')
+        ->and($rows[0]->weightGrams)->toBeNull();
+});
+
+it('splits several aliens markers in a row', function () {
+    [$marker, $rest] = AliensPriceListParser::splitMarker('## DNV ##  ** NEU 01/26 ** SINGING ROCK - Aufreißfalldämpfer SHOCK');
+    [$sale] = AliensPriceListParser::splitMarker('** NEU 10/25 ** -- ABVERKAUF -- FUJFUJ - Magnet VOLUME 1 - blau');
+
+    expect($marker)->toBe('DNV + NEU')
+        ->and($rest)->toBe('SINGING ROCK - Aufreißfalldämpfer SHOCK')
+        ->and(AliensPriceListParser::splitBrandAndType($rest))->toBe(['SINGING ROCK', 'Aufreißfalldämpfer'])
+        ->and(new PriceListRow(line: 1, articleNumber: 'X', text: 'x', marker: $sale))
+        ->isClearance()->toBeTrue();
+});
+
+it('parses the monkey dealer price list', function () {
+    $rows = (new MonkeyPriceListParser)->parse(['Tabelle1' => [
+        ['Artikelnummer', 'Artikelbezeichnung', 'HEK netto', 'eVK netto', 'EAN'],
+        ['310022-30', 'MONKEY HW - Einzelgriff BASIC - blau', '4.32', '6.22', '4251710801975'],
+        ['1101221-30', 'MONKEY HW - Monkey Set BASIC 2,2 m Klemmschnalle - blau     • SL •', '273.5', '405.71', '4251710800000'],
+        ['21027-40', 'MONKEY HW - SCHRAUBE M10x40 - 10.9', '0.33', '0.55000000000000004', '4251710800001'],
+    ]]);
+
+    expect($rows)->toHaveCount(3)
+        ->and($rows[0]->brand)->toBe('MONKEY HW')
+        ->and($rows[0]->sourceCategory)->toBe('Einzelgriff')
+        ->and($rows[0]->purchasePriceCents)->toBe(432)
+        ->and($rows[0]->retailPriceCents)->toBe(622)
+        ->and($rows[0]->marker)->toBeNull()
+        ->and($rows[1]->sourceCategory)->toBe('Monkey Set')
+        ->and($rows[1]->marker)->toBe('SL')
+        ->and($rows[2]->sourceCategory)->toBe('Schraube')
+        ->and($rows[2]->retailPriceCents)->toBe(55)
+        ->and((new MonkeyPriceListParser)->manufacturerName())->toBe('Monkeyhardware');
+});
+
 it('reads xlsx files with shared strings and keeps long numbers intact', function () {
     $path = tempnam(sys_get_temp_dir(), 'pl').'.xlsx';
     $zip = new ZipArchive;
@@ -197,6 +245,29 @@ it('only reports in a dry run', function () {
         ->and(CategoryAssignmentRule::count())->toBe(0)
         ->and(DB::table('product_meta')->count())->toBe(0)
         ->and($product->fresh()->source_category)->toBeNull();
+});
+
+it('keeps the price list as source when a later list changes the purchase price', function () {
+    $product = Product::create(['manufacturer_id' => 1, 'product_name' => 'KONG Paddle']);
+    $variation = ProductVariation::create(['product_id' => $product->id, 'sku' => '7040XNN']);
+    $sheet = fn (string $hek) => ['Tabelle1' => aliensSheet([
+        ['7040XNN', 'KONG - Alukarabiner PADDLE - schwarz', $hek, '54', '', 'Stk', '', '', ''],
+    ])];
+
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('35'));
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('37,10'));
+
+    $variation->refresh();
+
+    expect($variation->purchase_price_cents)->toBe(3710)
+        ->and($variation->purchase_price_source)->toBe('pricelist');
+
+    // eine Handeingabe bleibt "manual" und wird nicht mehr überschrieben
+    $variation->forceFill(['purchase_price_cents' => 3000])->save();
+    app(PriceListApplier::class)->apply(new AliensPriceListParser, $sheet('39'));
+
+    expect($variation->fresh()->purchase_price_cents)->toBe(3000)
+        ->and($variation->fresh()->purchase_price_source)->toBe('manual');
 });
 
 it('enriches matched products, suggests mappings, handles markers and re-runs cleanly', function () {

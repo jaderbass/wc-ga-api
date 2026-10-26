@@ -18,6 +18,30 @@
 return [
 
     'aliens' => [
+        // Exakte Zuordnungen (Entscheidungen zur Liste 2026, 2026-10-19), gehen den Stichwörtern vor
+        'sources' => [
+            'Schlüsselhalter' => ['Accessoires'],
+            'Schlüsselanhänger' => ['Accessoires'],
+            'Stahl' => ['Zubehör'],
+            'Ausleger' => ['Anschlageinrichtung'],
+            'Rettungsdreieck' => ['Rettung & Transport'],
+            'Stahlseillanyard mit einem Auge / längenverstellbar' => ['Verbindungsmittel'],
+            'Tandemrolle mit Haken' => ['Seilrollen'],
+            'Expressschlinge Polyester' => ['Schlingen & Lanyard'],
+            'mobiles Anschlagsystem m. Tasche (gelb)' => ['Anschlageinrichtung'],
+            'Traversenanker' => ['Anschlageinrichtung'],
+            // neue Produkte aus dem B2B-Bereich (2026-10-20)
+            'Sonnenbrille' => ['Accessoires'],
+            'Ohrringe' => ['Accessoires'],
+            'Magnet' => ['Accessoires'],
+            'Socken' => ['Accessoires'],
+            'Socken El' => ['Accessoires'],
+            'Ersatzpolster' => ['Zubehör Gurte'],
+            'Schulterpolster für Gurt' => ['Zubehör Gurte'],
+            'Sturmhaube' => ['Zubehör Schutzhelme'],
+            'Ankerplatte' => ['Anschlageinrichtung'],
+        ],
+
         // Herstellerkategorie = Produktart aus dem Kurztext, Reihenfolge = Priorität
         'suggestions' => [
             ['keywords' => 'helm mit', 'categories' => ['Schutzhelme']],
@@ -70,6 +94,27 @@ return [
             ['keywords' => 'stirnlampe', 'categories' => ['Stirnlampe']],
             ['keywords' => 'ersatzteil|ersatzteilset', 'categories' => ['Ersatzteil']],
         ],
+    ],
+
+    'monkey' => [
+        // Monkey-Händlerpreisliste (über Aliens), Herstellerkategorie = Produktart
+        // Entscheidungen 2026-10-19
+        'sources' => [
+            'Monkey Set' => ['Freizeit'],
+            'Klettergriff-Set' => ['Freizeit'],
+            'Einzelgriff' => ['Freizeit'],
+            'Set' => ['Freizeit'],
+            'Stepper' => ['Freizeit'],
+            'Grundplatte' => ['Freizeit'],
+            'Spanngurt mit Ratsche' => ['Ersatzteil'],
+            'Spanngurt mit Klemmschnalle' => ['Ersatzteil'],
+            'Schraube' => ['Ersatzteil'],
+            'Sechskant-Schlüssel' => ['Ersatzteil'],
+            'Sechskant-Schlüssel T-Form' => ['Ersatzteil'],
+            'Treetool' => ['Ersatzteil'],
+            'Tasche' => ['Taschen & Rucksäcke'],
+        ],
+        'suggestions' => [],
     ],
 
     'edelrid' => [
