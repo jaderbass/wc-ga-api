@@ -40,7 +40,7 @@ class ManufacturerResource extends Resource
                     ->label('Logo (für das Dashboard)')
                     ->disk('public')
                     ->directory('manufacturer-logos')
-                    ->acceptedFileTypes(['image/svg+xml', 'image/png', 'image/webp', 'image/jpeg'])
+                    ->acceptedFileTypes(['image/svg+xml', 'image/png', 'image/webp', 'image/jpeg', 'image/gif'])
                     ->maxSize(2048)
                     ->nullable(),
                 Forms\Components\TextInput::make('api_url')
