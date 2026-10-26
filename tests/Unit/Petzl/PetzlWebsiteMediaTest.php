@@ -38,6 +38,19 @@ it('finds the product page that really contains our article number', function ()
         ->toStartWith('https://www.petzl.com/on/demandware.static/-/Sites-petzl-master-catalog/default/dwabc123/media/product/');
 });
 
+it('accepts images named after another size or the base number', function () {
+    $html = petzlPage('C073BA01', [
+        'C073BA00-NEWTON-INTER_LowRes_1.jpeg',      // erste Größe
+        'C072GA-VOLT-LIGHT-EUR_LowRes_2.jpeg',      // nur Stammnummer
+        'C073FA00-NEWTON-EASYFIT_LowRes_3.jpeg',    // anderes Modell
+    ]);
+
+    expect(array_map('basename', (new PetzlWebsiteMedia)->imageUrls($html, ['C073BA01', 'C073BA02'])))
+        ->toBe(['C073BA00-NEWTON-INTER_LowRes_1.jpeg'])
+        ->and(array_map('basename', (new PetzlWebsiteMedia)->imageUrls($html, ['C072GA01'])))
+        ->toBe(['C072GA-VOLT-LIGHT-EUR_LowRes_2.jpeg']);
+});
+
 it('returns nothing when no candidate page contains the article number', function () {
     Http::fake([
         'www.petzl.com/de/de/search*' => Http::response('<a href="/de/de/professional/produkte/x/VERTEX_PRO_a1.html"></a>'),
