@@ -272,3 +272,50 @@ it('applies configured decisions: open rule for the aliens category, manual cate
         ->and($single->categories()->pluck('name')->all())->toBe(['Zubehör'])
         ->and($single->categories()->first()->pivot->assignment_type)->toBe('manual');
 });
+
+it('marks products aliens no longer lists and restores them when they come back', function () {
+    Schema::table('products', fn ($t) => $t->boolean('online_sellable')->nullable());
+
+    $gone = Product::create(['product_name' => 'Ausgelaufen']);
+    $gone->forceFill(['online_sellable' => true])->save();
+    $active = Product::create(['product_name' => 'Aktiv']);
+    $active->forceFill(['online_sellable' => true])->save();
+    ProductMeta::create(['product_id' => $gone->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '555']);
+    ProductMeta::create(['product_id' => $active->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+
+    $write = function (array $rows): string {
+        $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+        $handle = fopen($path, 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row, ';', '"', '');
+        }
+        fclose($handle);
+
+        return $path;
+    };
+
+    $path = $write(b2bRows());
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--mark-discontinued' => true])
+        ->expectsOutputToContain('neu markiert (offline):         1')
+        ->assertSuccessful();
+
+    expect($gone->fresh()->online_sellable)->toBeFalse()
+        ->and($active->fresh()->online_sellable)->toBeTrue()
+        ->and(ProductMeta::where('key', 'aliens_discontinued')->count())->toBe(1);
+
+    // wieder in der Datei → alter Wert zurück
+    $rows = b2bRows();
+    $rows[] = array_map(fn ($column) => ['Produkt ID' => '555', 'Produktname' => 'Zurück', 'Kombinationsreferenz' => 'R1', 'Kombinations-ID' => '77', 'Aktiv' => '1'][$column] ?? '', $rows[0]);
+    $path2 = $write($rows);
+    $this->artisan('aliens:b2b-import', ['file' => $path2, '--mark-discontinued' => true])->assertSuccessful();
+
+    expect($gone->fresh()->online_sellable)->toBeTrue()
+        ->and(ProductMeta::where('key', 'aliens_discontinued')->count())->toBe(0);
+
+    // kaputter Download (fast leer) → nichts ändern
+    $path3 = $write([b2bRows()[0]]);
+    $this->artisan('aliens:b2b-import', ['file' => $path3, '--mark-discontinued' => true])->assertFailed();
+    expect($gone->fresh()->online_sellable)->toBeTrue();
+
+    array_map('unlink', [$path, $path2, $path3]);
+});
