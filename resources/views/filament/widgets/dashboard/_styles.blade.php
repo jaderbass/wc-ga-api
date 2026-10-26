@@ -7,7 +7,7 @@
         border: 1px solid rgba(148, 163, 184, .18); transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
     .psa-tile:hover { transform: translateY(-2px); border-color: rgba(245, 158, 11, .55); box-shadow: 0 10px 25px -12px rgba(245, 158, 11, .45); }
     .psa-logo { height: 44px; display: flex; align-items: center; margin-bottom: .75rem; }
-    .psa-logo img { max-height: 40px; max-width: 150px; object-fit: contain; }
+    .psa-logo img { height: 36px; width: auto; max-width: 160px; object-fit: contain; }
     :is(.dark) .psa-logo img { background: rgba(255, 255, 255, .92); padding: 4px 8px; border-radius: 6px; }
     .psa-logo-text { font-weight: 800; font-size: 1.05rem; letter-spacing: .04em; text-transform: uppercase; color: #f59e0b; }
     .psa-nums { display: flex; gap: 1.25rem; }
