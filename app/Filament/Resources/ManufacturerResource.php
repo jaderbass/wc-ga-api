@@ -131,7 +131,7 @@ class ManufacturerResource extends Resource
                     ->sortable(),
                 Tables\Columns\ImageColumn::make('logo_path')
                     ->label('Logo')
-                    ->disk('public')
+                    ->getStateUsing(fn (Manufacturer $record) => $record->logoUrl())
                     ->height(24),
                 Tables\Columns\TextColumn::make('manufacturer')
                     ->label('Hersteller')

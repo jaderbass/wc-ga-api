@@ -303,9 +303,16 @@ class DashboardStats
         foreach (self::ALIENS_IMAGE_KEYS as $key) {
             $path = $this->list($product->meta->firstWhere('key', $key)?->value)[0] ?? null;
 
-            if ($path !== null) {
-                return preg_match('#^https?://#i', $path) ? $path : asset(ltrim($path, '/'));
+            if ($path === null) {
+                continue;
             }
+
+            // heruntergeladene Aliens-Bilder: products/aliens/m1/p6/5191.jpg → Route /aliens-image/…
+            if (preg_match('#^/?products/aliens/m(\d+)/p(\d+)/(.+)$#', $path, $m)) {
+                return url("/aliens-image/{$m[1]}/{$m[2]}/{$m[3]}");
+            }
+
+            return preg_match('#^https?://#i', $path) ? $path : asset(ltrim($path, '/'));
         }
 
         return null;
