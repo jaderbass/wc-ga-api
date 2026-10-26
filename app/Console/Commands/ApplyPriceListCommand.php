@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Manufacturer;
 use App\Services\PriceLists\Parsers\AliensPriceListParser;
 use App\Services\PriceLists\Parsers\EdelridPriceListParser;
+use App\Services\PriceLists\Parsers\MonkeyPriceListParser;
 use App\Services\PriceLists\Parsers\PetzlPriceListParser;
 use App\Services\PriceLists\Parsers\PriceListParser;
 use App\Services\PriceLists\Parsers\SkylotecPriceListParser;
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\Storage;
 class ApplyPriceListCommand extends Command
 {
     protected $signature = 'pricelist:apply
-                        {list : Art der Liste: aliens, edelrid, petzl oder skylotec}
+                        {list : Art der Liste: aliens, monkey, edelrid, petzl oder skylotec}
                         {file : Pfad zur .xlsx- oder .csv-Datei}
                         {--dry-run : Nur prüfen und berichten, nichts speichern}';
 
@@ -59,6 +60,7 @@ class ApplyPriceListCommand extends Command
     {
         return match (strtolower($list)) {
             'aliens' => new AliensPriceListParser,
+            'monkey' => new MonkeyPriceListParser,
             'edelrid' => new EdelridPriceListParser,
             'petzl' => new PetzlPriceListParser,
             'skylotec' => new SkylotecPriceListParser,
@@ -97,8 +99,13 @@ class ApplyPriceListCommand extends Command
         }
 
         $manufacturers = Manufacturer::query()->pluck('manufacturer', 'id');
+        // Offene und vorgeschlagene zuerst, damit sie nicht hinter den 40 größten verschwinden
+        $statusOrder = ['offen' => 0, 'vorschlag' => 1, 'vorhanden' => 2];
         $rows = collect($report->sources)
-            ->sortByDesc('products')
+            ->sortBy([
+                fn (array $a, array $b): int => ($statusOrder[$a['status']] ?? 3) <=> ($statusOrder[$b['status']] ?? 3),
+                fn (array $a, array $b): int => $b['products'] <=> $a['products'],
+            ])
             ->take(40)
             ->map(fn (array $source): array => [
                 $manufacturers[$source['manufacturer_id']] ?? $source['manufacturer_id'],

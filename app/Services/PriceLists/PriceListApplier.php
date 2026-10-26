@@ -287,6 +287,9 @@ class PriceListApplier
         }
 
         if ($row->purchasePriceCents !== null) {
+            // ausdrücklich, sonst wird ein geänderter EK bei gleicher Herkunft zu "manual"
+            PurchasePriceCalculator::setSource($record, PurchasePriceCalculator::SOURCE_PRICELIST);
+
             return $listUpdate + [
                 'purchase_price_cents' => $row->purchasePriceCents,
                 'purchase_price_source' => PurchasePriceCalculator::SOURCE_PRICELIST,
