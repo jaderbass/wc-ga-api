@@ -5,7 +5,6 @@ namespace App\Services\Dashboard;
 use App\Models\Category;
 use App\Models\Manufacturer;
 use App\Models\Product;
-use App\Models\ProductImage;
 use App\Models\ProductVariation;
 use App\Models\WooSnapshot;
 use Carbon\CarbonImmutable;
@@ -34,7 +33,7 @@ class DashboardStats
         return $this->remember('totals', fn (): array => [
             'products' => $this->withTrend('products', Product::query()->count()),
             'variations' => $this->withTrend('product_variations', ProductVariation::query()->count()),
-            'images' => $this->withTrend('product_images', ProductImage::query()->count()),
+            'images' => $this->withTrend('product_images', array_sum($this->imageCounts())),
             'manufacturers' => ['value' => Manufacturer::query()->has('products')->count(), 'added' => 0, 'trend' => []],
             'categories' => ['value' => count($this->productCategoryIds()), 'added' => 0, 'trend' => []],
         ]);
@@ -53,10 +52,10 @@ class DashboardStats
                 ->groupBy('products.manufacturer_id')
                 ->pluck(DB::raw('COUNT(*)'), 'products.manufacturer_id');
 
-            $withImage = DB::table('products')
-                ->whereExists(fn ($q) => $q->selectRaw('1')->from('product_images')->whereColumn('product_images.product_id', 'products.id'))
-                ->groupBy('manufacturer_id')
-                ->pluck(DB::raw('COUNT(*)'), 'manufacturer_id');
+            $images = $this->imageCounts();
+            $withImage = DB::table('products')->get(['id', 'manufacturer_id'])
+                ->filter(fn ($p) => isset($images[$p->id]))
+                ->countBy('manufacturer_id');
 
             return Manufacturer::query()
                 ->has('products')
@@ -88,7 +87,7 @@ class DashboardStats
             $total = Product::query()->count();
 
             $rows = [
-                'Titelbild' => Product::query()->has('images')->count(),
+                'Titelbild' => count($this->imageCounts()),
                 'Beschreibung' => Product::query()->whereNotNull('description')->where('description', '!=', '')->count(),
                 'Kategorie' => $this->productsIn($this->productCategoryIds()),
                 'Einkaufspreis' => Product::query()
@@ -241,23 +240,98 @@ class DashboardStats
     }
 
     /**
-     * Zuletzt angelegte Produkte mit Titelbild.
+     * Zuletzt angelegte Produkte mit Bild.
      *
-     * @return Collection<int, Product>
+     * @return list<array{id: int, name: string, manufacturer: string, image: string}>
      */
-    public function recentWithImages(int $limit = 12): Collection
+    public function recentWithImages(int $limit = 12): array
     {
-        return Product::query()
-            ->has('images')
-            ->with(['manufacturer:id,manufacturer', 'images' => fn ($q) => $q->orderByDesc('is_main')->orderBy('id')])
-            ->latest('id')
-            ->limit($limit)
-            ->get(['id', 'product_name', 'manufacturer_id', 'created_at']);
+        $ids = array_keys($this->imageCounts());
+        rsort($ids);
+
+        $products = Product::query()
+            ->whereIn('id', array_slice($ids, 0, $limit))
+            ->with(['manufacturer:id,manufacturer', 'images' => fn ($q) => $q->orderByDesc('is_main')->orderBy('id'), 'meta' => fn ($q) => $q->whereIn('key', self::ALIENS_IMAGE_KEYS)])
+            ->orderByDesc('id')
+            ->get(['id', 'product_name', 'manufacturer_id', 'image_urls']);
+
+        return $products->map(fn (Product $p): array => [
+            'id' => (int) $p->id,
+            'name' => (string) $p->product_name,
+            'manufacturer' => (string) $p->manufacturer?->manufacturer,
+            'image' => (string) $this->firstImage($p),
+        ])->filter(fn (array $row) => $row['image'] !== '')->values()->all();
+    }
+
+    /** Bild-Links von Aliens (Meta): heruntergeladene Pfade bevorzugt */
+    public const ALIENS_IMAGE_KEYS = ['aliens_image_paths', 'aliens_image_urls'];
+
+    /**
+     * Bilder je Produkt aus allen Quellen: Bildertabelle, Feld image_urls, Aliens-Bilder (Meta).
+     *
+     * @return array<int, int> product_id => Anzahl Bilder (nur Produkte mit mindestens einem Bild)
+     */
+    public function imageCounts(): array
+    {
+        return $this->remember('image-counts', function (): array {
+            $counts = DB::table('product_images')->groupBy('product_id')->pluck(DB::raw('COUNT(*)'), 'product_id')->map(fn ($c) => (int) $c)->all();
+
+            foreach (DB::table('products')->whereNotNull('image_urls')->where('image_urls', '!=', '')->get(['id', 'image_urls']) as $row) {
+                $n = count($this->list($row->image_urls));
+                $counts[$row->id] = max($counts[$row->id] ?? 0, $n);
+            }
+
+            foreach (DB::table('product_meta')->whereIn('key', self::ALIENS_IMAGE_KEYS)->get(['product_id', 'value']) as $row) {
+                $n = count($this->list($row->value));
+                $counts[$row->product_id] = max($counts[$row->product_id] ?? 0, $n);
+            }
+
+            return array_filter($counts);
+        });
+    }
+
+    protected function firstImage(Product $product): ?string
+    {
+        if ($url = $product->images->first()?->url) {
+            return $url;
+        }
+
+        if ($url = $this->list($product->getRawOriginal('image_urls'))[0] ?? null) {
+            return $url;
+        }
+
+        foreach (self::ALIENS_IMAGE_KEYS as $key) {
+            $path = $this->list($product->meta->firstWhere('key', $key)?->value)[0] ?? null;
+
+            if ($path !== null) {
+                return preg_match('#^https?://#i', $path) ? $path : asset(ltrim($path, '/'));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * JSON-Liste oder komma-/semikolongetrennte Liste → nicht leere Einträge
+     *
+     * @return list<string>
+     */
+    protected function list(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            $values = $raw;
+        } else {
+            $raw = trim((string) $raw);
+            $decoded = json_decode($raw, true);
+            $values = is_array($decoded) ? $decoded : preg_split('/[;,]+/', $raw);
+        }
+
+        return array_values(array_filter(array_map(fn ($v) => is_string($v) ? trim($v) : '', (array) $values)));
     }
 
     public static function flush(): void
     {
-        foreach (['totals', 'manufacturers', 'quality', 'areas', 'shop', 'growth', 'availability', 'sources'] as $key) {
+        foreach (['totals', 'manufacturers', 'quality', 'areas', 'shop', 'growth', 'availability', 'sources', 'image-counts'] as $key) {
             Cache::forget("dashboard:{$key}");
         }
     }
