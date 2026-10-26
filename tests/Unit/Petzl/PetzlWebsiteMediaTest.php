@@ -64,6 +64,21 @@ it('accepts images of older article numbers with spaces', function () {
         ->toBe(['L22A-ZILLON-focus-1_LowRes_2.jpeg']);
 });
 
+it('also searches the newer article number when the product has an old and a new version', function () {
+    Http::fake([
+        'www.petzl.com/de/de/search?q=C069AB00' => Http::response('<a href="/de/de/professional/produkte/baumpflegegurte/sequoia/SEQUOIA_PRO_a1.html"></a>'),
+        'www.petzl.com/de/de/search*' => Http::response(''),
+        'www.petzl.com/de/de/professional/*' => Http::response(petzlPage('C069AB00', ['C069AB-SEQUOIA_LowRes_1.jpeg'])),
+    ]);
+
+    $media = new PetzlWebsiteMedia;
+    $skus = ['C069AA00', 'C069AA01', 'C069AB00', 'C069AB01'];
+    $page = $media->findProductPage($skus);
+
+    expect($page['url'])->toEndWith('/sequoia/SEQUOIA_PRO_a1.html')
+        ->and(array_map('basename', $media->imageUrls($page['html'], $skus)))->toBe(['C069AB-SEQUOIA_LowRes_1.jpeg']);
+});
+
 it('returns nothing when no candidate page contains the article number', function () {
     Http::fake([
         'www.petzl.com/de/de/search*' => Http::response('<a href="/de/de/professional/produkte/x/VERTEX_PRO_a1.html"></a>'),
