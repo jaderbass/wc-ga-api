@@ -69,7 +69,7 @@ return [
             'port' => env('DB_DUMP_PORT', '3306'),
             'database' => env('DB_DUMP_DATABASE', 'wc_ga_api'),
             'username' => env('DB_DUMP_USERNAME', 'dump_user'),
-            'password' => env('DB_DUMP_PASSWORD', REMOVED),
+            'password' => env('DB_DUMP_PASSWORD'),
             'unix_socket' => env('DB_DUMP_SOCKET', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
