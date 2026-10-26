@@ -142,6 +142,8 @@ it('maps manufacturer names from the config', function () {
 });
 
 it('fills empty source categories from the aliens category and leaves others alone', function () {
+    config()->set('aliens_b2b.sources', []);
+    config()->set('aliens_b2b.products', []);
     // wie in den anderen Tests: Fremdschlüssel aus, sonst verweigert MariaDB (CI) das Löschen
     Schema::disableForeignKeyConstraints();
 
@@ -194,4 +196,79 @@ it('fills empty source categories from the aliens category and leaves others alo
     expect($empty->fresh()->source_category)->toBe('Sicherungsgeräte')
         ->and($priced->fresh()->source_category)->toBe('Abseilachter')
         ->and($synced)->toBe([$empty->id]);
+});
+
+it('applies configured decisions: open rule for the aliens category, manual categories per product', function () {
+    Schema::disableForeignKeyConstraints();
+
+    try {
+        foreach (['ccar', 'category_category_assignment_rule', 'category_assignment_rules', 'category_product', 'categories', 'manufacturers'] as $table) {
+            Schema::dropIfExists($table);
+        }
+
+        Schema::create('manufacturers', function ($t) {
+            $t->id();
+            $t->string('manufacturer');
+            $t->timestamps();
+        });
+        Schema::create('categories', function ($t) {
+            $t->id();
+            $t->string('name');
+            $t->string('slug')->nullable();
+            $t->unsignedBigInteger('parent_id')->nullable();
+            $t->timestamps();
+        });
+        Schema::create('category_product', function ($t) {
+            $t->unsignedBigInteger('category_id');
+            $t->unsignedBigInteger('product_id');
+            $t->string('assignment_type')->default('auto');
+            $t->timestamps();
+        });
+        (include base_path('database/migrations/2026_10_08_100001_create_category_assignment_rules_table.php'))->up();
+        Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
+
+    config()->set('aliens_b2b.sources', ['Sicherungsgeräte' => ['Abseilgeräte']]);
+    config()->set('aliens_b2b.products', [300 => ['Zubehör']]);
+
+    $manufacturer = App\Models\Manufacturer::query()->forceCreate(['manufacturer' => 'Aliens']);
+    foreach (['Abseilgeräte', 'Zubehör', 'Allgemein'] as $name) {
+        App\Models\Category::query()->forceCreate(['name' => $name, 'slug' => Illuminate\Support\Str::slug($name)]);
+    }
+    $general = App\Models\Category::query()->where('name', 'Allgemein')->value('id');
+
+    $grouped = Product::create(['product_name' => 'Abseilachter', 'manufacturer_id' => $manufacturer->id]);
+    $single = Product::create(['product_name' => 'Back-Up Magnet', 'manufacturer_id' => $manufacturer->id]);
+    $single->categories()->attach($general, ['assignment_type' => 'auto']);
+    ProductMeta::create(['product_id' => $grouped->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+    ProductMeta::create(['product_id' => $single->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '300']);
+
+    $this->mock(App\Services\Categories\ProductCategorySyncService::class, function ($mock) {
+        $mock->shouldReceive('sync', 'flushRules');
+    });
+
+    $rows = b2bRows();
+    $rows[4][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+    $handle = fopen($path, 'w');
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ';', '"', '');
+    }
+    fclose($handle);
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true])
+        ->expectsOutputToContain('1 × Aliens | Sicherungsgeräte → Abseilgeräte')
+        ->expectsOutputToContain('einzeln eingeordnet: 1 Produkte')
+        ->assertSuccessful();
+    unlink($path);
+
+    $rule = App\Models\CategoryAssignmentRule::query()->where('source_category', 'Sicherungsgeräte')->first();
+
+    expect($grouped->fresh()->source_category)->toBe('Sicherungsgeräte')
+        ->and($rule->categories->pluck('name')->all())->toBe(['Abseilgeräte'])
+        ->and($single->fresh()->source_category)->toBeNull()
+        ->and($single->categories()->pluck('name')->all())->toBe(['Zubehör'])
+        ->and($single->categories()->first()->pivot->assignment_type)->toBe('manual');
 });
