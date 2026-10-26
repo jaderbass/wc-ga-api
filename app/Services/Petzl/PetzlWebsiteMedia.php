@@ -51,13 +51,25 @@ class PetzlWebsiteMedia
         $skus = array_filter(array_map(fn ($sku) => strtoupper(str_replace(' ', '', (string) $sku)), $skus));
         $urls = [];
 
+        // Petzl benennt Bilder oft nur nach der ersten Größe (C073BA00) oder der
+        // Stammnummer (C072GA) – daher auch die ersten 6 Zeichen unserer Nummer zulassen.
+        $prefixes = [];
+
+        foreach ($skus as $sku) {
+            $prefixes[] = $sku;
+
+            if (strlen($sku) >= 8) {
+                $prefixes[] = substr($sku, 0, 6);
+            }
+        }
+
         preg_match_all(self::IMAGE, $html, $matches, PREG_SET_ORDER);
 
         foreach ($matches as [, $version, $file]) {
             $name = strtoupper($file);
 
-            foreach ($skus as $sku) {
-                if ($sku !== '' && (str_starts_with($name, $sku.'-') || str_starts_with($name, $sku.'_'))) {
+            foreach (array_unique($prefixes) as $prefix) {
+                if (preg_match('/^'.preg_quote($prefix, '/').'(?:\d{2})?[-_]/', $name)) {
                     $urls[$file] ??= self::BASE.'/on/demandware.static/-/Sites-petzl-master-catalog/default/'.$version.'/media/product/'.$file;
                     break;
                 }
