@@ -32,6 +32,7 @@ class ImportAliensB2bProductsCommand extends Command
                         {--limit= : Nur die ersten N fehlenden Produkte anlegen (zum Ausprobieren)}
                         {--only=* : Nur diese Aliens-Produkt-IDs anlegen}
                         {--source-categories : Statt anzulegen: leere Herstellerkategorie mit der Aliens-Kategorie füllen (für Produkte ohne Preislisten-Treffer)}
+                        {--mark-discontinued : Statt anzulegen: Aliens-Produkte, die nicht mehr in der Datei stehen, markieren und offline nehmen (und umgekehrt)}
                         {--fill-images : Statt anzulegen: fehlende Bild-Links bei vorhandenen Aliens-Produkten nachtragen}
                         {--author= : E-Mail des Benutzers, der als Autor eingetragen wird (Standard: erster Admin)}';
 
@@ -47,6 +48,10 @@ class ImportAliensB2bProductsCommand extends Command
 
         $sheets = SpreadsheetRowReader::readSheets($path);
         $groups = AliensB2bProductData::group($sheets[array_key_first($sheets)] ?? []);
+        if ($this->option('mark-discontinued')) {
+            return $this->markDiscontinued($groups, $dryRun);
+        }
+
         if ($this->option('fill-images')) {
             return $this->fillImages($groups, $dryRun);
         }
@@ -192,6 +197,82 @@ class ImportAliensB2bProductsCommand extends Command
         $this->line('Bild-Links schon vorhanden:   '.$alreadySet);
         $this->line(($dryRun ? 'würden nachgetragen:          ' : 'nachgetragen:                 ').$filled);
         $this->line('ohne Bild-Links in der Datei: '.$noUrls);
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Aliens-Produkte, die Aliens nicht mehr führt (nicht in der Datei oder "Aktiv = 0"):
+     * product_meta "aliens_discontinued" setzen (seit wann, bisheriger online_sellable-Wert)
+     * und online_sellable = false. Taucht ein Artikel wieder auf, wird der alte Wert
+     * wiederhergestellt und die Markierung entfernt. Gelöscht wird nichts.
+     *
+     * Bremse: Enthält die Datei weniger als die Hälfte der bei uns verknüpften Produkte,
+     * ist vermutlich der Download kaputt – dann wird nichts geändert.
+     *
+     * @param  array<string, list<array<string, string>>>  $groups
+     */
+    protected function markDiscontinued(array $groups, bool $dryRun): int
+    {
+        $linked = ProductMeta::query()
+            ->where('key', 'aliens_product_id')
+            ->whereNull('variation_id')
+            ->pluck('product_id', 'value');
+
+        if ($linked->isEmpty()) {
+            $this->line('Keine Aliens-Produkte verknüpft.');
+
+            return self::SUCCESS;
+        }
+
+        if (count($groups) < $linked->count() / 2) {
+            $this->error('Abbruch: Datei enthält nur '.count($groups).' aktive Produkte bei '.$linked->count().' verknüpften – Download prüfen.');
+
+            return self::FAILURE;
+        }
+
+        $marked = ProductMeta::query()
+            ->where('key', 'aliens_discontinued')
+            ->whereNull('variation_id')
+            ->get()
+            ->keyBy('product_id');
+
+        $newlyMarked = 0;
+        $back = 0;
+
+        foreach ($linked as $aliensId => $productId) {
+            $active = isset($groups[(string) $aliensId]);
+            $meta = $marked[$productId] ?? null;
+
+            if (! $active && $meta === null) {
+                $newlyMarked++;
+
+                if (! $dryRun && ($product = Product::query()->find($productId)) !== null) {
+                    ProductMeta::query()->create([
+                        'product_id' => $productId,
+                        'variation_id' => null,
+                        'scope' => 'product',
+                        'key' => 'aliens_discontinued',
+                        'value' => json_encode(['since' => now()->toDateString(), 'online_sellable' => $product->online_sellable]),
+                    ]);
+                    $product->forceFill(['online_sellable' => false])->save();
+                }
+            } elseif ($active && $meta !== null) {
+                $back++;
+
+                if (! $dryRun) {
+                    $previous = json_decode((string) $meta->value, true)['online_sellable'] ?? null;
+                    Product::query()->whereKey($productId)->update(['online_sellable' => $previous]);
+                    $meta->delete();
+                }
+            }
+        }
+
+        $this->newLine();
+        $this->line('verknüpfte Aliens-Produkte:     '.$linked->count());
+        $this->line('bei Aliens nicht mehr geführt:  '.($marked->count() + $newlyMarked - $back));
+        $this->line(($dryRun ? 'würden neu markiert:            ' : 'neu markiert (offline):         ').$newlyMarked);
+        $this->line(($dryRun ? 'würden wieder freigegeben:      ' : 'wieder geführt (Markierung weg): ').$back);
 
         return self::SUCCESS;
     }
