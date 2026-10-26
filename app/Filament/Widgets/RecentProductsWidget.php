@@ -2,13 +2,13 @@
 
 namespace App\Filament\Widgets;
 
-use Filament\Widgets\TableWidget as BaseWidget;
-use Filament\Tables;
 use App\Models\Product;
+use Filament\Tables;
+use Filament\Widgets\TableWidget as BaseWidget;
 
 class RecentProductsWidget extends BaseWidget
 {
-    protected int | string | array $columnSpan = 'full'; // über ganze Breite
+    protected int|string|array $columnSpan = 'full'; // über ganze Breite
 
     public function table(Tables\Table $table): Tables\Table
     {
@@ -36,7 +36,7 @@ class RecentProductsWidget extends BaseWidget
                 Tables\Actions\Action::make('view')
                     ->label('Details')
                     ->icon('heroicon-o-eye')
-                    ->url(fn($record) => route('filament.admin.resources.products.edit', $record))
+                    ->url(fn ($record) => route('filament.admin.resources.products.edit', $record)),
             ]);
     }
 }
