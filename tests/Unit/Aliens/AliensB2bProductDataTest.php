@@ -142,13 +142,20 @@ it('maps manufacturer names from the config', function () {
 });
 
 it('fills empty source categories from the aliens category and leaves others alone', function () {
-    Schema::dropIfExists('manufacturers');
-    Schema::create('manufacturers', function ($t) {
-        $t->id();
-        $t->string('manufacturer');
-        $t->timestamps();
-    });
-    Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+    // wie in den anderen Tests: Fremdschlüssel aus, sonst verweigert MariaDB (CI) das Löschen
+    Schema::disableForeignKeyConstraints();
+
+    try {
+        Schema::dropIfExists('manufacturers');
+        Schema::create('manufacturers', function ($t) {
+            $t->id();
+            $t->string('manufacturer');
+            $t->timestamps();
+        });
+        Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
 
     $manufacturer = App\Models\Manufacturer::query()->forceCreate(['manufacturer' => 'Aliens']);
     $empty = Product::create(['product_name' => 'Abseilachter', 'manufacturer_id' => $manufacturer->id]);
