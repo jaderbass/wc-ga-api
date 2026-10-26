@@ -60,15 +60,6 @@ class ProductVariantRelationManager extends RelationManager
 
                 ...$this->buildVariantAttributeColumns(),
 
-                Tables\Columns\TextColumn::make('manufacturer_price_cents')
-                    ->label('Herstellerpreis')
-                    ->state(fn ($record) => $record->manufacturer_price_cents ?? 'TEST-NULL')
-                    ->formatStateUsing(fn ($state) => filled($state) && (int) $state > 0
-                        ? number_format(((int) $state) / 100, 2, ',', '.').' €'
-                        : '—')
-                    ->alignEnd()
-                    ->sortable(),
-
                 Tables\Columns\TextColumn::make('list_price_cents')
                     ->label('Listenpreis')
                     ->formatStateUsing(fn ($state) => \App\Filament\Resources\ProductResource::formatCents($state !== null ? (int) $state : null))
@@ -95,20 +86,6 @@ class ProductVariantRelationManager extends RelationManager
                         Forms\Components\TextInput::make('sku')
                             ->label('Artikelnummer')
                             ->maxLength(255),
-
-                        Forms\Components\TextInput::make('manufacturer_price_cents')
-                            ->label('Herstellerpreis')
-                            ->suffix('€')
-                            ->formatStateUsing(
-                                fn ($state) => filled($state)
-                                    ? number_format(((int) $state) / 100, 2, ',', '')
-                                    : null
-                            )
-                            ->dehydrateStateUsing(
-                                fn ($state) => filled($state)
-                                    ? (int) round((float) str_replace(',', '.', $state) * 100)
-                                    : null
-                            ),
 
                         Forms\Components\Fieldset::make('Einkauf')
                             ->schema(\App\Filament\Resources\ProductResource::purchaseFields('variation'))

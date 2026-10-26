@@ -393,14 +393,6 @@ HTML;
                                 ->helperText('Beim Bearbeiten leer lassen, um die bestehende SKU zu behalten.')
                                 ->columnSpan(3),
 
-                            Placeholder::make('manufacturer_price_cents_display')
-                                ->label('Herstellerpreis')
-                                ->content(fn (?Product $record) => filled($record?->manufacturer_price_cents) && $record->manufacturer_price_cents > 0
-                                    ? number_format($record->manufacturer_price_cents / 100, 2, ',', '.').' €'
-                                    : '—')
-                                ->helperText('Importierter Hersteller-/Einkaufspreis')
-                                ->columnSpan(3),
-
                         ]), // Grid
                     ]) // schema
                     ->collapsible(),

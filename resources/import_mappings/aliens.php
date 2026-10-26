@@ -104,9 +104,6 @@ return [
         'length_mm' => ['Tiefe'],
         'weight_g' => ['Gewicht'],
 
-        // Lieferanten-VK-Preis (exkl. MwSt.) – wenn vorhanden, sonst über Aliens-Feature-Mapping und Transform
-        'manufacturer_price_cents' => ['Lieferanten-VK-Preis (exkl. MwSt.)'],
-
         // Slug (UNIQUE) – wenn leer, wird später aus Produktname gebaut
         'slug' => ['Suchmaschinenfreundliche URL'],
     ],
@@ -117,7 +114,6 @@ return [
     'variation_fields' => [
         'ean' => ['Kombination EAN13'],
         'stock_quantity' => ['Kombinationsmenge'],
-        'manufacturer_price_cents' => ['Kombination-Lieferant-VK-Preis (exkl. MwSt.)'],
 
         // Optional: wenn ihr Variation-Maße nutzen wollt (Aliens liefert oft nur Produktmaße)
         // 'weight_g'       => ['Gewicht'],
@@ -295,28 +291,6 @@ return [
             }
 
             return $meta;
-        },
-
-        'manufacturer_price_cents' => function ($v) {
-            if ($v === null) {
-                return null;
-            }
-
-            $s = is_string($v) ? trim($v) : (string) $v;
-            if ($s === '') {
-                return null;
-            }
-
-            $s = str_replace(["\u{00A0}", ' ', '€'], '', $s);
-            $s = str_replace(',', '.', $s);
-
-            if (! is_numeric($s)) {
-                return null;
-            }
-
-            $cents = (int) round(((float) $s) * 100);
-
-            return $cents >= 0 ? $cents : null;
         },
 
         // Punkte-Trenner in Kommas umwandeln

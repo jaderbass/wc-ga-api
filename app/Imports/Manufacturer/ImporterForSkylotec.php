@@ -201,7 +201,6 @@ class ImporterForSkylotec extends GenericCsvProductImporter implements CsvImport
         $productPayload['sku'] = $groupKey;
 
         $productPayload['ean'] = null;
-        $productPayload['manufacturer_price_cents'] = null;
         $productPayload['weight_g'] = 0;
 
         $onlineSellableValues = $rows
