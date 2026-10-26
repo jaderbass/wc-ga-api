@@ -43,6 +43,7 @@ beforeEach(function () {
             $t->string('sku')->nullable();
             $t->string('ean')->nullable();
             $t->text('description')->nullable();
+            $t->text('image_urls')->nullable();
             $t->integer('purchase_price_cents')->nullable();
             $t->boolean('online_sellable')->nullable();
             $t->timestamp('petzl_description_fetched_at')->nullable();
@@ -122,6 +123,7 @@ beforeEach(function () {
     ]);
     DB::table('product_meta')->insert([
         ['product_id' => 2, 'variation_id' => null, 'key' => 'petzl_discontinued', 'value' => '{}'],
+        ['product_id' => 3, 'variation_id' => null, 'key' => 'aliens_image_paths', 'value' => '["images/aliens/3/a.jpg","images/aliens/3/b.jpg"]'],
         ['product_id' => 1, 'variation_id' => 1, 'key' => 'petzldealer', 'value' => json_encode(['stock' => 12, 'read_at' => '2026-10-26'])],
     ]);
     $snapshot = DB::table('woo_snapshots')->insertGetId(['shop_id' => 2, 'status' => 'completed', 'created_at' => $now]);
@@ -136,8 +138,13 @@ it('computes the dashboard figures', function () {
         ->and($stats->totals()['manufacturers']['value'])->toBe(2)
         ->and(array_column($stats->manufacturers(), 'products', 'name'))->toBe(['Petzl' => 2, 'Aliens' => 1])
         ->and($stats->manufacturers()[0])->toMatchArray(['variations' => 2, 'with_image' => 2, 'image_share' => 100])
+        ->and($stats->manufacturers()[1])->toMatchArray(['name' => 'Aliens', 'with_image' => 1])
+        ->and($stats->totals()['images']['value'])->toBe(4)
+        ->and(array_column($stats->recentWithImages(), 'image', 'id'))->toBe([
+            3 => asset('images/aliens/3/a.jpg'), 2 => 'https://example.test/b.jpg', 1 => 'https://example.test/a.jpg',
+        ])
         ->and(array_column($stats->quality(), 'count', 'label'))->toBe([
-            'Titelbild' => 2, 'Beschreibung' => 1, 'Kategorie' => 1, 'Einkaufspreis' => 2, 'Einsatzgebiet' => 2,
+            'Titelbild' => 3, 'Beschreibung' => 1, 'Kategorie' => 1, 'Einkaufspreis' => 2, 'Einsatzgebiet' => 2,
         ])
         ->and($stats->applicationAreas())->toBe(['Rettung' => 2, 'PSAgA' => 1])
         ->and($stats->shopCoverage())->toMatchArray(['shop' => 1, 'discontinued' => 1, 'database' => 1])

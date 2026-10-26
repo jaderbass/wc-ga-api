@@ -4,13 +4,13 @@
     <x-filament::section heading="Zuletzt hinzugefügt" description="Die neuesten Produkte mit Bild">
         <div class="psa-gallery">
             @foreach ($products as $product)
-                <a class="psa-card" href="{{ $editUrl($product) }}">
+                <a class="psa-card" href="{{ $editUrl($product['id']) }}">
                     <div class="img">
-                        <img src="{{ $product->images->first()?->url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+                        <img src="{{ $product['image'] }}" alt="" loading="lazy" referrerpolicy="no-referrer">
                     </div>
                     <div class="txt">
-                        <b>{{ $product->manufacturer?->manufacturer }}</b>
-                        {{ \Illuminate\Support\Str::limit((string) $product->product_name, 60) }}
+                        <b>{{ $product['manufacturer'] }}</b>
+                        {{ \Illuminate\Support\Str::limit($product['name'], 60) }}
                     </div>
                 </a>
             @endforeach

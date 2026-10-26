@@ -1,6 +1,7 @@
 <x-filament::page>
     <style>
         .psa-dash { display: grid; gap: 1.5rem; }
+        .psa-dash .fi-wi-stats-overview-stats-ctn { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
         .psa-row-3 { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
     </style>
 
