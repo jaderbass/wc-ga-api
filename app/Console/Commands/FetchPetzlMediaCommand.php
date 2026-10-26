@@ -18,7 +18,8 @@ use Throwable;
  *
  * Bilder landen als Bild-Links in product_images (erstes = Titelbild, falls noch
  * keins da ist); vorhandene Bilder bleiben. Beschreibungen über den vorhandenen
- * Petzl-Beschreibungsabruf – manuell gepflegte oder schon geholte bleiben unverändert.
+ * Petzl-Beschreibungsabruf – manuell gepflegte oder schon geholte bleiben unverändert,
+ * und nur wenn die Seite auch Bilder zu unserer Artikelnummer hat.
  */
 class FetchPetzlMediaCommand extends Command
 {
@@ -76,6 +77,12 @@ class FetchPetzlMediaCommand extends Command
                     ['product_id' => $product->id, 'url' => $url],
                     ['is_main' => ! $hasMain && $index === 0],
                 );
+            }
+
+            // Ohne passendes Bild ist nicht sicher, dass es die richtige Seite ist
+            // (unsere Nummer kann auch nur als Zubehör-Empfehlung dort stehen).
+            if ($urls === []) {
+                continue;
             }
 
             if (! $this->option('skip-description') && $descriptions->shouldImport($product)) {
