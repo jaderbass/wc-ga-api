@@ -123,7 +123,7 @@ beforeEach(function () {
     ]);
     DB::table('product_meta')->insert([
         ['product_id' => 2, 'variation_id' => null, 'key' => 'petzl_discontinued', 'value' => '{}'],
-        ['product_id' => 3, 'variation_id' => null, 'key' => 'aliens_image_paths', 'value' => '["images/aliens/3/a.jpg","images/aliens/3/b.jpg"]'],
+        ['product_id' => 3, 'variation_id' => null, 'key' => 'aliens_image_paths', 'value' => '["products/aliens/m2/p3/a.jpg","products/aliens/m2/p3/b.jpg"]'],
         ['product_id' => 1, 'variation_id' => 1, 'key' => 'petzldealer', 'value' => json_encode(['stock' => 12, 'read_at' => '2026-10-26'])],
     ]);
     $snapshot = DB::table('woo_snapshots')->insertGetId(['shop_id' => 2, 'status' => 'completed', 'created_at' => $now]);
@@ -141,7 +141,7 @@ it('computes the dashboard figures', function () {
         ->and($stats->manufacturers()[1])->toMatchArray(['name' => 'Aliens', 'with_image' => 1])
         ->and($stats->totals()['images']['value'])->toBe(4)
         ->and(array_column($stats->recentWithImages(), 'image', 'id'))->toBe([
-            3 => asset('images/aliens/3/a.jpg'), 2 => 'https://example.test/b.jpg', 1 => 'https://example.test/a.jpg',
+            3 => url('/aliens-image/2/3/a.jpg'), 2 => 'https://example.test/b.jpg', 1 => 'https://example.test/a.jpg',
         ])
         ->and(array_column($stats->quality(), 'count', 'label'))->toBe([
             'Titelbild' => 3, 'Beschreibung' => 1, 'Kategorie' => 1, 'Einkaufspreis' => 2, 'Einsatzgebiet' => 2,
@@ -168,3 +168,14 @@ it('renders every dashboard widget', function (string $widget) {
     AvailabilityWidget::class,
     RecentProductsGalleryWidget::class,
 ]);
+
+it('serves manufacturer logos through the app route', function () {
+    Illuminate\Support\Facades\Storage::fake('public');
+    Illuminate\Support\Facades\Storage::disk('public')->put('manufacturer-logos/petzl.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    DB::table('manufacturers')->where('id', 1)->update(['logo_path' => 'manufacturer-logos/petzl.svg']);
+
+    expect(App\Models\Manufacturer::find(1)->logoUrl())->toEndWith('/manufacturer-logo/petzl.svg');
+
+    $this->get('/manufacturer-logo/petzl.svg')->assertOk();
+    $this->get('/manufacturer-logo/fehlt.svg')->assertNotFound();
+});

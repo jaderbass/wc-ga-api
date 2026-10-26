@@ -6,7 +6,6 @@ use App\Services\Pricing\PurchasePriceCalculator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Modell für Hersteller.
@@ -48,11 +47,12 @@ class Manufacturer extends Model
     }
 
     /**
-     * Öffentlicher Link zum Logo (Datei auf der "public"-Disk) oder null.
+     * Link zum Logo (Datei auf der "public"-Disk, ausgeliefert über die Route
+     * "manufacturer-logo", da /storage auf dem Server gesperrt ist) oder null.
      */
     public function logoUrl(): ?string
     {
-        return $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null;
+        return $this->logo_path ? route('manufacturer-logo', ['file' => basename($this->logo_path)]) : null;
     }
 
     /**
