@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Importers\AliensCsvStreamImporter;
+use App\Models\Category;
+use App\Models\CategoryAssignmentRule;
 use App\Models\Product;
 use App\Models\ProductMeta;
 use App\Models\User;
@@ -195,11 +197,16 @@ class ImportAliensB2bProductsCommand extends Command
     }
 
     /**
-     * Aliens-Produkte ohne Herstellerkategorie (products.source_category) bekommen die
-     * Standardkategorie aus den B2B-Daten, z. B. "Klettergriffe". Die Zuordnung zu unseren
-     * Kategorien läuft danach wie gewohnt über die Hersteller-Zuordnung; neue Einträge
-     * erscheinen dort als offen. Vorhandene Herstellerkategorien (z. B. aus Preislisten)
-     * bleiben unverändert.
+     * Aliens-Produkte ohne Herstellerkategorie (products.source_category) einordnen:
+     *
+     * - Produkte aus config aliens_b2b.products (Aliens-Produkt-ID => Kategorien) bekommen
+     *   diese Kategorien direkt als manuelle Zuordnung (für gemischte Aliens-Kategorien
+     *   wie "Karabiner" oder "Sonstiges")
+     * - alle anderen bekommen die Standardkategorie aus den B2B-Daten als
+     *   Herstellerkategorie; steht sie in config aliens_b2b.sources, wird die noch offene
+     *   Zuordnung damit gefüllt, sonst bleibt sie offen in der Hersteller-Zuordnung
+     *
+     * Vorhandene Herstellerkategorien (z. B. aus Preislisten) bleiben unverändert.
      *
      * @param  array<string, list<array<string, string>>>  $groups
      */
@@ -210,29 +217,62 @@ class ImportAliensB2bProductsCommand extends Command
             ->whereNull('variation_id')
             ->pluck('product_id', 'value');
 
+        $perProduct = config('aliens_b2b.products', []);
+        $sources = config('aliens_b2b.sources', []);
         $sync = app(ProductCategorySyncService::class);
         $pairs = [];
         $filled = 0;
+        $manual = 0;
+        $missingCategories = [];
 
         foreach ($groups as $aliensId => $rows) {
             $product = isset($productIds[(string) $aliensId]) ? Product::query()->find($productIds[(string) $aliensId]) : null;
             $source = trim($rows[0]['Name der Standardkategorie'] ?? '');
 
-            if ($product === null || $source === '' || filled($product->source_category)) {
+            if ($product === null || filled($product->source_category)) {
                 continue;
             }
 
-            $pair = ($product->manufacturer?->manufacturer ?? '?').' | '.$source;
+            if (isset($perProduct[$aliensId])) {
+                $manual++;
+                $this->line('  einzeln: '.$product->product_name.' → '.implode(', ', (array) $perProduct[$aliensId]));
+
+                if (! $dryRun) {
+                    $this->assignManually($product, (array) $perProduct[$aliensId], $missingCategories);
+                }
+
+                continue;
+            }
+
+            if ($source === '') {
+                continue;
+            }
+
+            $target = $sources[$source] ?? null;
+            $pair = ($product->manufacturer?->manufacturer ?? '?').' | '.$source.' → '.match (true) {
+                $target === 'exclude' => 'ausschließen',
+                $target !== null => implode(', ', (array) $target),
+                default => 'offen',
+            };
             $pairs[$pair] = ($pairs[$pair] ?? 0) + 1;
             $filled++;
 
-            if (! $dryRun) {
-                $product->forceFill(['source_category' => $source])->save();
-                $sync->sync($product->fresh());
+            if ($dryRun) {
+                continue;
             }
+
+            $product->forceFill(['source_category' => $source])->save();
+
+            if ($target !== null) {
+                $this->fillOpenRule($product, $source, $target, $missingCategories);
+                $sync->flushRules();
+            }
+
+            $sync->sync($product->fresh());
         }
 
         $this->newLine();
+        $this->line(($dryRun ? 'würden einzeln eingeordnet: ' : 'einzeln eingeordnet: ').$manual.' Produkte');
         $this->line(($dryRun ? 'würden gefüllt: ' : 'gefüllt: ').$filled.' Produkte');
         arsort($pairs);
 
@@ -240,11 +280,83 @@ class ImportAliensB2bProductsCommand extends Command
             $this->line("  {$count} × {$pair}");
         }
 
-        if (! $dryRun && $filled > 0) {
-            $this->line('Offene Einträge jetzt unter Hersteller-Zuordnung entscheiden.');
+        if ($missingCategories !== []) {
+            $this->warn('Kategorien nicht gefunden: '.implode(', ', array_keys($missingCategories)));
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Noch offene Zuordnung (Hersteller + Herstellerkategorie) mit der Entscheidung aus der
+     * Config füllen. Bereits entschiedene Zuordnungen bleiben unverändert.
+     *
+     * @param  string|list<string>  $target  'exclude' oder Kategorienamen
+     * @param  array<string, true>  $missingCategories
+     */
+    protected function fillOpenRule(Product $product, string $source, string|array $target, array &$missingCategories): void
+    {
+        $rule = CategoryAssignmentRule::ensureForSource($product->manufacturer_id !== null ? (int) $product->manufacturer_id : null, $source);
+
+        if ($rule === null || $rule->exclude || $rule->is_reviewed || $rule->categories()->exists()) {
+            return;
+        }
+
+        $rule->forceFill([
+            'exclude' => $target === 'exclude',
+            'notes' => trim(($rule->notes ? $rule->notes.PHP_EOL : '').'Entscheidung aus Aliens-B2B-Kategorie (config aliens_b2b.sources)'),
+        ])->save();
+
+        if ($target !== 'exclude') {
+            $rule->categories()->sync($this->categoryIds((array) $target, $missingCategories));
+        }
+    }
+
+    /**
+     * Kategorien direkt (manuell) zuordnen; eine automatische "Allgemein"-Zuordnung entfällt dann.
+     *
+     * @param  list<string>  $names
+     * @param  array<string, true>  $missingCategories
+     */
+    protected function assignManually(Product $product, array $names, array &$missingCategories): void
+    {
+        $ids = $this->categoryIds($names, $missingCategories);
+
+        if ($ids === []) {
+            return;
+        }
+
+        $product->categories()->syncWithoutDetaching(array_fill_keys($ids, ['assignment_type' => 'manual']));
+
+        $general = Category::query()->where('name', 'Allgemein')->value('id');
+
+        if ($general !== null && ! in_array((int) $general, $ids, true)) {
+            $product->categories()->wherePivot('assignment_type', 'auto')->detach($general);
+        }
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @param  array<string, true>  $missingCategories
+     * @return list<int>
+     */
+    protected function categoryIds(array $names, array &$missingCategories): array
+    {
+        $ids = [];
+
+        foreach ($names as $name) {
+            $id = Category::query()->where('name', $name)->orderBy('id')->value('id');
+
+            if ($id === null) {
+                $missingCategories[$name] = true;
+
+                continue;
+            }
+
+            $ids[] = (int) $id;
+        }
+
+        return $ids;
     }
 
     /**
