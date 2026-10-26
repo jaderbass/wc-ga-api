@@ -2,13 +2,16 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
 use App\Models\Shop;
-use App\Services\Woo\WooClient;
-use Illuminate\Support\Facades\Gate;
+use App\Models\User;
 use App\Services\ProductNaming\DefaultProductNameBuilder;
 use App\Services\ProductNaming\NameTemplateRegistry;
 use App\Services\ProductNaming\ProductPropertyExtractor;
+use App\Services\Woo\WooClient;
+use App\Support\SystemLock;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -26,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
                 }
                 // Sonst Default-Shop laden:
                 $shop = Shop::query()->where('is_default', true)->firstOrFail();
+
                 return new WooClient($shop);
             }
         );
@@ -39,13 +43,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ProductPropertyExtractor::class);
     }
 
-
     /**
      * Bootstrap any application services.
      * This method is called after all other service providers have been registered.
      * It is a good place to register Filament navigation items and set the default dashboard.
      */
-
     public function boot(): void
     {
         /**
@@ -69,20 +71,39 @@ class AppServiceProvider extends ServiceProvider
 
             $allow = filter_var(env('ALLOW_DESTRUCTIVE_COMMANDS', false), FILTER_VALIDATE_BOOL);
 
-            if (!$allow && is_string($command) && in_array($command, $forbidden, true)) {
+            if (! $allow && is_string($command) && in_array($command, $forbidden, true)) {
                 fwrite(STDERR, PHP_EOL);
-                fwrite(STDERR, "ABORTED: '{$command}' is blocked in production for safety." . PHP_EOL);
-                fwrite(STDERR, "If you really intend to run it, set ALLOW_DESTRUCTIVE_COMMANDS=true temporarily." . PHP_EOL);
+                fwrite(STDERR, "ABORTED: '{$command}' is blocked in production for safety.".PHP_EOL);
+                fwrite(STDERR, 'If you really intend to run it, set ALLOW_DESTRUCTIVE_COMMANDS=true temporarily.'.PHP_EOL);
                 fwrite(STDERR, PHP_EOL);
                 exit(1);
             }
         }
 
+        /**
+         * Betriebsschalter (siehe App\Support\SystemLock): abgeschaltet laufen
+         * nur Wartungsbefehle, Queue-Worker pausieren.
+         */
+        if (app()->runningInConsole() && basename((string) ($_SERVER['argv'][0] ?? '')) === 'artisan') {
+            $command = $_SERVER['argv'][1] ?? null;
 
-        Gate::before(function ($user, $ability = null) {
+            if (SystemLock::isLocked() && ! SystemLock::allowsCommand($command)) {
+                fwrite(STDERR, PHP_EOL."Datenbank ist abgeschaltet – '{$command}' wird nicht ausgeführt.".PHP_EOL.PHP_EOL);
+                exit(1);
+            }
+        }
+
+        Queue::looping(fn () => ! SystemLock::isLocked());
+
+        Gate::before(function ($user, $ability = null, $arguments = []) {
+            // Geschützte Konten: hier entscheidet immer die UserPolicy
+            $target = $arguments[0] ?? null;
+            if ($target instanceof User && $target->isProtectedAccount()) {
+                return null;
+            }
+
             // <<< DEINE Mailadresse hier eintragen >>>
             return $user && $user->email === 'joerg@jaderbass.de' ? true : null;
         });
     }
-
 }
