@@ -1,0 +1,321 @@
+<?php
+
+use App\Models\Product;
+use App\Models\ProductMeta;
+use App\Models\ProductVariation;
+use App\Services\Aliens\AliensB2bProductData;
+use Illuminate\Support\Facades\Schema;
+use League\Csv\Reader;
+use Tests\TestCase;
+
+uses(TestCase::class);
+
+beforeEach(function () {
+    Schema::disableForeignKeyConstraints();
+
+    try {
+        foreach (['product_meta', 'product_variations', 'products'] as $table) {
+            Schema::dropIfExists($table);
+        }
+
+        Schema::create('products', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('manufacturer_id')->nullable();
+            $t->string('sku')->nullable();
+            $t->string('product_number')->nullable();
+            $t->string('ean')->nullable();
+            $t->string('product_name')->nullable();
+            $t->string('slug')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('product_variations', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('product_id');
+            $t->string('sku')->nullable();
+            $t->string('ean')->nullable();
+            $t->timestamps();
+        });
+
+        Schema::create('product_meta', function ($t) {
+            $t->id();
+            $t->unsignedBigInteger('product_id');
+            $t->unsignedBigInteger('variation_id')->nullable();
+            $t->string('scope')->default('product');
+            $t->string('key');
+            $t->longText('value')->nullable();
+            $t->timestamps();
+        });
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
+});
+
+function b2bRows(): array
+{
+    $header = ['Produkt ID', 'Produktname', 'Produktreferenz', 'Kombinationsreferenz', 'Produkt-Link', 'Produkt Titelbild', 'Produkt Alle Bild-Links', 'Produktpreis (ohne MwSt.)', 'Kombinationspreis', 'Lange Beschreibung', 'Aktiv', 'EAN-13', 'Name der Standardkategorie', 'Kategorienamen', 'Kombinations-ID', 'Kombination (Attribute)', 'Attributnamen', 'Attributwerte', 'Kombinations-Bild-Links', 'Kombination EAN-13', 'Merkmale', 'Herstellername'];
+    $row = fn (array $values) => array_map(fn ($column) => $values[$column] ?? '', $header);
+
+    return [
+        $header,
+        // vorhanden über Aliens-ID
+        $row(['Produkt ID' => '100', 'Produktname' => 'Alt', 'Kombinationsreferenz' => 'A1', 'Kombinations-ID' => '1', 'Aktiv' => '1']),
+        // vorhanden über Artikelnummer
+        $row(['Produkt ID' => '200', 'Produktname' => 'Bekannt', 'Kombinationsreferenz' => 'K605S', 'Kombinations-ID' => '2', 'Aktiv' => '1']),
+        // vorhanden über EAN
+        $row(['Produkt ID' => '300', 'Produktname' => 'Per EAN', 'Kombinationsreferenz' => 'X9', 'Kombinations-ID' => '3', 'Kombination EAN-13' => '8023577013565', 'Aktiv' => '1']),
+        // neu mit zwei Varianten
+        $row(['Produkt ID' => '326', 'Produktname' => 'Abseilachter SMALL', 'Kombinationsreferenz' => 'K605HB', 'Kombinations-ID' => '8073', 'Kombination (Attribute)' => 'Farbe: Hellblau', 'Merkmale' => 'Durchmesser [mm]: Für Ø 8,1 mm bis Ø 11 mm,Mindestbruchlast [kN]: 25', 'Produkt Alle Bild-Links' => 'https://www.aliens-outdoor.com/1/a.jpg, https://www.aliens-outdoor.com/2/b.jpg', 'Lange Beschreibung' => 'Text', 'Herstellername' => 'Aliens', 'Name der Standardkategorie' => 'Sicherungsgeräte', 'Aktiv' => '1']),
+        $row(['Produkt ID' => '326', 'Produktname' => 'Abseilachter SMALL', 'Kombinationsreferenz' => 'K605R', 'Kombinations-ID' => '8074', 'Kombination (Attribute)' => 'Farbe: Rot', 'Aktiv' => '1']),
+        // neu ohne Kombination
+        $row(['Produkt ID' => '917', 'Produktname' => 'Big 8 Edelstahl', 'Produktreferenz' => '805050000KK', 'EAN-13' => '8023577008936', 'Herstellername' => 'Kong Italy', 'Aktiv' => '1']),
+        // inaktiv
+        $row(['Produkt ID' => '999', 'Produktname' => 'Aus', 'Kombinationsreferenz' => 'Z1', 'Kombinations-ID' => '9', 'Aktiv' => '0']),
+        // Stellenanzeige
+        $row(['Produkt ID' => '1103', 'Produktname' => 'Initiativbewerbung', 'Name der Standardkategorie' => 'Jobs | Stellenangebote', 'Aktiv' => '1']),
+    ];
+}
+
+it('splits attribute and feature lists only before "Name: "', function () {
+    expect(AliensB2bProductData::pairs('Größe: 18/48,Version allgemein: Rotmessing'))->toBe(['Größe' => '18/48', 'Version allgemein' => 'Rotmessing'])
+        ->and(AliensB2bProductData::pairs('Durchmesser [mm]: Für Ø 8,1 mm bis Ø 11 mm,Gewicht: ca. 89 g'))->toBe(['Durchmesser [mm]' => 'Für Ø 8,1 mm bis Ø 11 mm', 'Gewicht' => 'ca. 89 g'])
+        ->and(AliensB2bProductData::pairs(''))->toBe([]);
+});
+
+it('finds existing products by aliens id, article number and ean', function () {
+    $old = Product::create(['product_name' => 'Alt']);
+    ProductMeta::create(['product_id' => $old->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '100']);
+    $known = Product::create(['product_name' => 'Bekannt']);
+    ProductVariation::create(['product_id' => $known->id, 'sku' => 'K605S']);
+    ProductVariation::create(['product_id' => $known->id, 'sku' => 'other', 'ean' => '8023577013565']);
+
+    $groups = AliensB2bProductData::group(b2bRows());
+
+    expect(array_map('strval', array_keys($groups)))->toBe(['100', '200', '300', '326', '917'])
+        ->and(AliensB2bProductData::existing($groups))->toBe(['100' => 'Aliens-ID', '200' => 'Artikelnummer', '300' => 'EAN']);
+});
+
+it('writes missing products in the legacy aliens export format', function () {
+    $groups = AliensB2bProductData::group(b2bRows());
+    $path = tempnam(sys_get_temp_dir(), 'b2b');
+
+    $count = AliensB2bProductData::writeLegacyCsv(array_intersect_key($groups, ['326' => 1, '917' => 1]), $path);
+
+    $csv = Reader::createFromPath($path);
+    $csv->setDelimiter(';');
+    $csv->setHeaderOffset(0);
+    $records = iterator_to_array($csv->getRecords(), false);
+    unlink($path);
+
+    expect($count)->toBe(3)
+        ->and($records[0]['Produkt-ID'])->toBe('326')
+        ->and($records[0]['Kombination-ID'])->toBe('8073')
+        ->and($records[0]['Kombinations-Referenz'])->toBe('K605HB')
+        ->and($records[0]['Attribute Group: Farbe'])->toBe('Hellblau')
+        ->and($records[0]['Feature: Durchmesser [mm]'])->toBe('Für Ø 8,1 mm bis Ø 11 mm')
+        ->and($records[0]['Feature: Mindestbruchlast [kN]'])->toBe('25')
+        ->and($records[0]['Produkt Bilder'])->toContain('/1/a.jpg')
+        ->and($records[0]['Hersteller'])->toBe('Aliens')
+        ->and($records[1]['Attribute Group: Farbe'])->toBe('Rot')
+        ->and($records[1]['Feature: Mindestbruchlast [kN]'])->toBe('')
+        // ohne Kombination: eine Variante mit der Produktreferenz
+        ->and($records[2]['Kombination-ID'])->toBe('P917')
+        ->and($records[2]['Kombinations-Referenz'])->toBe('805050000KK')
+        ->and($records[2]['Kombination EAN13'])->toBe('8023577008936');
+});
+
+it('collects product and variation image urls once', function () {
+    $urls = AliensB2bProductData::imageUrls([
+        ['Produkt Alle Bild-Links' => 'https://x.de/1/a.jpg, https://x.de/2/b.jpg', 'Kombinations-Bild-Links' => 'https://x.de/2/b.jpg'],
+        ['Produkt Alle Bild-Links' => 'https://x.de/1/a.jpg', 'Kombinations-Bild-Links' => 'https://x.de/3/c.png, https://x.de/seite.html'],
+    ]);
+
+    expect($urls)->toBe(['https://x.de/1/a.jpg', 'https://x.de/2/b.jpg', 'https://x.de/3/c.png']);
+});
+
+it('maps manufacturer names from the config', function () {
+    config()->set('aliens_b2b.manufacturers', ['fujfuj' => 'FUJFUJ', 'chalk' => 'Aliens']);
+
+    expect(AliensB2bProductData::manufacturer(['Herstellername' => 'fujfuj']))->toBe('FUJFUJ')
+        ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Chalk']))->toBe('Aliens')
+        ->and(AliensB2bProductData::manufacturer(['Herstellername' => 'Kong Italy']))->toBe('Kong Italy');
+});
+
+it('fills empty source categories from the aliens category and leaves others alone', function () {
+    config()->set('aliens_b2b.sources', []);
+    config()->set('aliens_b2b.products', []);
+    // wie in den anderen Tests: Fremdschlüssel aus, sonst verweigert MariaDB (CI) das Löschen
+    Schema::disableForeignKeyConstraints();
+
+    try {
+        Schema::dropIfExists('manufacturers');
+        Schema::create('manufacturers', function ($t) {
+            $t->id();
+            $t->string('manufacturer');
+            $t->timestamps();
+        });
+        Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
+
+    $manufacturer = App\Models\Manufacturer::query()->forceCreate(['manufacturer' => 'Aliens']);
+    $empty = Product::create(['product_name' => 'Abseilachter', 'manufacturer_id' => $manufacturer->id]);
+    $priced = Product::create(['product_name' => 'Big 8', 'manufacturer_id' => $manufacturer->id]);
+    $priced->forceFill(['source_category' => 'Abseilachter'])->save();
+    ProductMeta::create(['product_id' => $empty->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+    ProductMeta::create(['product_id' => $priced->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '917']);
+
+    $synced = [];
+    $this->mock(App\Services\Categories\ProductCategorySyncService::class, function ($mock) use (&$synced) {
+        $mock->shouldReceive('sync')->andReturnUsing(function (Product $product) use (&$synced) {
+            $synced[] = $product->id;
+        });
+    });
+
+    $rows = b2bRows();
+    $rows[4][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $rows[6][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+    $handle = fopen($path, 'w');
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ';', '"', '');
+    }
+    fclose($handle);
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true, '--dry-run' => true])
+        ->expectsOutputToContain('würden gefüllt: 1 Produkte')
+        ->assertSuccessful();
+    expect($empty->fresh()->source_category)->toBeNull();
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true])
+        ->expectsOutputToContain('1 × Aliens | Sicherungsgeräte')
+        ->assertSuccessful();
+    unlink($path);
+
+    expect($empty->fresh()->source_category)->toBe('Sicherungsgeräte')
+        ->and($priced->fresh()->source_category)->toBe('Abseilachter')
+        ->and($synced)->toBe([$empty->id]);
+});
+
+it('applies configured decisions: open rule for the aliens category, manual categories per product', function () {
+    Schema::disableForeignKeyConstraints();
+
+    try {
+        foreach (['ccar', 'category_category_assignment_rule', 'category_assignment_rules', 'category_product', 'categories', 'manufacturers'] as $table) {
+            Schema::dropIfExists($table);
+        }
+
+        Schema::create('manufacturers', function ($t) {
+            $t->id();
+            $t->string('manufacturer');
+            $t->timestamps();
+        });
+        Schema::create('categories', function ($t) {
+            $t->id();
+            $t->string('name');
+            $t->string('slug')->nullable();
+            $t->unsignedBigInteger('parent_id')->nullable();
+            $t->timestamps();
+        });
+        Schema::create('category_product', function ($t) {
+            $t->unsignedBigInteger('category_id');
+            $t->unsignedBigInteger('product_id');
+            $t->string('assignment_type')->default('auto');
+            $t->timestamps();
+        });
+        (include base_path('database/migrations/2026_10_08_100001_create_category_assignment_rules_table.php'))->up();
+        Schema::table('products', fn ($t) => $t->string('source_category')->nullable());
+    } finally {
+        Schema::enableForeignKeyConstraints();
+    }
+
+    config()->set('aliens_b2b.sources', ['Sicherungsgeräte' => ['Abseilgeräte']]);
+    config()->set('aliens_b2b.products', [300 => ['Zubehör']]);
+
+    $manufacturer = App\Models\Manufacturer::query()->forceCreate(['manufacturer' => 'Aliens']);
+    foreach (['Abseilgeräte', 'Zubehör', 'Allgemein'] as $name) {
+        App\Models\Category::query()->forceCreate(['name' => $name, 'slug' => Illuminate\Support\Str::slug($name)]);
+    }
+    $general = App\Models\Category::query()->where('name', 'Allgemein')->value('id');
+
+    $grouped = Product::create(['product_name' => 'Abseilachter', 'manufacturer_id' => $manufacturer->id]);
+    $single = Product::create(['product_name' => 'Back-Up Magnet', 'manufacturer_id' => $manufacturer->id]);
+    $single->categories()->attach($general, ['assignment_type' => 'auto']);
+    ProductMeta::create(['product_id' => $grouped->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+    ProductMeta::create(['product_id' => $single->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '300']);
+
+    $this->mock(App\Services\Categories\ProductCategorySyncService::class, function ($mock) {
+        $mock->shouldReceive('sync', 'flushRules');
+    });
+
+    $rows = b2bRows();
+    $rows[4][array_search('Name der Standardkategorie', $rows[0], true)] = 'Sicherungsgeräte';
+    $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+    $handle = fopen($path, 'w');
+    foreach ($rows as $row) {
+        fputcsv($handle, $row, ';', '"', '');
+    }
+    fclose($handle);
+
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--source-categories' => true])
+        ->expectsOutputToContain('1 × Aliens | Sicherungsgeräte → Abseilgeräte')
+        ->expectsOutputToContain('einzeln eingeordnet: 1 Produkte')
+        ->assertSuccessful();
+    unlink($path);
+
+    $rule = App\Models\CategoryAssignmentRule::query()->where('source_category', 'Sicherungsgeräte')->first();
+
+    expect($grouped->fresh()->source_category)->toBe('Sicherungsgeräte')
+        ->and($rule->categories->pluck('name')->all())->toBe(['Abseilgeräte'])
+        ->and($single->fresh()->source_category)->toBeNull()
+        ->and($single->categories()->pluck('name')->all())->toBe(['Zubehör'])
+        ->and($single->categories()->first()->pivot->assignment_type)->toBe('manual');
+});
+
+it('marks products aliens no longer lists and restores them when they come back', function () {
+    Schema::table('products', fn ($t) => $t->boolean('online_sellable')->nullable());
+
+    $gone = Product::create(['product_name' => 'Ausgelaufen']);
+    $gone->forceFill(['online_sellable' => true])->save();
+    $active = Product::create(['product_name' => 'Aktiv']);
+    $active->forceFill(['online_sellable' => true])->save();
+    ProductMeta::create(['product_id' => $gone->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '555']);
+    ProductMeta::create(['product_id' => $active->id, 'scope' => 'product', 'key' => 'aliens_product_id', 'value' => '326']);
+
+    $write = function (array $rows): string {
+        $path = tempnam(sys_get_temp_dir(), 'b2b').'.csv';
+        $handle = fopen($path, 'w');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row, ';', '"', '');
+        }
+        fclose($handle);
+
+        return $path;
+    };
+
+    $path = $write(b2bRows());
+    $this->artisan('aliens:b2b-import', ['file' => $path, '--mark-discontinued' => true])
+        ->expectsOutputToContain('neu markiert (offline):         1')
+        ->assertSuccessful();
+
+    expect($gone->fresh()->online_sellable)->toBeFalse()
+        ->and($active->fresh()->online_sellable)->toBeTrue()
+        ->and(ProductMeta::where('key', 'aliens_discontinued')->count())->toBe(1);
+
+    // wieder in der Datei → alter Wert zurück
+    $rows = b2bRows();
+    $rows[] = array_map(fn ($column) => ['Produkt ID' => '555', 'Produktname' => 'Zurück', 'Kombinationsreferenz' => 'R1', 'Kombinations-ID' => '77', 'Aktiv' => '1'][$column] ?? '', $rows[0]);
+    $path2 = $write($rows);
+    $this->artisan('aliens:b2b-import', ['file' => $path2, '--mark-discontinued' => true])->assertSuccessful();
+
+    expect($gone->fresh()->online_sellable)->toBeTrue()
+        ->and(ProductMeta::where('key', 'aliens_discontinued')->count())->toBe(0);
+
+    // kaputter Download (fast leer) → nichts ändern
+    $path3 = $write([b2bRows()[0]]);
+    $this->artisan('aliens:b2b-import', ['file' => $path3, '--mark-discontinued' => true])->assertFailed();
+    expect($gone->fresh()->online_sellable)->toBeTrue();
+
+    array_map('unlink', [$path, $path2, $path3]);
+});
