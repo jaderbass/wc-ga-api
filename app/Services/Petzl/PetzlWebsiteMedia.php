@@ -29,7 +29,17 @@ class PetzlWebsiteMedia
     {
         $skus = array_values(array_filter(array_map(fn ($sku) => strtoupper(trim((string) $sku)), $skus)));
 
-        foreach (array_slice($skus, 0, 2) as $sku) {
+        // Eine Suche je Stammnummer, neuere zuerst: Bei Produkten mit alter und neuer
+        // Version (C069AA… / C069AB…) findet petzl.com nur die aktuelle Nummer.
+        $search = [];
+
+        foreach ($skus as $sku) {
+            $search[substr(str_replace(' ', '', $sku), 0, 6)] ??= $sku;
+        }
+
+        krsort($search);
+
+        foreach (array_slice(array_values($search), 0, 4) as $sku) {
             foreach ($this->candidates($sku) as $url) {
                 $html = $this->get($url);
 
