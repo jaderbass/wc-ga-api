@@ -48,18 +48,33 @@ class PetzlWebsiteMedia
      */
     public function imageUrls(string $html, array $skus): array
     {
-        $skus = array_filter(array_map(fn ($sku) => strtoupper(str_replace(' ', '', (string) $sku)), $skus));
         $urls = [];
 
         // Petzl benennt Bilder oft nur nach der ersten Größe (C073BA00) oder der
         // Stammnummer (C072GA) – daher auch die ersten 6 Zeichen unserer Nummer zulassen.
+        // Ältere Nummern mit Leerzeichen ("M33A SL") stehen im Dateinamen mit
+        // Bindestrich ("M33A-SL-OK-SL"), oft auch nur der erste Teil ("L22A-ZILLON").
         $prefixes = [];
 
         foreach ($skus as $sku) {
-            $prefixes[] = $sku;
+            $sku = strtoupper(trim((string) preg_replace('/\s+/', ' ', (string) $sku)));
+            $compact = str_replace(' ', '', $sku);
 
-            if (strlen($sku) >= 8) {
-                $prefixes[] = substr($sku, 0, 6);
+            if ($compact === '') {
+                continue;
+            }
+
+            $prefixes[] = $compact;
+
+            if (str_contains($sku, ' ')) {
+                $prefixes[] = str_replace(' ', '-', $sku);
+                $first = strstr($sku, ' ', true);
+
+                if (strlen($first) >= 3) {
+                    $prefixes[] = $first;
+                }
+            } elseif (preg_match('/^[A-Z]\d{3}[A-Z]{2}\d{2}/', $compact)) {
+                $prefixes[] = substr($compact, 0, 6);
             }
         }
 

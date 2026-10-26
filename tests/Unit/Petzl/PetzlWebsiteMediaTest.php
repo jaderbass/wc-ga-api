@@ -51,6 +51,19 @@ it('accepts images named after another size or the base number', function () {
         ->toBe(['C072GA-VOLT-LIGHT-EUR_LowRes_2.jpeg']);
 });
 
+it('accepts images of older article numbers with spaces', function () {
+    $html = petzlPage('M33A SL', [
+        'M33A-SL-OK-SL_LowRes_1.jpeg',
+        'L22A-ZILLON-focus-1_LowRes_2.jpeg',
+        'D020AA00-ID-S_LowRes_3.jpeg',              // Empfehlung, gehört nicht dazu
+    ]);
+
+    expect(array_map('basename', (new PetzlWebsiteMedia)->imageUrls($html, ['M33A SL'])))
+        ->toBe(['M33A-SL-OK-SL_LowRes_1.jpeg'])
+        ->and(array_map('basename', (new PetzlWebsiteMedia)->imageUrls($html, ['L22A 2.5', 'L22A 3'])))
+        ->toBe(['L22A-ZILLON-focus-1_LowRes_2.jpeg']);
+});
+
 it('returns nothing when no candidate page contains the article number', function () {
     Http::fake([
         'www.petzl.com/de/de/search*' => Http::response('<a href="/de/de/professional/produkte/x/VERTEX_PRO_a1.html"></a>'),
