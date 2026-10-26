@@ -19,7 +19,7 @@ class RecentProductsGalleryWidget extends Widget
     {
         return [
             'products' => app(DashboardStats::class)->recentWithImages(12),
-            'editUrl' => fn ($product) => ProductResource::getUrl('edit', ['record' => $product]),
+            'editUrl' => fn (int $id) => ProductResource::getUrl('edit', ['record' => $id]),
         ];
     }
 }
