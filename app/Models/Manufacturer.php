@@ -6,6 +6,7 @@ use App\Services\Pricing\PurchasePriceCalculator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Modell für Hersteller.
@@ -25,6 +26,7 @@ class Manufacturer extends Model
         'manufacturer',
         'manufacturercountry',
         'website',
+        'logo_path',
         'api_url',
         'api_user',
         'api_password',
@@ -43,6 +45,14 @@ class Manufacturer extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    /**
+     * Öffentlicher Link zum Logo (Datei auf der "public"-Disk) oder null.
+     */
+    public function logoUrl(): ?string
+    {
+        return $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null;
     }
 
     /**
