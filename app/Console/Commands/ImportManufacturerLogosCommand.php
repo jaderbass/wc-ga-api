@@ -22,7 +22,7 @@ class ImportManufacturerLogosCommand extends Command
 
     protected $description = 'Hersteller-Logos (Dateiname = Herstellername) in die Datenbank übernehmen';
 
-    public const EXTENSIONS = ['svg', 'png', 'webp', 'jpg', 'jpeg'];
+    public const EXTENSIONS = ['svg', 'png', 'webp', 'jpg', 'jpeg', 'gif'];
 
     public function handle(): int
     {
