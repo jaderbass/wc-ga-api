@@ -15,6 +15,8 @@ use Throwable;
  *
  * php artisan petzl:fetch-media --dry-run            Petzl-Produkte ohne Bilder
  * php artisan petzl:fetch-media --product-id=9100    einzelne Produkte
+ * php artisan petzl:fetch-media --page="4001=https://www.petzl.com/de/de/…/HUIT_SPO_….html"
+ *                                                    Seite fest vorgeben (geprüft), Galerie-Bilder übernehmen
  *
  * Bilder landen als Bild-Links in product_images (erstes = Titelbild, falls noch
  * keins da ist); vorhandene Bilder bleiben. Beschreibungen über den vorhandenen
@@ -25,6 +27,7 @@ class FetchPetzlMediaCommand extends Command
 {
     protected $signature = 'petzl:fetch-media
                         {--product-id=* : Nur diese Produkte}
+                        {--page=* : Produkt-ID=Seiten-URL auf petzl.com (fest vorgegeben)}
                         {--limit= : Höchstens so viele Produkte}
                         {--skip-description : Nur Bilder, keine Beschreibung}
                         {--dry-run : Nur anzeigen, nichts speichern}';
@@ -36,9 +39,18 @@ class FetchPetzlMediaCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $petzl = Manufacturer::query()->whereRaw('LOWER(manufacturer) = ?', ['petzl'])->value('id');
 
+        $pages = [];
+
+        foreach ((array) $this->option('page') as $pair) {
+            [$id, $url] = array_pad(explode('=', (string) $pair, 2), 2, '');
+            $pages[(int) $id] = trim($url);
+        }
+
         $query = Product::query()->where('manufacturer_id', $petzl)->with('variations:id,product_id,sku');
 
-        if ($this->option('product-id') !== []) {
+        if ($pages !== []) {
+            $query->whereIn('id', array_keys($pages));
+        } elseif ($this->option('product-id') !== []) {
             $query->whereIn('id', (array) $this->option('product-id'));
         } else {
             $query->doesntHave('images');
@@ -52,7 +64,12 @@ class FetchPetzlMediaCommand extends Command
 
         foreach ($query->get() as $product) {
             $skus = $product->variations->pluck('sku')->prepend($product->sku)->filter()->values()->all();
-            $page = $skus === [] ? null : $media->findProductPage($skus);
+
+            if (isset($pages[$product->id])) {
+                $page = $media->page($pages[$product->id]);
+            } else {
+                $page = $skus === [] ? null : $media->findProductPage($skus);
+            }
 
             if ($page === null) {
                 $counts['nicht gefunden']++;
@@ -62,11 +79,15 @@ class FetchPetzlMediaCommand extends Command
             }
 
             $counts['Seite gefunden']++;
-            $urls = $media->imageUrls($page['html'], $skus);
+            $urls = isset($pages[$product->id]) ? $media->galleryImageUrls($page['html']) : $media->imageUrls($page['html'], $skus);
             $counts['Bilder'] += count($urls);
             $this->line("  ✓ {$product->id} {$product->product_name}: ".count($urls).' Bild(er) – '.$page['url']);
 
             if ($dryRun) {
+                foreach ($urls as $url) {
+                    $this->line('      '.basename($url));
+                }
+
                 continue;
             }
 

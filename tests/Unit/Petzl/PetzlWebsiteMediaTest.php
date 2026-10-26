@@ -79,6 +79,24 @@ it('also searches the newer article number when the product has an old and a new
         ->and(array_map('basename', $media->imageUrls($page['html'], $skus)))->toBe(['C069AB-SEQUOIA_LowRes_1.jpeg']);
 });
 
+it('takes the gallery images of a given page and leaves out recommendations', function () {
+    $html = '<img src="https://www.petzl.com/dw/image/v2/BLQG_PRD/on/demandware.static/-/Sites-petzl-master-catalog/default/dw1/media/product/068bK00000m0mnRQAQ_casque-industrie-vignette.png">'
+        .petzlPage('L01', [
+            'L01-Lezard_LowRes_1.jpeg',
+            'L01-Lezard-focus-1_LowRes_2.jpeg',
+            'D020AA00-ID-S_LowRes_3.jpeg',
+            'C069CB00-Pont-dattache_LowRes_4.jpeg',
+        ]);
+
+    expect(array_map('basename', (new PetzlWebsiteMedia)->galleryImageUrls($html)))
+        ->toBe(['L01-Lezard_LowRes_1.jpeg', 'L01-Lezard-focus-1_LowRes_2.jpeg']);
+
+    $html = petzlPage('C069CB00', ['C069CB00-Pont-dattache_LowRes_1.jpeg', 'C069CB-Pont-focus-1_LowRes_2.jpeg', 'C069BB-SEQUOIA-PLUS_LowRes_3.jpeg']);
+
+    expect(array_map('basename', (new PetzlWebsiteMedia)->galleryImageUrls($html)))
+        ->toBe(['C069CB00-Pont-dattache_LowRes_1.jpeg', 'C069CB-Pont-focus-1_LowRes_2.jpeg']);
+});
+
 it('returns nothing when no candidate page contains the article number', function () {
     Http::fake([
         'www.petzl.com/de/de/search*' => Http::response('<a href="/de/de/professional/produkte/x/VERTEX_PRO_a1.html"></a>'),

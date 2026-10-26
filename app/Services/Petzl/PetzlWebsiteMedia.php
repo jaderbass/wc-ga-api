@@ -105,6 +105,53 @@ class PetzlWebsiteMedia
     }
 
     /**
+     * Fest vorgegebene Produktseite laden (für Produkte, deren Seite über die
+     * Artikelnummer nicht zu finden ist).
+     *
+     * @return array{url: string, html: string}|null
+     */
+    public function page(string $url): ?array
+    {
+        $html = str_starts_with($url, self::BASE.'/') ? $this->get($url) : null;
+
+        return $html === null ? null : ['url' => $url, 'html' => $html];
+    }
+
+    /**
+     * Galerie-Bilder einer fest vorgegebenen Seite: das erste Produktbild der Seite
+     * und alle weiteren mit demselben Namensanfang ("L01-Lezard", "L01-Lezard-focus-1").
+     * Bilder von Zubehör-Empfehlungen beginnen anders und bleiben draußen.
+     *
+     * @return list<string>
+     */
+    public function galleryImageUrls(string $html): array
+    {
+        $key = fn (string $file): string => ($token = strtoupper((string) strtok($file, '-'))) !== '' && strlen($token) >= 6
+            ? substr($token, 0, 6)
+            : $token;
+
+        $urls = [];
+        $first = null;
+
+        preg_match_all(self::IMAGE, $html, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as [, $version, $file]) {
+            // Menü-/Teaserbilder ("068bK00000m0mnRQAQ_casque-….png") sind keine Produktbilder
+            if (preg_match('/^0\d{2}[A-Za-z0-9]{15}_/', $file)) {
+                continue;
+            }
+
+            $first ??= $key($file);
+
+            if ($key($file) === $first) {
+                $urls[$file] ??= self::BASE.'/on/demandware.static/-/Sites-petzl-master-catalog/default/'.$version.'/media/product/'.$file;
+            }
+        }
+
+        return array_values($urls);
+    }
+
+    /**
      * @return list<string>
      */
     protected function candidates(string $sku): array
