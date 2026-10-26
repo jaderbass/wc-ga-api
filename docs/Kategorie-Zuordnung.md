@@ -64,8 +64,8 @@ Bestehende Shop-Kategorien, auf die zugeordnet wird (Auszug): Seile > Statisch /
     - EK = Listenpreis abzüglich der zwei Rabatte **nacheinander**. Petzl: 35 % und 5 % → Listenpreis × 0,65 × 0,95 (= × 0,6175, nicht − 40 %); gerundet erst am Ende.
     - Rabatte erben: Variante → Produkt → Hersteller (Backend: Hersteller › „Einkaufskonditionen“). Leeres Rabattfeld = geerbter Wert (wird als Platzhalter angezeigt), eigener Wert = **Sonderkondition**.
     - Herkunft des EK (`purchase_price_source`): `calculated` (wird bei Änderung von Listenpreis/Rabatten neu berechnet), `pricelist` (EK stand in der Liste, z. B. Aliens „HEK netto“), `manual` (von Hand eingetragen, z. B. wenn ein Hersteller nur den EK nennt – wird nie automatisch überschrieben; der Preislisten-Import aktualisiert dann nur den Listenpreis).
-    - Preislisten: Listenpreis = Petzl „Unit Price“ bzw. Aliens „UVP netto“. Neu berechnen: automatisch beim Speichern; sonst `php artisan prices:recalculate-purchase [--manufacturer=Petzl]`.
-    - Nur im Backend sichtbar, geht nicht in den Shop. Das ältere Feld „Herstellerpreis“ (`manufacturer_price_cents`) bleibt unverändert – Bedeutung mit Jörg klären.
+    - Preislisten: Listenpreis = Petzl „Unit Price“, Aliens „UVP netto“ bzw. Skylotec „Nettopreis EU Aktuell“. Listenpreise kommen nur aus den Preislisten (`pricelist:apply`), nicht aus den Produkt-Importen. Neu berechnen: automatisch beim Speichern; sonst `php artisan prices:recalculate-purchase [--manufacturer=Petzl]`.
+    - Nur im Backend sichtbar, geht nicht in den Shop. Das alte Feld „Herstellerpreis“ (`manufacturer_price_cents`) ist entfernt (Migration `2026_10_16_100000`); der Altwert war nicht einheitlich (Skylotec = Listenpreis, Aliens = Lieferanten-VK) und wurde nicht übernommen.
   - Namen, Beschreibungen und Shop-Preise werden **nicht** überschrieben; kein Shop-Sync
   - nicht gefundene Zeilen: CSV unter `storage/app/exports/`
 
