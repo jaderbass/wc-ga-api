@@ -16,3 +16,6 @@ Schedule::command('aliens:b2b-fetch produkte')->dailyAt('02:30')->withoutOverlap
 // danach: Artikel, die Aliens nicht mehr führt, markieren und offline nehmen (bricht bei kaputtem Download ab)
 Schedule::command('aliens:b2b-import storage/app/imports/aliens-b2b/produkte-aktuell.xlsx --mark-discontinued')->dailyAt('03:00')->withoutOverlapping();
 Schedule::command('aliens:b2b-fetch lagerbestand')->dailyAt('10:30')->withoutOverlapping();
+
+// Geplante Rabattwechsel der Hersteller am Stichtag übernehmen und EK neu berechnen
+Schedule::command('prices:apply-discount-changes')->dailyAt('00:15')->withoutOverlapping();
