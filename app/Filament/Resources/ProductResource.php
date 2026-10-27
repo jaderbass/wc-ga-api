@@ -968,7 +968,14 @@ HTML;
                                         ->whereNull('variation_id')
                                         ->first();
 
-                                    $urls = [];
+                                    // Bildertabelle (Petzl, Edelrid, Shop, eigene Bilder …), Titelbild zuerst
+                                    $urls = $record->images()
+                                        ->orderByDesc('is_main')
+                                        ->orderBy('id')
+                                        ->pluck('url')
+                                        ->filter()
+                                        ->values()
+                                        ->all();
 
                                     if ($pathsMeta && is_string($pathsMeta->value) && trim($pathsMeta->value) !== '') {
                                         $paths = json_decode($pathsMeta->value, true);
