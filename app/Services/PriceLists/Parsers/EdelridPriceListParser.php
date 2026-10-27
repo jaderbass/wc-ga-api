@@ -11,6 +11,10 @@ use App\Services\PriceLists\PriceListRow;
  * ("STATIKSEILE | STATIC ROPES"); darunter folgen die Artikel mit
  * Artikelnummer (nur Ziffern) in Spalte 1 und Bezeichnung in Spalte 2.
  * Herstellerkategorie = deutscher Teil der Überschrift ("STATIKSEILE").
+ *
+ * Ab der Liste 2027 ("PL_2027_WORK SAFETY_EURO", auch als CSV): Spalte 7 =
+ * Einheitspreis € ohne MwSt. (= UVP netto → Listenpreis), Spalte 8 = Einheit
+ * (PC, M, PA, PU3 …). Der EK wird über die Hersteller-Rabatte berechnet.
  */
 class EdelridPriceListParser implements PriceListParser
 {
@@ -52,9 +56,36 @@ class EdelridPriceListParser implements PriceListParser
                 text: trim(implode(' - ', array_filter([$name, $row[2] ?? null, $row[3] ?? null]))),
                 brand: 'EDELRID',
                 sourceCategory: $heading,
+                unit: self::text($row[7] ?? null),
+                listPriceCents: self::cents($row[6] ?? null),
             );
         }
 
         return $result;
+    }
+
+    /**
+     * "178,57" / "1.125,00" / "425" → Cent; leer oder 0 → null (alter Preis bleibt)
+     */
+    public static function cents(mixed $value): ?int
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (str_contains($value, ',')) {
+            $value = str_replace(['.', ','], ['', '.'], $value);
+        }
+
+        return is_numeric($value) && (float) $value > 0 ? (int) round((float) $value * 100) : null;
+    }
+
+    protected static function text(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
     }
 }
