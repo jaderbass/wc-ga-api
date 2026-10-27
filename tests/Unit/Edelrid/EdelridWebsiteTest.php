@@ -103,3 +103,50 @@ it('fills only empty fields of edelrid products', function () {
         ->and(DB::table('product_variations')->where('product_id', 2)->value('ean'))->toBe('111')
         ->and(DB::table('products')->find(3)->description)->toBeNull();
 });
+
+it('imports edelrid master data into empty fields and prefers its images over website images', function () {
+    Schema::disableForeignKeyConstraints();
+    foreach (['product_meta', 'product_images', 'product_variations', 'products', 'manufacturers'] as $table) {
+        Schema::dropIfExists($table);
+    }
+    Schema::create('manufacturers', fn ($t) => [$t->id(), $t->string('manufacturer'), $t->decimal('purchase_discount_1', 5, 2)->nullable(), $t->decimal('purchase_discount_2', 5, 2)->nullable(), $t->timestamps()]);
+    Schema::create('products', fn ($t) => [$t->id(), $t->unsignedBigInteger('manufacturer_id'), $t->string('sku')->nullable(), $t->string('slug')->nullable(), $t->string('product_name')->nullable(), $t->text('description')->nullable(), $t->text('short_description')->nullable(), $t->string('certification')->nullable(), $t->string('manual_url')->nullable(), $t->string('declaration_of_compliance')->nullable(), $t->unsignedInteger('list_price_cents')->nullable(), $t->decimal('purchase_discount_1', 5, 2)->nullable(), $t->decimal('purchase_discount_2', 5, 2)->nullable(), $t->unsignedInteger('purchase_price_cents')->nullable(), $t->string('purchase_price_source')->nullable(), $t->timestamps()]);
+    Schema::create('product_variations', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->string('sku')->nullable(), $t->string('ean')->nullable(), $t->integer('weight')->nullable(), $t->timestamps()]);
+    Schema::create('product_images', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->string('url'), $t->boolean('is_main')->default(false), $t->timestamps()]);
+    Schema::create('product_meta', fn ($t) => [$t->id(), $t->unsignedBigInteger('product_id'), $t->unsignedBigInteger('variation_id')->nullable(), $t->string('scope')->nullable(), $t->string('key'), $t->text('value')->nullable(), $t->timestamps()]);
+    Schema::enableForeignKeyConstraints();
+
+    DB::table('manufacturers')->insert(['id' => 6, 'manufacturer' => 'Edelrid']);
+    DB::table('products')->insert([['id' => 1, 'manufacturer_id' => 6, 'product_name' => 'Performance Static 9,0mm', 'description' => null], ['id' => 2, 'manufacturer_id' => 6, 'product_name' => 'Eigen', 'description' => '<p>eigen</p>']]);
+    DB::table('product_variations')->insert([['product_id' => 1, 'sku' => '832570500170', 'ean' => null, 'weight' => null], ['product_id' => 1, 'sku' => '832570500470', 'ean' => null, 'weight' => null], ['product_id' => 2, 'sku' => '740010010000', 'ean' => '1', 'weight' => 5]]);
+    DB::table('product_images')->insert([['product_id' => 1, 'url' => 'https://shopapi.edelrid.com/v1/media/image/edelrid/1/web-l', 'is_main' => true], ['product_id' => 2, 'url' => 'https://x/eigen.jpg', 'is_main' => true]]);
+
+    $header = ['EAN', 'BRAND', 'Produktgruppe', 'Art.Nr.', 'Bezeichnung', 'Farb.Nr.', 'Farbtext', 'Größe', 'Gewicht ohne Verpackung (g)', 'Produkt-Text', "USP's", 'Technische Informationen und Technologien', 'Zertifizierung', 'URL Gebrauchsanleitung', 'URL Konformitätserklärung', 'URL Produktbild 0', 'URL Produktbild 1'];
+    $img = fn ($n) => "https://mobimedia-ed-prod-media.s3.eu-central-1.amazonaws.com/ED/ED/D/{$n}.png";
+    $sheet = [
+        ['Orderformular', 'Work Safety 2027 DE'],
+        $header,
+        ['4028545210643', 'EDELRID', 'SEILE', '832570500170', 'Performance Static 9,0mm', '017', 'night', '50 M', '2700', 'Abriebfest und dehnungsarm. Zweiter Satz.', "Kennfäden\nGefachter Mantel", "Durchmesser 9mm\nKernanteil 60%", 'EN 1891 Typ B', 'https://x/gal.pdf', 'https://x/conf.pdf', $img('017'), $img('017-2')],
+        ['4028545210650', 'EDELRID', 'SEILE', '832570500470', 'Performance Static 9,0mm', '047', 'snow', '50 M', '2700', 'Abriebfest und dehnungsarm. Zweiter Satz.', '', '', 'EN 1891 Typ B', '', '', $img('047'), ''],
+        ['4028545000000', 'EDELRID', 'GURTE', '740010010000', 'Eigen', '', '', '', '999', 'Text.', '', '', '', '', '', $img('x'), ''],
+        ['4028545999999', 'EDELRID', 'SEILE', '899999999999', 'Fehlt', '', '', '', '1', 'Text.', '', '', '', '', '', '', ''],
+    ];
+
+    $import = new App\Services\Edelrid\EdelridMasterdataImport;
+    $import->run(App\Services\Edelrid\EdelridMasterdataImport::rows($sheet), false);
+
+    $p1 = DB::table('products')->find(1);
+
+    expect($import->counts)->toMatchArray(['Artikel in der Datei' => 4, 'zugeordnet' => 3, 'nicht in der Datenbank' => 1, 'Bilder ersetzt (Website → Stammdaten)' => 1])
+        ->and($p1->description)->toContain('<h4>Vorteile</h4>')->toContain('<li>Kernanteil 60%</li>')->toContain('EN 1891 Typ B')
+        ->and($p1->short_description)->toBe('Abriebfest und dehnungsarm.')
+        ->and($p1->certification)->toBe('EN 1891 Typ B')
+        ->and($p1->manual_url)->toBe('https://x/gal.pdf')
+        ->and(DB::table('product_images')->where('product_id', 1)->orderBy('id')->pluck('url')->map(fn ($u) => basename($u))->all())->toBe(['017.png', '047.png', '017-2.png'])
+        ->and(DB::table('product_variations')->where('sku', '832570500470')->value('ean'))->toBe('4028545210650')
+        ->and(DB::table('product_variations')->where('sku', '832570500170')->value('weight'))->toBe(2700)
+        ->and(DB::table('products')->find(2)->description)->toBe('<p>eigen</p>')
+        ->and(DB::table('product_images')->where('product_id', 2)->pluck('url')->all())->toBe(['https://x/eigen.jpg'])
+        ->and(DB::table('product_variations')->where('sku', '740010010000')->value('ean'))->toBe('1')
+        ->and(json_decode(DB::table('product_meta')->where('key', 'edelrid_masterdata')->first()->value, true)['color'])->toBe('night');
+});
