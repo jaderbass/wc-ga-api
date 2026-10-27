@@ -28,6 +28,7 @@ class FetchEdelridMediaCommand extends Command
 {
     protected $signature = 'edelrid:fetch-media
                         {--product-id=* : Nur diese Produkte}
+                        {--page=* : Produkt-ID=Seiten-URL auf edelrid.com (geprüft, fest vorgegeben)}
                         {--refresh : Produktseiten neu einlesen (sonst Zwischenspeicher)}
                         {--include-sport : Auch Seiten aus dem Sport-Bereich einlesen}
                         {--dry-run : Nur berichten, nichts speichern}';
@@ -60,7 +61,16 @@ class FetchEdelridMediaCommand extends Command
 
         $query = Product::query()->where('manufacturer_id', $manufacturerId)->with('variations');
 
-        if ($this->option('product-id') !== []) {
+        $fixed = [];
+
+        foreach ((array) $this->option('page') as $pair) {
+            [$id, $url] = array_pad(explode('=', (string) $pair, 2), 2, '');
+            $fixed[(int) $id] = trim($url);
+        }
+
+        if ($fixed !== []) {
+            $query->whereIn('id', array_keys($fixed));
+        } elseif ($this->option('product-id') !== []) {
             $query->whereIn('id', (array) $this->option('product-id'));
         }
 
@@ -69,6 +79,21 @@ class FetchEdelridMediaCommand extends Command
             $skus = $product->variations->map(fn ($v) => preg_replace('/\D+/', '', (string) $v->sku))
                 ->push(preg_replace('/\D+/', '', (string) $product->sku))
                 ->filter()->unique()->values();
+
+            if (isset($fixed[$product->id])) {
+                $page = str_starts_with($fixed[$product->id], 'https://edelrid.com/') ? $website->page($fixed[$product->id]) : null;
+
+                if ($page === null) {
+                    $this->counts['keine Seite (aktiv)']++;
+
+                    continue;
+                }
+
+                $this->counts['Seite gefunden']++;
+                $this->apply($product, $page, $dryRun);
+
+                continue;
+            }
 
             $index = $skus->map(fn ($sku) => $bySku[$sku] ?? null)->filter(fn ($i) => $i !== null)->first();
 
