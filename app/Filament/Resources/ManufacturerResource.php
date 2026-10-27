@@ -110,6 +110,17 @@ class ManufacturerResource extends Resource
                             ->maxValue(100)
                             ->step(0.01)
                             ->suffix('%'),
+
+                        Forms\Components\Placeholder::make('discount_changes')
+                            ->label('Geplante Rabattwechsel')
+                            ->content(fn (?Manufacturer $record) => $record?->discountChanges()->pending()->get()
+                                ->map(fn ($c) => 'ab '.$c->valid_from->format('d.m.Y').': '
+                                    .\App\Services\Pricing\PurchasePriceCalculator::formatPercent($c->purchase_discount_1).' + '
+                                    .\App\Services\Pricing\PurchasePriceCalculator::formatPercent($c->purchase_discount_2)
+                                    .($c->note ? " ({$c->note})" : ''))
+                                ->implode(' · ') ?: 'keine')
+                            ->helperText('Wird am Stichtag automatisch übernommen (EK werden neu berechnet). Planen: php artisan prices:schedule-discount')
+                            ->columnSpanFull(),
                     ])
                     ->columns(2)
                     ->columnSpanFull(),
