@@ -36,6 +36,13 @@ class ManufacturerResource extends Resource
                 Forms\Components\TextInput::make('website')
                     ->label('Website')
                     ->url(),
+                Forms\Components\FileUpload::make('logo_path')
+                    ->label('Logo (für das Dashboard)')
+                    ->disk('public')
+                    ->directory('manufacturer-logos')
+                    ->acceptedFileTypes(['image/svg+xml', 'image/png', 'image/webp', 'image/jpeg', 'image/gif'])
+                    ->maxSize(2048)
+                    ->nullable(),
                 Forms\Components\TextInput::make('api_url')
                     ->label('API-URL')
                     ->url()
@@ -133,6 +140,10 @@ class ManufacturerResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->sortable(),
+                Tables\Columns\ImageColumn::make('logo_path')
+                    ->label('Logo')
+                    ->getStateUsing(fn (Manufacturer $record) => $record->logoUrl())
+                    ->height(24),
                 Tables\Columns\TextColumn::make('manufacturer')
                     ->label('Hersteller')
                     ->icon(fn ($record) => $record->active ? null : 'heroicon-m-eye-slash')

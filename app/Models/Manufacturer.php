@@ -25,6 +25,7 @@ class Manufacturer extends Model
         'manufacturer',
         'manufacturercountry',
         'website',
+        'logo_path',
         'api_url',
         'api_user',
         'api_password',
@@ -43,6 +44,15 @@ class Manufacturer extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    /**
+     * Link zum Logo (Datei auf der "public"-Disk, ausgeliefert über die Route
+     * "manufacturer-logo", da /storage auf dem Server gesperrt ist) oder null.
+     */
+    public function logoUrl(): ?string
+    {
+        return $this->logo_path ? route('manufacturer-logo', ['file' => basename($this->logo_path)]) : null;
     }
 
     /**

@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Auth;
-use App\Http\Controllers\ImportRunEventsController;
 use App\Http\Controllers\AliensImageController;
+use App\Http\Controllers\ImportRunEventsController;
 use App\Http\Controllers\PetzlDescriptionSyncRunEventsController;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Route;
 
 /*
 Route::get('/', function () {
@@ -26,12 +26,13 @@ Route::get('/health', fn () => response()->json(['ok' => true, 'ts' => now()->to
 
 Route::get('/whoami', function () {
     $u = auth()->user();
+
     return response()->json([
-        'id'     => optional($u)->id,
-        'email'  => optional($u)->email,
-        'roles'  => $u ? $u->getRoleNames() : [],
+        'id' => optional($u)->id,
+        'email' => optional($u)->email,
+        'roles' => $u ? $u->getRoleNames() : [],
         'cookie' => request()->cookie(config('session.cookie')) !== null,
-        'guard'  => auth()->getDefaultDriver(),
+        'guard' => auth()->getDefaultDriver(),
     ]);
 })->middleware('web');
 
@@ -45,7 +46,10 @@ Route::get('/aliens-image/{manufacturerId}/{productId}/{filename}', [AliensImage
         'filename' => '.+',
     ]);
 
-    Route::get(
-        '/petzl-description-sync/runs/{run}/events',
-        [PetzlDescriptionSyncRunEventsController::class, 'show']
-    );
+Route::get(
+    '/petzl-description-sync/runs/{run}/events',
+    [PetzlDescriptionSyncRunEventsController::class, 'show']
+);
+Route::get('/manufacturer-logo/{file}', [\App\Http\Controllers\ManufacturerLogoController::class, 'show'])
+    ->where('file', '[A-Za-z0-9._-]+')
+    ->name('manufacturer-logo');
