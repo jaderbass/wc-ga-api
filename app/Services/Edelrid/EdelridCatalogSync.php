@@ -51,6 +51,24 @@ class EdelridCatalogSync
     public array $lines = ['neu' => [], 'ausgelaufen' => [], 'verdacht' => []];
 
     /**
+     * true: Nachfolger mit neuer Artikelnummer als neues Produkt anlegen, das alte
+     * läuft aus; beide werden verknüpft (Meta edelrid_successor / edelrid_predecessor).
+     */
+    public function __construct(public bool $successorsAsNew = false) {}
+
+    protected function linkSuccessor(Product $old, Product $new): void
+    {
+        ProductMeta::query()->updateOrCreate(
+            ['product_id' => $old->id, 'variation_id' => null, 'scope' => 'product', 'key' => 'edelrid_successor'],
+            ['value' => (string) $new->id],
+        );
+        ProductMeta::query()->updateOrCreate(
+            ['product_id' => $new->id, 'variation_id' => null, 'scope' => 'product', 'key' => 'edelrid_predecessor'],
+            ['value' => (string) $old->id],
+        );
+    }
+
+    /**
      * Artikelzeilen aus der Tabelle (Überschrift, Nummer, Name, Farbe, Länge/Größe, Ausführung, Preis, Einheit).
      *
      * @param  array<int, array<int, mixed>>  $rows
@@ -193,18 +211,26 @@ class EdelridCatalogSync
 
             if ($gone !== null) {
                 $this->counts['Verdacht neue Nummer']++;
-                $suspectProductIds = [...$suspectProductIds, ...$gone->pluck('id')->all()];
                 $this->lines['verdacht'][] = "? {$name}: neu ".implode(', ', array_column($modelRows, 'sku'))
-                    .' – bisher Produkt '.$gone->pluck('id')->implode(', ').' ('.implode(', ', $this->skusOf($gone->first())).')';
+                    .' – bisher Produkt '.$gone->pluck('id')->implode(', ').' ('.implode(', ', $this->skusOf($gone->first())).')'
+                    .($this->successorsAsNew ? ' → neues Produkt, altes ausgelaufen' : '');
 
-                continue;
+                if (! $this->successorsAsNew) {
+                    $suspectProductIds = [...$suspectProductIds, ...$gone->pluck('id')->all()];
+
+                    continue;
+                }
             }
 
             $this->counts['neues Produkt']++;
             $this->lines['neu'][] = "* Produkt {$name} ({$modelRows[0]['heading']}): ".implode(', ', array_column($modelRows, 'sku'));
 
             if (! $dryRun) {
-                $this->createProduct($manufacturerId, $name, $modelRows, $authorId);
+                $product = $this->createProduct($manufacturerId, $name, $modelRows, $authorId);
+
+                foreach ($gone ?? [] as $predecessor) {
+                    $this->linkSuccessor($predecessor, $product);
+                }
             }
         }
 

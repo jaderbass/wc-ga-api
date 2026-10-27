@@ -178,3 +178,16 @@ it('marks discontinued items, adds new ones and leaves suspects and other ranges
         ->and(DB::table('products')->where('id', 2)->value('online_sellable'))->toBe(1)
         ->and(DB::table('product_meta')->where('product_id', 2)->where('key', EdelridCatalogSync::META)->count())->toBe(0);
 });
+
+it('creates successors as new products and links them when asked', function () {
+    $sync = new EdelridCatalogSync(successorsAsNew: true);
+    $sync->run(EdelridCatalogSync::rows(edelridSheet()), false);
+
+    $new = DB::table('products')->where('product_name', 'Flex Pro')->where('id', '!=', 3)->value('id');
+
+    expect($sync->counts['Verdacht neue Nummer'])->toBe(1)
+        ->and($new)->not->toBeNull()
+        ->and(DB::table('products')->where('id', 3)->value('online_sellable'))->toBe(0)
+        ->and(DB::table('product_meta')->where('product_id', 3)->where('key', 'edelrid_successor')->value('value'))->toBe((string) $new)
+        ->and(DB::table('product_meta')->where('product_id', $new)->where('key', 'edelrid_predecessor')->value('value'))->toBe('3');
+});
