@@ -21,7 +21,8 @@ class EdelridCatalogSyncCommand extends Command
                         {file : Edelrid-Preisliste (.csv oder .xlsx)}
                         {--dry-run : Nur berichten, nichts ändern}
                         {--author= : E-Mail des Autors neuer Produkte (Standard: erster Admin)}
-                        {--details : Alle neuen und ausgelaufenen Artikel auflisten}';
+                        {--details : Alle neuen und ausgelaufenen Artikel auflisten}
+                        {--successors-as-new : Nachfolger mit neuer Artikelnummer als neues Produkt anlegen, altes läuft aus}';
 
     protected $description = 'Edelrid: ausgelaufene Artikel markieren (offline), neue Artikel anlegen, Nummernwechsel melden';
 
@@ -37,7 +38,7 @@ class EdelridCatalogSyncCommand extends Command
             : User::role('Admin')->orderBy('id')->value('id');
 
         $rows = EdelridCatalogSync::rows(SpreadsheetRowReader::read($path));
-        $sync = new EdelridCatalogSync;
+        $sync = new EdelridCatalogSync((bool) $this->option('successors-as-new'));
 
         $this->line(($dryRun ? '[Probelauf – es wird nichts gespeichert] ' : '').count($rows).' Artikel aus '.basename($path));
         DB::transaction(fn () => $sync->run($rows, $dryRun, $authorId));
@@ -48,7 +49,7 @@ class EdelridCatalogSyncCommand extends Command
             $this->line(str_pad($label.':', 26).$count);
         }
 
-        foreach (['verdacht' => 'Verdacht auf neue Artikelnummer (nichts geändert, bitte entscheiden)', 'neu' => 'Neu', 'ausgelaufen' => 'Ausgelaufen (offline, bleiben in der Datenbank)'] as $key => $title) {
+        foreach (['verdacht' => $this->option('successors-as-new') ? 'Nachfolger mit neuer Artikelnummer' : 'Verdacht auf neue Artikelnummer (nichts geändert, bitte entscheiden)', 'neu' => 'Neu', 'ausgelaufen' => 'Ausgelaufen (offline, bleiben in der Datenbank)'] as $key => $title) {
             $lines = $sync->lines[$key];
 
             if ($lines === []) {
