@@ -46,6 +46,16 @@ class Manufacturer extends Model
     }
 
     /**
+     * Beziehung: geplante Rabattwechsel zu einem Stichtag.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function discountChanges()
+    {
+        return $this->hasMany(ManufacturerDiscountChange::class)->orderBy('valid_from');
+    }
+
+    /**
      * Beziehung: Ein Hersteller hat viele Audit-Einträge.
      *
      * @return \Illuminate\Database\Eloquent\Relations\HasMany
