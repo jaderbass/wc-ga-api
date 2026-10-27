@@ -119,6 +119,17 @@ return [
 
     'edelrid' => [
         // Herstellerkategorie = Zwischenüberschrift (deutscher Teil)
+        // Exakte Zuordnung (Entscheidung Maik, 27.10.2026, Liste 2027)
+        'sources' => [
+            'BAUMPFLEGESEILE' => ['Statisch', 'Baumpflege'],
+            'DYNAMIKSEILE' => ['Dynamisch'],
+            'SEILE MIT ENDVERBINDUNGEN' => ['Statisch'],
+            'GURTE ZUBEHÖR' => ['Zubehör Gurte'],
+            'GURTE ERSATZTEILE' => ['Ersatzteil'],
+            'VERBINDUNGSMITTEL ERSATZTEILE' => ['Ersatzteil'],
+            'HELME ERSATZTEILE' => ['Zubehör Schutzhelme'],
+        ],
+
         'suggestions' => [
             ['keywords' => 'statikseile|seile mit endverbindung', 'categories' => ['Statisch']],
             ['keywords' => 'reepschnüre', 'categories' => ['Reepschnur']],
@@ -149,6 +160,17 @@ return [
             ['source' => 'ZUBEHÖR', 'keywords' => 'tool safety leash', 'categories' => ['Werkzeugsicherung']],
             ['source' => 'ZUBEHÖR', 'keywords' => 'corazon|mini o', 'categories' => ['Sicherungsgeräte']],
             ['source' => 'BEKLEIDUNG', 'keywords' => 'glove|gloves', 'categories' => ['Handschuhe']],
+            // HARTWARE wie auf edelrid.com eingeordnet (27.10.2026); speziellere Stichwörter zuerst
+            ['source' => 'HARTWARE', 'keywords' => 'foot cruiser', 'categories' => ['Fußsteigklemme']],
+            ['source' => 'HARTWARE', 'keywords' => 'tree cruiser|talon tree spurs', 'categories' => ['Baumsteigeisen']],
+            ['source' => 'HARTWARE', 'keywords' => 'talon|spare talon', 'categories' => ['Baumsteigeisen-Zubehör']],
+            ['source' => 'HARTWARE', 'keywords' => 'cruiser', 'categories' => ['Seilklemmen']],
+            ['source' => 'HARTWARE', 'keywords' => 'rescue 8', 'categories' => ['Rettungsachter']],
+            ['source' => 'HARTWARE', 'keywords' => 'pinch|megawatt|hannibal|bud|safe descent', 'categories' => ['Abseilgeräte']],
+            ['source' => 'HARTWARE', 'keywords' => 'spoc|flux|neelix|puck|warp|pike rescue', 'categories' => ['Seilrollen']],
+            ['source' => 'HARTWARE', 'keywords' => 'fuse|defuser', 'categories' => ['Mitlaufende Auffanggeräte']],
+            ['source' => 'HARTWARE', 'keywords' => 'cupid|ring alu', 'categories' => ['Verbindungselemente']],
+            ['source' => 'HARTWARE', 'keywords' => 'master rig|mini rig|maggi rig', 'categories' => ['Riggingplatten']],
         ],
     ],
 
