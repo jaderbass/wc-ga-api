@@ -51,6 +51,10 @@ Route::get(
     [PetzlDescriptionSyncRunEventsController::class, 'show']
 );
 
+Route::get('/manufacturer-logo/{file}', [\App\Http\Controllers\ManufacturerLogoController::class, 'show'])
+    ->where('file', '[A-Za-z0-9._-]+')
+    ->name('manufacturer-logo');
+
 Route::get('/product-image/{product}/{file}', [\App\Http\Controllers\ProductImageFileController::class, 'show'])
     ->where(['product' => '[0-9]+', 'file' => '[A-Za-z0-9._-]+\.(jpg|jpeg|png|webp|gif)'])
     ->name('product-image');
