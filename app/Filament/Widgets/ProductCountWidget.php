@@ -2,12 +2,13 @@
 
 namespace App\Filament\Widgets;
 
-use Filament\Widgets\Widget;
 use App\Models\Product;
+use Filament\Widgets\Widget;
 
 class ProductCountWidget extends Widget
 {
     protected static string $view = 'filament.widgets.product-count-widget';
+
     public int $count;
 
     public function mount()
